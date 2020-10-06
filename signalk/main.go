@@ -31,11 +31,6 @@ type Delta struct {
 	Updates []Update `json:"updates"`
 }
 
-// IsEmpty return true when the Delta is empty
-func (d *Delta) IsEmpty() bool {
-	return d.Context == "" && len(d.Updates) == 0
-}
-
 // AppendValue adds a value to an update
 func (u *Update) AppendValue(v Value) {
 	u.Values = append(u.Values, v)

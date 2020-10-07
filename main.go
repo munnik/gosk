@@ -1,55 +1,51 @@
 package main
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	"io/ioutil"
 	"log"
-	"strings"
 	"time"
 
-	"github.com/munnik/gosk/signalk/parser"
+	"github.com/go-zeromq/zmq4"
+	"github.com/munnik/gosk/collector/nmea"
 )
 
-func fileReader(file string, interval time.Duration, linesAtOnce int, c chan<- []byte) {
-	defer close(c)
-	data, err := ioutil.ReadFile(file)
-
-	if err != nil {
-		log.Fatal(err)
-		return
-	}
-
-	lines := strings.Split(string(data[:]), "\n")
-	var lineCounter int
-	for _, line := range lines {
-		c <- []byte(line)
-		lineCounter++
-		if lineCounter%linesAtOnce == 0 {
-			time.Sleep(interval)
-		}
-	}
-}
-
-func parse(c chan []byte, dataType string) {
-	for sentence := range c {
-		delta, err := parser.DeltaFromData(sentence, dataType)
-		if err != nil {
-			log.Println(err)
-			continue
-		}
-
-		json, err := json.Marshal(delta)
-		if err != nil {
-			log.Fatal(err)
-			continue
-		}
-		fmt.Println("Got a new delta", string(json))
-	}
-}
-
 func main() {
-	c := make(chan []byte)
-	go fileReader("data/output.nmea", time.Millisecond*100, 3, c)
-	parse(c, parser.NMEAType)
+	ctx := context.Background()
+
+	publisherSocket := zmq4.NewPub(ctx)
+	defer publisherSocket.Close()
+	if err := publisherSocket.Listen("tcp://127.0.0.1:3000"); err != nil {
+		log.Fatal(err)
+	}
+
+	subscriberSocket := zmq4.NewSub(ctx)
+	subscriberSocket.SetOption(zmq4.OptionSubscribe, "NMEA")
+	defer subscriberSocket.Close()
+	if err := subscriberSocket.Dial("tcp://127.0.0.1:3000"); err != nil {
+		log.Fatal(err)
+	}
+
+	if !publisherSocket.Type().IsCompatible(subscriberSocket.Type()) {
+		log.Fatalf("%T is not compatible with %T\n", publisherSocket, subscriberSocket)
+	}
+	fmt.Printf("%T is compatible with %T\n", publisherSocket, subscriberSocket)
+
+	fc := nmea.FileCollector{
+		Config: nmea.FileConfig{
+			Path:        "data/output.nmea",
+			Interval:    time.Millisecond * 200,
+			LinesAtOnce: 3,
+		},
+	}
+
+	go fc.Collect(publisherSocket)
+
+	for {
+		message, err := subscriberSocket.Recv()
+		if err != nil {
+			log.Print(err)
+		}
+		log.Println(string(message.Bytes()))
+	}
 }

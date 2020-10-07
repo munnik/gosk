@@ -6,7 +6,7 @@ import (
 
 	goNMEA "github.com/adrianmo/go-nmea"
 
-	"github.com/munnik/gosk/signalk/parser/nmea"
+	"github.com/munnik/gosk/signalk/mapper/nmea"
 )
 
 func TestGetMagneticCourseOverGround(t *testing.T) {

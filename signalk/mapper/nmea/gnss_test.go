@@ -3,7 +3,7 @@ package nmea_test
 import (
 	"testing"
 
-	"github.com/munnik/gosk/signalk/parser/nmea"
+	"github.com/munnik/gosk/signalk/mapper/nmea"
 )
 
 func TestGetFixQuality(t *testing.T) {

@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/munnik/gosk/signalk/parser/nmea"
+	"github.com/munnik/gosk/signalk/mapper/nmea"
 )
 
 func TestGetDepthBelowSurface(t *testing.T) {

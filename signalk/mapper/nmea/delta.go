@@ -9,9 +9,9 @@ import (
 )
 
 // DeltaFromNMEA tries to create a Signal K Delta from a NMEA sentence
-func DeltaFromNMEA(line string) (signalk.Delta, error) {
+func DeltaFromNMEA(line []byte) (signalk.Delta, error) {
 	var delta signalk.Delta
-	sentence, err := Parse(line)
+	sentence, err := Parse(string(line))
 	if err != nil {
 		return delta, err
 	}

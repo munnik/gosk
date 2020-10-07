@@ -1,10 +1,10 @@
-package parser
+package mapper
 
 import (
 	"fmt"
 
 	"github.com/munnik/gosk/signalk"
-	"github.com/munnik/gosk/signalk/parser/nmea"
+	"github.com/munnik/gosk/signalk/mapper/nmea"
 )
 
 const (
@@ -18,7 +18,7 @@ const (
 func DeltaFromData(data []byte, dataType string) (signalk.Delta, error) {
 	switch dataType {
 	case NMEAType:
-		return nmea.DeltaFromNMEA(string(data))
+		return nmea.DeltaFromNMEA(data)
 	}
 	return signalk.Delta{}, fmt.Errorf("Don't know how to handle %s", dataType)
 }

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-zeromq/zmq4"
+	"go.nanomsg.org/mangos/v3"
 )
 
 // FileConfig has all the required configuration for a FileCollector
@@ -22,7 +22,7 @@ type FileCollector struct {
 }
 
 // Collect start the collection process and keeps running as long as there is data available
-func (collector FileCollector) Collect(socket zmq4.Socket) error {
+func (collector FileCollector) Collect(socket mangos.Socket) error {
 	data, err := ioutil.ReadFile(collector.Config.Path)
 	if err != nil {
 		return err
@@ -31,8 +31,8 @@ func (collector FileCollector) Collect(socket zmq4.Socket) error {
 	lines := strings.Split(string(data[:]), "\n")
 	lineCount := 0
 	for _, line := range lines {
-		log.Println("Sending new message with ZMQ", line)
-		socket.Send(zmq4.NewMsgFrom([]byte("NMEA"), []byte(line)))
+		log.Println("Sending new message with NNG", line)
+		socket.Send([]byte(line))
 		if lineCount++; lineCount == collector.Config.LinesAtOnce {
 			time.Sleep(collector.Config.Interval)
 			lineCount = 0

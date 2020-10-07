@@ -1,35 +1,37 @@
 package main
 
 import (
-	"context"
-	"fmt"
 	"log"
 	"time"
 
-	"github.com/go-zeromq/zmq4"
 	"github.com/munnik/gosk/collector/nmea"
+
+	"go.nanomsg.org/mangos/v3"
+	"go.nanomsg.org/mangos/v3/protocol/pub"
+	"go.nanomsg.org/mangos/v3/protocol/sub"
 )
 
 func main() {
-	ctx := context.Background()
-
-	publisherSocket := zmq4.NewPub(ctx)
-	defer publisherSocket.Close()
-	if err := publisherSocket.Listen("tcp://127.0.0.1:3000"); err != nil {
+	var pubSocket mangos.Socket
+	var err error
+	pubSocket, err = pub.NewSocket()
+	if err != nil {
+		log.Fatalf("Can't create pubSocket: %s", err)
+	}
+	defer pubSocket.Close()
+	if err := pubSocket.Listen("tcp://127.0.0.1:40899"); err != nil {
 		log.Fatal(err)
 	}
 
-	subscriberSocket := zmq4.NewSub(ctx)
-	subscriberSocket.SetOption(zmq4.OptionSubscribe, "NMEA")
-	defer subscriberSocket.Close()
-	if err := subscriberSocket.Dial("tcp://127.0.0.1:3000"); err != nil {
+	var subSocket mangos.Socket
+	subSocket, err = sub.NewSocket()
+	if err != nil {
+		log.Fatalf("Can't create subSocket: %s", err)
+	}
+	defer subSocket.Close()
+	if err := subSocket.Dial("tcp://127.0.0.1:40899"); err != nil {
 		log.Fatal(err)
 	}
-
-	if !publisherSocket.Type().IsCompatible(subscriberSocket.Type()) {
-		log.Fatalf("%T is not compatible with %T\n", publisherSocket, subscriberSocket)
-	}
-	fmt.Printf("%T is compatible with %T\n", publisherSocket, subscriberSocket)
 
 	fc := nmea.FileCollector{
 		Config: nmea.FileConfig{
@@ -39,13 +41,13 @@ func main() {
 		},
 	}
 
-	go fc.Collect(publisherSocket)
+	go fc.Collect(pubSocket)
 
 	for {
-		message, err := subscriberSocket.Recv()
+		message, err := subSocket.Recv()
 		if err != nil {
 			log.Print(err)
 		}
-		log.Println(string(message.Bytes()))
+		log.Println(string(message))
 	}
 }

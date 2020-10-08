@@ -1,14 +1,18 @@
 package main
 
 import (
+	"encoding/json"
+	"io"
 	"log"
-	"time"
 
 	"github.com/munnik/gosk/collector/nmea"
+	"github.com/munnik/gosk/nanomsg"
+	"github.com/munnik/gosk/signalk/mapper"
 
 	"go.nanomsg.org/mangos/v3"
 	"go.nanomsg.org/mangos/v3/protocol/pub"
 	"go.nanomsg.org/mangos/v3/protocol/sub"
+	_ "go.nanomsg.org/mangos/v3/transport/all"
 )
 
 func main() {
@@ -32,22 +36,46 @@ func main() {
 	if err := subSocket.Dial("tcp://127.0.0.1:40899"); err != nil {
 		log.Fatal(err)
 	}
-
-	fc := nmea.FileCollector{
-		Config: nmea.FileConfig{
-			Path:        "data/output.nmea",
-			Interval:    time.Millisecond * 200,
-			LinesAtOnce: 3,
-		},
+	if err = subSocket.SetOption(mangos.OptionSubscribe, []byte("")); err != nil {
+		log.Fatal("Could not subscribe to anything")
 	}
 
-	go fc.Collect(pubSocket)
+	// fileCollector := nmea.FileCollector{
+	// 	Config: nmea.FileConfig{
+	// 		Path:        "data/output.nmea",
+	// 		Interval:    time.Millisecond * 200,
+	// 		LinesAtOnce: 3,
+	// 	},
+	// }
+	// go fileCollector.Collect(nanomsg.Writer{Socket: pubSocket})
 
+	tcpCollector := nmea.TCPCollector{
+		Config: nmea.TCPConfig{
+			Host: "192.168.1.151",
+			Port: 10110,
+		},
+	}
+	go tcpCollector.Collect(nanomsg.Writer{Socket: pubSocket})
+
+	receiveMessages(nanomsg.Reader{Socket: subSocket})
+}
+
+func receiveMessages(reader io.Reader) {
+	const bufferSize = 1024
+	buffer := make([]byte, bufferSize)
 	for {
-		message, err := subSocket.Recv()
+		n, err := reader.Read(buffer)
+		if err != nil {
+			log.Fatal(err)
+		}
+		delta, err := mapper.DeltaFromData(buffer[0:n], mapper.NMEAType)
 		if err != nil {
 			log.Print(err)
 		}
-		log.Println(string(message))
+		json, err := json.Marshal(delta)
+		if err != nil {
+			log.Print(err)
+		}
+		log.Println("Received a delta", string(json))
 	}
 }

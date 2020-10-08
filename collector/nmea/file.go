@@ -3,7 +3,6 @@ package nmea
 import (
 	"io"
 	"io/ioutil"
-	"log"
 	"strings"
 	"time"
 )
@@ -31,7 +30,6 @@ func (collector FileCollector) Collect(writer io.Writer) error {
 	lines := strings.Split(string(data[:]), "\n")
 	lineCount := 0
 	for _, line := range lines {
-		log.Println("Sending new message with NNG", line)
 		if _, err := writer.Write([]byte(line)); err != nil {
 			return err
 		}

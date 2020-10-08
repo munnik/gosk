@@ -2,6 +2,7 @@ package nmea
 
 import (
 	"errors"
+	"fmt"
 
 	goAIS "github.com/BertoldVdb/go-ais"
 	"github.com/martinlindhe/unit"
@@ -71,7 +72,7 @@ func (s VDMVDO) GetCallSign() (string, error) {
 // GetIMONumber retrieves the IMO number of the vessel from the sentence
 func (s VDMVDO) GetIMONumber() (string, error) {
 	if shipStaticData, ok := s.Packet.(goAIS.ShipStaticData); ok && shipStaticData.Valid {
-		return string(shipStaticData.ImoNumber), nil
+		return fmt.Sprintf("%d", shipStaticData.ImoNumber), nil
 	}
 	return "", errors.New("Sentence is not usable or not valid")
 }

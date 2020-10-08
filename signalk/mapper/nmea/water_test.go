@@ -23,7 +23,7 @@ func TestGetDepthBelowSurface(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := test.s.GetDepthBelowSurface()
+			got, _, err := test.s.GetDepthBelowSurface()
 			if (err != nil) != test.wantErr {
 				t.Errorf("GetDepthBelowSurface() error = %v, wantErr %v", err, test.wantErr)
 				return
@@ -53,7 +53,7 @@ func TestGetDepthBelowTransducer(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := test.s.GetDepthBelowTransducer()
+			got, _, err := test.s.GetDepthBelowTransducer()
 			if (err != nil) != test.wantErr {
 				t.Errorf("GetDepthBelowTransducer() error = %v, wantErr %v", err, test.wantErr)
 				return

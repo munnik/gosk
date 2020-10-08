@@ -19,7 +19,7 @@ func TestGetSpeedOverGround(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := test.s.GetSpeedOverGround()
+			got, _, err := test.s.GetSpeedOverGround()
 			if (err != nil) != test.wantErr {
 				t.Errorf("GetSpeedOverGround() error = %v, wantErr %v", err, test.wantErr)
 				return
@@ -45,7 +45,7 @@ func TestGetSpeedThroughWater(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := test.s.GetSpeedThroughWater()
+			got, _, err := test.s.GetSpeedThroughWater()
 			if (err != nil) != test.wantErr {
 				t.Errorf("GetSpeedThroughWater() error = %v, wantErr %v", err, test.wantErr)
 				return

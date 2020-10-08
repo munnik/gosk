@@ -1,3 +1,5 @@
+github.com/BertoldVdb/go-ais v0.0.0-20191119203032-8b86faa5c444 h1:ceqe1jZzWj+5qzwSLtL6nmC3IvuukvtLpTw5ElMTXE0=
+github.com/BertoldVdb/go-ais v0.0.0-20191119203032-8b86faa5c444/go.mod h1:IekGWhyWQtlAVjTLcQahsjwzqCvz4oV2WrohF20kARw=
 github.com/Microsoft/go-winio v0.4.11 h1:zoIOcVf0xPN1tnMVbTtEdI+P8OofVk3NObnwOQ6nK2Q=
 github.com/Microsoft/go-winio v0.4.11/go.mod h1:VhR8bwka0BXejwEJY73c50VrPtXAaKcyvVC4A4RozmA=
 github.com/adrianmo/go-nmea v1.3.0 h1:BFrLRj/oIh+DYujIKpuQievq7X3NDHYq57kNgsfr2GY=

@@ -51,6 +51,14 @@ func DeltaFromNMEA(line []byte) (signalk.Delta, error) {
 			)
 		}
 	}
+	if v, ok := sentence.(RateOfTurn); ok {
+		rateOfTurn, _, err := v.GetRateOfTurn()
+		if err == nil {
+			delta.Updates[0].AppendValue(
+				signalk.Value{Path: "navigation/rateOfTurn", Value: rateOfTurn},
+			)
+		}
+	}
 	if v, ok := sentence.(TrueCourseOverGround); ok {
 		trueCourseOverGround, _, err := v.GetTrueCourseOverGround()
 		if err == nil {
@@ -120,6 +128,49 @@ func DeltaFromNMEA(line []byte) (signalk.Delta, error) {
 		if err == nil {
 			delta.Updates[0].AppendValue(
 				signalk.Value{Path: "navigation/speedThroughWater", Value: speedThroughWater},
+			)
+		}
+	}
+	if v, ok := sentence.(VesselName); ok {
+		vesselName, _, err := v.GetVesselName()
+		if err == nil {
+			delta.Updates[0].AppendValue(
+				signalk.Value{Path: "name", Value: vesselName},
+			)
+		}
+	}
+	if v, ok := sentence.(CallSign); ok {
+		callSign, _, err := v.GetCallSign()
+		if err == nil {
+			delta.Updates[0].AppendValue(
+				signalk.Value{Path: "communication/callsignVhf", Value: callSign},
+			)
+		}
+	}
+	if v, ok := sentence.(IMONumber); ok {
+		imoNumber, _, err := v.GetIMONumber()
+		if err == nil {
+			delta.Updates[0].AppendValue(
+				signalk.Value{Path: "registrations/imo", Value: imoNumber},
+			)
+		}
+	}
+	if v, ok := sentence.(ENINumber); ok {
+		eniNumber, _, err := v.GetENINumber()
+		if err == nil {
+			delta.Updates[0].AppendValue(
+				signalk.Value{Path: "registrations/other/eni/registration", Value: eniNumber},
+			)
+		}
+	}
+	if v, ok := sentence.(VesselDimensions); ok {
+		length, beam, _, err := v.GetVesselDimensions()
+		if err == nil {
+			delta.Updates[0].AppendValue(
+				signalk.Value{Path: "design/length", Value: signalk.OverallLength{Overall: length}},
+			)
+			delta.Updates[0].AppendValue(
+				signalk.Value{Path: "design/beam", Value: beam},
 			)
 		}
 	}

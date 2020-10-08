@@ -1,8 +1,10 @@
 package nmea
 
 import (
+	"errors"
 	"fmt"
 
+	goAIS "github.com/BertoldVdb/go-ais"
 	goNMEA "github.com/adrianmo/go-nmea"
 	"github.com/martinlindhe/unit"
 )
@@ -34,6 +36,17 @@ func (s VTG) GetSpeedOverGround() (float64, uint32, error) {
 		return (unit.Speed(s.GroundSpeedKnots) * unit.KilometersPerHour).MetersPerSecond(), 0, nil
 	}
 	return 0.0, 0, nil
+}
+
+// GetSpeedOverGround retrieves the speed over ground from the sentence
+func (s VDMVDO) GetSpeedOverGround() (float64, uint32, error) {
+	codec := goAIS.CodecNew(false, false)
+	codec.DropSpace = true
+	result := codec.DecodePacket(s.Payload)
+	if positionReport, ok := result.(goAIS.PositionReport); ok && positionReport.Valid {
+		return (unit.Speed(positionReport.Sog) * unit.Knot).MetersPerSecond(), result.GetHeader().UserID, nil
+	}
+	return 0.0, 0, errors.New("Not a position report or invalid position report")
 }
 
 // GetSpeedThroughWater retrieves the speed through water from the sentence

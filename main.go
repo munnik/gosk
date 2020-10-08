@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"log"
+	"time"
 
 	"github.com/munnik/gosk/collector/nmea"
 	"github.com/munnik/gosk/nanomsg"
@@ -40,22 +41,22 @@ func main() {
 		log.Fatal("Could not subscribe to anything")
 	}
 
-	// fileCollector := nmea.FileCollector{
-	// 	Config: nmea.FileConfig{
-	// 		Path:        "data/output.nmea",
-	// 		Interval:    time.Millisecond * 200,
-	// 		LinesAtOnce: 3,
-	// 	},
-	// }
-	// go fileCollector.Collect(nanomsg.Writer{Socket: pubSocket})
-
-	tcpCollector := nmea.TCPCollector{
-		Config: nmea.TCPConfig{
-			Host: "192.168.1.151",
-			Port: 10110,
+	fileCollector := nmea.FileCollector{
+		Config: nmea.FileConfig{
+			Path:        "data/nmea-sample",
+			Interval:    time.Millisecond * 0,
+			LinesAtOnce: 1,
 		},
 	}
-	go tcpCollector.Collect(nanomsg.Writer{Socket: pubSocket})
+	go fileCollector.Collect(nanomsg.Writer{Socket: pubSocket})
+
+	// tcpCollector := nmea.TCPCollector{
+	// 	Config: nmea.TCPConfig{
+	// 		Host: "192.168.1.151",
+	// 		Port: 10110,
+	// 	},
+	// }
+	// go tcpCollector.Collect(nanomsg.Writer{Socket: pubSocket})
 
 	receiveMessages(nanomsg.Reader{Socket: subSocket})
 }

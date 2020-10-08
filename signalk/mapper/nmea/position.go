@@ -36,11 +36,8 @@ func (s RMC) GetPosition2D() (float64, float64, uint32, error) {
 
 // GetPosition2D retrieves the 2D position from the sentence
 func (s VDMVDO) GetPosition2D() (float64, float64, uint32, error) {
-	codec := goAIS.CodecNew(false, false)
-	codec.DropSpace = true
-	result := codec.DecodePacket(s.Payload)
-	if positionReport, ok := result.(goAIS.PositionReport); ok && positionReport.Valid {
-		return float64(positionReport.Longitude), float64(positionReport.Latitude), result.GetHeader().UserID, nil
+	if positionReport, ok := s.Packet.(goAIS.PositionReport); ok && positionReport.Valid {
+		return float64(positionReport.Longitude), float64(positionReport.Latitude), s.Packet.GetHeader().UserID, nil
 	}
 	return 0.0, 0.0, 0, errors.New("Not a position report or invalid position report")
 }

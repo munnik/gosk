@@ -40,11 +40,8 @@ func (s VTG) GetSpeedOverGround() (float64, uint32, error) {
 
 // GetSpeedOverGround retrieves the speed over ground from the sentence
 func (s VDMVDO) GetSpeedOverGround() (float64, uint32, error) {
-	codec := goAIS.CodecNew(false, false)
-	codec.DropSpace = true
-	result := codec.DecodePacket(s.Payload)
-	if positionReport, ok := result.(goAIS.PositionReport); ok && positionReport.Valid {
-		return (unit.Speed(positionReport.Sog) * unit.Knot).MetersPerSecond(), result.GetHeader().UserID, nil
+	if positionReport, ok := s.Packet.(goAIS.PositionReport); ok && positionReport.Valid {
+		return (unit.Speed(positionReport.Sog) * unit.Knot).MetersPerSecond(), s.Packet.GetHeader().UserID, nil
 	}
 	return 0.0, 0, errors.New("Not a position report or invalid position report")
 }

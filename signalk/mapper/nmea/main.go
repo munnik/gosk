@@ -1,7 +1,11 @@
 package nmea
 
 import (
+	"errors"
 	"fmt"
+
+	goAIS "github.com/BertoldVdb/go-ais"
+	"github.com/BertoldVdb/go-ais/aisnmea"
 
 	goNMEA "github.com/adrianmo/go-nmea"
 )
@@ -41,7 +45,10 @@ type (
 	// THS for corresponding NMEA sentences
 	THS goNMEA.THS
 	// VDMVDO for corresponding NMEA sentences
-	VDMVDO goNMEA.VDMVDO
+	VDMVDO struct {
+		goNMEA.BaseSentence
+		goAIS.Packet
+	}
 	// VHW for corresponding NMEA sentences
 	VHW goNMEA.VHW
 	// VTG for corresponding NMEA sentences
@@ -51,6 +58,15 @@ type (
 	// ZDA for corresponding NMEA sentences
 	ZDA goNMEA.ZDA
 )
+
+var nmeaCodec *aisnmea.NMEACodec
+var aisCodec *goAIS.Codec
+
+func init() {
+	aisCodec = goAIS.CodecNew(false, false)
+	aisCodec.DropSpace = true
+	nmeaCodec = aisnmea.NMEACodecNew(aisCodec)
+}
 
 // Parse is a wrapper around the original Parse function, it returns types defined in this package that implement the interfaces in this package
 func Parse(raw string) (Sentence, error) {
@@ -88,9 +104,9 @@ func Parse(raw string) (Sentence, error) {
 	case goNMEA.TypeTHS:
 		return THS(sentence.(goNMEA.THS)), nil
 	case goNMEA.TypeVDM:
-		return VDMVDO(sentence.(goNMEA.VDMVDO)), nil
+		return ParseVDMVDO(sentence), nil
 	case goNMEA.TypeVDO:
-		return VDMVDO(sentence.(goNMEA.VDMVDO)), nil
+		return ParseVDMVDO(sentence), nil
 	case goNMEA.TypeVHW:
 		return VHW(sentence.(goNMEA.VHW)), nil
 	case goNMEA.TypeVTG:
@@ -102,4 +118,53 @@ func Parse(raw string) (Sentence, error) {
 	}
 
 	return nil, fmt.Errorf("Don't know how to handle %s", sentence.DataType())
+}
+
+// ParseVDMVDO parses the raw sentence
+func ParseVDMVDO(sentence goNMEA.Sentence) VDMVDO {
+	result, err := nmeaCodec.ParseSentence(sentence.String())
+	if result == nil || err != nil {
+		return VDMVDO{
+			goNMEA.BaseSentence{},
+			goAIS.Header{},
+		}
+	}
+	return VDMVDO{
+		goNMEA.BaseSentence{
+			Talker: sentence.TalkerID(),
+			Type:   result.MessageType,
+			Raw:    sentence.String(),
+		},
+		result.Packet,
+	}
+}
+
+func extractNumber(binaryData []byte, offset int, length int) (uint64, error) {
+	var result uint64 = 0
+
+	for _, value := range binaryData[offset : offset+length] {
+		result <<= 1
+		result |= uint64(value)
+	}
+
+	return result, nil
+}
+
+func extractString(binaryData []byte, offset int, length int) (string, error) {
+	if (length)%6 != 0 {
+		return "", errors.New("Length must be divisible by 6")
+	}
+	sixBitCharacters := make([]byte, length/6)
+	var position int
+	for index, value := range binaryData[offset : offset+length] {
+		position = index / 6
+		sixBitCharacters[position] <<= 1
+		sixBitCharacters[position] |= value
+	}
+	for index, value := range sixBitCharacters {
+		if value < 32 {
+			sixBitCharacters[index] = value + 64
+		}
+	}
+	return string(sixBitCharacters), nil
 }

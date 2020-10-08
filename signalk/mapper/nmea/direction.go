@@ -71,28 +71,25 @@ func (s RMC) GetMagneticVariation() (float64, uint32, error) {
 
 // GetRateOfTurn retrieves the rate of turn from the sentence
 func (s VDMVDO) GetRateOfTurn() (float64, uint32, error) {
-	codec := goAIS.CodecNew(false, false)
-	codec.DropSpace = true
-	result := codec.DecodePacket(s.Payload)
-	if positionReport, ok := result.(goAIS.PositionReport); ok && positionReport.Valid {
+	if positionReport, ok := s.Packet.(goAIS.PositionReport); ok && positionReport.Valid {
 		// https://gpsd.gitlab.io/gpsd/AIVDM.html
 		if positionReport.RateOfTurn == rateOfTurnNotAvailable {
 			return 0.0, 0, errors.New("Rate of turn is not available")
 		}
 		if positionReport.RateOfTurn == rateOfTurnMaxLeftDegreesPerMinute {
-			return rateOfTurnMaxLeftRadiansPerSecond, result.GetHeader().UserID, nil
+			return rateOfTurnMaxLeftRadiansPerSecond, s.Packet.GetHeader().UserID, nil
 		}
 		if positionReport.RateOfTurn == rateOfTurnMaxRightDegreesPerMinute {
-			return rateOfTurnMaxRightRadiansPerSecond, result.GetHeader().UserID, nil
+			return rateOfTurnMaxRightRadiansPerSecond, s.Packet.GetHeader().UserID, nil
 		}
 		if positionReport.RateOfTurn == 0 {
-			return 0.0, result.GetHeader().UserID, nil
+			return 0.0, s.Packet.GetHeader().UserID, nil
 		}
 		aisDecodedROT := math.Pow(float64(positionReport.RateOfTurn)/4.733, 2)
 		if positionReport.RateOfTurn < 0 {
 			aisDecodedROT = -aisDecodedROT
 		}
-		return -(unit.Angle(aisDecodedROT) * unit.Degree).Radians() / float64(unit.Minute), result.GetHeader().UserID, nil
+		return -(unit.Angle(aisDecodedROT) * unit.Degree).Radians() / float64(unit.Minute), s.Packet.GetHeader().UserID, nil
 	}
 	return 0.0, 0, errors.New("Not a position report or invalid position report")
 }
@@ -107,14 +104,11 @@ func (s RMC) GetTrueCourseOverGround() (float64, uint32, error) {
 
 // GetTrueCourseOverGround retrieves the true course over ground from the sentence
 func (s VDMVDO) GetTrueCourseOverGround() (float64, uint32, error) {
-	codec := goAIS.CodecNew(false, false)
-	codec.DropSpace = true
-	result := codec.DecodePacket(s.Payload)
-	if positionReport, ok := result.(goAIS.PositionReport); ok && positionReport.Valid {
+	if positionReport, ok := s.Packet.(goAIS.PositionReport); ok && positionReport.Valid {
 		if positionReport.Cog == 360 {
 			return 0.0, 0, errors.New("Course over ground is not available")
 		}
-		return (unit.Angle(positionReport.Cog) * unit.Degree).Radians(), result.GetHeader().UserID, nil
+		return (unit.Angle(positionReport.Cog) * unit.Degree).Radians(), s.Packet.GetHeader().UserID, nil
 	}
 	return 0.0, 0, errors.New("Not a position report or invalid position report")
 }
@@ -147,14 +141,11 @@ func (s THS) GetTrueHeading() (float64, uint32, error) {
 
 // GetTrueHeading retrieves the true heading from the sentence
 func (s VDMVDO) GetTrueHeading() (float64, uint32, error) {
-	codec := goAIS.CodecNew(false, false)
-	codec.DropSpace = true
-	result := codec.DecodePacket(s.Payload)
-	if positionReport, ok := result.(goAIS.PositionReport); ok && positionReport.Valid {
+	if positionReport, ok := s.Packet.(goAIS.PositionReport); ok && positionReport.Valid {
 		if positionReport.TrueHeading == 511 {
 			return 0.0, 0, errors.New("True heading is not available")
 		}
-		return (unit.Angle(positionReport.TrueHeading) * unit.Degree).Radians(), result.GetHeader().UserID, nil
+		return (unit.Angle(positionReport.TrueHeading) * unit.Degree).Radians(), s.Packet.GetHeader().UserID, nil
 	}
 	return 0.0, 0, errors.New("Not a position report or invalid position report")
 }

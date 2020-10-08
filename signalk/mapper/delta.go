@@ -20,5 +20,5 @@ func DeltaFromData(data []byte, dataType string) (signalk.Delta, error) {
 	case NMEAType:
 		return nmea.DeltaFromNMEA(data)
 	}
-	return signalk.Delta{}, fmt.Errorf("Don't know how to handle %s", dataType)
+	return signalk.DeltaWithContext{}, fmt.Errorf("Don't know how to handle %s", dataType)
 }

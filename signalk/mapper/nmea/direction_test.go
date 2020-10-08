@@ -23,7 +23,7 @@ func TestGetMagneticCourseOverGround(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, _, err := test.s.GetmagneticCourseOverGround()
+			got, err := test.s.GetmagneticCourseOverGround()
 			if (err != nil) != test.wantErr {
 				t.Errorf("GetmagneticCourseOverGround() error = %v, wantErr %v", err, test.wantErr)
 				return
@@ -55,7 +55,7 @@ func TestGetMagneticHeading(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, _, err := test.s.GetMagneticHeading()
+			got, err := test.s.GetMagneticHeading()
 			if (err != nil) != test.wantErr {
 				t.Errorf("GetMagneticHeading() error = %v, wantErr %v", err, test.wantErr)
 				return
@@ -80,7 +80,7 @@ func TestGetMagneticVariation(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, _, err := test.s.GetMagneticVariation()
+			got, err := test.s.GetMagneticVariation()
 			if (err != nil) != test.wantErr {
 				t.Errorf("GetMagneticVariation() error = %v, wantErr %v", err, test.wantErr)
 				return
@@ -109,7 +109,7 @@ func TestGetTrueCourseOverGround(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, _, err := test.s.GetTrueCourseOverGround()
+			got, err := test.s.GetTrueCourseOverGround()
 			if (err != nil) != test.wantErr {
 				t.Errorf("GetTrueCourseOverGround() error = %v, wantErr %v", err, test.wantErr)
 				return
@@ -143,7 +143,7 @@ func TestGetTrueHeading(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, _, err := test.s.GetTrueHeading()
+			got, err := test.s.GetTrueHeading()
 			if (err != nil) != test.wantErr {
 				t.Errorf("GetTrueHeading() error = %v, wantErr %v", err, test.wantErr)
 				return

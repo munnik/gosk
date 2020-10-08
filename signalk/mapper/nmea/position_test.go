@@ -25,7 +25,7 @@ func TestGetPosition2D(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			gotLongitude, gotLatitude, _, err := test.s.GetPosition2D()
+			gotLongitude, gotLatitude, err := test.s.GetPosition2D()
 			if (err != nil) != test.wantErr {
 				t.Errorf("GetPosition2D() error = %v, wantErr %v", err, test.wantErr)
 				return
@@ -59,7 +59,7 @@ func TestGetPosition3D(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			gotLongitude, gotLatitude, gotAltitude, _, err := test.s.GetPosition3D()
+			gotLongitude, gotLatitude, gotAltitude, err := test.s.GetPosition3D()
 			if (err != nil) != test.wantErr {
 				t.Errorf("GetPosition3D() error = %v, wantErr %v", err, test.wantErr)
 				return

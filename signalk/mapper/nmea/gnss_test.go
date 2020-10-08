@@ -17,7 +17,7 @@ func TestGetFixQuality(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, _, err := test.s.GetFixQuality()
+			got, err := test.s.GetFixQuality()
 			if (err != nil) != test.wantErr {
 				t.Errorf("GetFixQuality() error = %v, wantErr %v", err, test.wantErr)
 				return
@@ -40,7 +40,7 @@ func TestGetFixType(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, _, err := test.s.GetFixType()
+			got, err := test.s.GetFixType()
 			if (err != nil) != test.wantErr {
 				t.Errorf("GetFixType() error = %v, wantErr %v", err, test.wantErr)
 				return
@@ -65,7 +65,7 @@ func TestGetNumberOfSatelites(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, _, err := test.s.GetNumberOfSatelites()
+			got, err := test.s.GetNumberOfSatelites()
 			if (err != nil) != test.wantErr {
 				t.Errorf("GetNumberOfSatelites() error = %v, wantErr %v", err, test.wantErr)
 				return

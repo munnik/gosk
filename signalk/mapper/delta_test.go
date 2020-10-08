@@ -20,9 +20,9 @@ func TestDeltaFromData(t *testing.T) {
 		want    signalk.Delta
 		wantErr bool
 	}{
-		{name: "Invalid data type", args: args{data: []byte{}, dataType: invalidDataType}, want: signalk.Delta{}, wantErr: true},
+		{name: "Invalid data type", args: args{data: []byte{}, dataType: invalidDataType}, want: signalk.DeltaWithContext{}, wantErr: true},
 		// TODO should errors from the nmea library result in an error or just an empty delta?
-		{name: "Empty bytes NMEA message", args: args{data: []byte{}, dataType: mapper.NMEAType}, want: signalk.Delta{}, wantErr: true},
+		{name: "Empty bytes NMEA message", args: args{data: []byte{}, dataType: mapper.NMEAType}, want: signalk.DeltaWithContext{}, wantErr: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

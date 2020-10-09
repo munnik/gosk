@@ -8,24 +8,9 @@ import (
 	"github.com/martinlindhe/unit"
 )
 
-// NavigationStatus retrieves the navigation status from the sentence
-type NavigationStatus interface {
-	GetNavigationStatus() (uint8, error)
-}
-
-// VesselName retrieves the name of the vessel from the sentence
-type VesselName interface {
-	GetVesselName() (string, error)
-}
-
 // CallSign retrieves the call sign of the vessel from the sentence
 type CallSign interface {
 	GetCallSign() (string, error)
-}
-
-// IMONumber retrieves the IMO number of the vessel from the sentence
-type IMONumber interface {
-	GetIMONumber() (string, error)
 }
 
 // ENINumber retrieves the ENI number of the vessel from the sentence
@@ -34,28 +19,151 @@ type ENINumber interface {
 	GetENINumber() (string, error)
 }
 
+// IMONumber retrieves the IMO number of the vessel from the sentence
+type IMONumber interface {
+	GetIMONumber() (string, error)
+}
+
+// NavigationStatus retrieves the navigation status from the sentence
+type NavigationStatus interface {
+	GetNavigationStatus() (string, error)
+}
+
 // VesselDimensions retrieves the length and beam of the vessel from the sentence
 type VesselDimensions interface {
 	GetVesselDimensions() (float64, float64, error)
 }
 
-// GetNavigationStatus retrieves the navigation status from the sentence
-func (s VDMVDO) GetNavigationStatus() (uint8, error) {
-	if positionReport, ok := s.Packet.(goAIS.PositionReport); ok && positionReport.Valid {
-		return positionReport.NavigationalStatus, nil
-	}
-	return 0, errors.New("Sentence is not usable or not valid")
+// VesselName retrieves the name of the vessel from the sentence
+type VesselName interface {
+	GetVesselName() (string, error)
 }
 
-// GetVesselName retrieves the name of the vessel from the sentence
-func (s VDMVDO) GetVesselName() (string, error) {
-	if staticDataReport, ok := s.Packet.(goAIS.StaticDataReport); ok && staticDataReport.Valid && staticDataReport.ReportA.Valid {
-		return staticDataReport.ReportA.Name, nil
-	}
-	if shipStaticData, ok := s.Packet.(goAIS.ShipStaticData); ok && shipStaticData.Valid {
-		return shipStaticData.Name, nil
-	}
-	return "", errors.New("Sentence is not usable or not valid")
+// VesselType retrieves the type of the vessel from the sentence
+type VesselType interface {
+	GetVesselType() (string, error)
+}
+
+var navigationStatuses []string = []string{
+	"motoring",
+	"anchored",
+	"not under command",
+	"restricted manouverability",
+	"constrained by draft",
+	"moored",
+	"aground",
+	"fishing",
+	"sailing",
+	"hazardous material high speed",
+	"hazardous material wing in ground",
+	"reserved for future use",
+	"reserved for future use",
+	"reserved for future use",
+	"ais-sart",
+	"default",
+}
+
+var vesselTypes []string = []string{
+	"Not available (default)",
+	"Reserved for future use",
+	"Reserved for future use",
+	"Reserved for future use",
+	"Reserved for future use",
+	"Reserved for future use",
+	"Reserved for future use",
+	"Reserved for future use",
+	"Reserved for future use",
+	"Reserved for future use",
+	"Reserved for future use",
+	"Reserved for future use",
+	"Reserved for future use",
+	"Reserved for future use",
+	"Reserved for future use",
+	"Reserved for future use",
+	"Reserved for future use",
+	"Reserved for future use",
+	"Reserved for future use",
+	"Reserved for future use",
+	"Wing in ground (WIG), all ships of this type",
+	"Wing in ground (WIG), Hazardous category A",
+	"Wing in ground (WIG), Hazardous category B",
+	"Wing in ground (WIG), Hazardous category C",
+	"Wing in ground (WIG), Hazardous category D",
+	"Wing in ground (WIG), Reserved for future use",
+	"Wing in ground (WIG), Reserved for future use",
+	"Wing in ground (WIG), Reserved for future use",
+	"Wing in ground (WIG), Reserved for future use",
+	"Wing in ground (WIG), Reserved for future use",
+	"Fishing",
+	"Towing",
+	"Towing: length exceeds 200m or breadth exceeds 25m",
+	"Dredging or underwater ops",
+	"Diving ops",
+	"Military ops",
+	"Sailing",
+	"Pleasure Craft",
+	"Reserved",
+	"Reserved",
+	"High speed craft (HSC), all ships of this type",
+	"High speed craft (HSC), Hazardous category A",
+	"High speed craft (HSC), Hazardous category B",
+	"High speed craft (HSC), Hazardous category C",
+	"High speed craft (HSC), Hazardous category D",
+	"High speed craft (HSC), Reserved for future use",
+	"High speed craft (HSC), Reserved for future use",
+	"High speed craft (HSC), Reserved for future use",
+	"High speed craft (HSC), Reserved for future use",
+	"High speed craft (HSC), No additional information",
+	"Pilot Vessel",
+	"Search and Rescue vessel",
+	"Tug",
+	"Port Tender",
+	"Anti-pollution equipment",
+	"Law Enforcement",
+	"Spare - Local Vessel",
+	"Spare - Local Vessel",
+	"Medical Transport",
+	"Noncombatant ship according to RR Resolution No. 18",
+	"Passenger, all ships of this type",
+	"Passenger, Hazardous category A",
+	"Passenger, Hazardous category B",
+	"Passenger, Hazardous category C",
+	"Passenger, Hazardous category D",
+	"Passenger, Reserved for future use",
+	"Passenger, Reserved for future use",
+	"Passenger, Reserved for future use",
+	"Passenger, Reserved for future use",
+	"Passenger, No additional information",
+	"Cargo, all ships of this type",
+	"Cargo, Hazardous category A",
+	"Cargo, Hazardous category B",
+	"Cargo, Hazardous category C",
+	"Cargo, Hazardous category D",
+	"Cargo, Reserved for future use",
+	"Cargo, Reserved for future use",
+	"Cargo, Reserved for future use",
+	"Cargo, Reserved for future use",
+	"Cargo, No additional information",
+	"Tanker, all ships of this type",
+	"Tanker, Hazardous category A",
+	"Tanker, Hazardous category B",
+	"Tanker, Hazardous category C",
+	"Tanker, Hazardous category D",
+	"Tanker, Reserved for future use",
+	"Tanker, Reserved for future use",
+	"Tanker, Reserved for future use",
+	"Tanker, Reserved for future use",
+	"Tanker, No additional information",
+	"Other Type, all ships of this type",
+	"Other Type, Hazardous category A",
+	"Other Type, Hazardous category B",
+	"Other Type, Hazardous category C",
+	"Other Type, Hazardous category D",
+	"Other Type, Reserved for future use",
+	"Other Type, Reserved for future use",
+	"Other Type, Reserved for future use",
+	"Other Type, Reserved for future use",
+	"Other Type, no additional information",
 }
 
 // GetCallSign retrieves the call sign of the vessel from the sentence
@@ -65,14 +173,6 @@ func (s VDMVDO) GetCallSign() (string, error) {
 	}
 	if shipStaticData, ok := s.Packet.(goAIS.ShipStaticData); ok && shipStaticData.Valid {
 		return shipStaticData.CallSign, nil
-	}
-	return "", errors.New("Sentence is not usable or not valid")
-}
-
-// GetIMONumber retrieves the IMO number of the vessel from the sentence
-func (s VDMVDO) GetIMONumber() (string, error) {
-	if shipStaticData, ok := s.Packet.(goAIS.ShipStaticData); ok && shipStaticData.Valid {
-		return fmt.Sprintf("%d", shipStaticData.ImoNumber), nil
 	}
 	return "", errors.New("Sentence is not usable or not valid")
 }
@@ -89,6 +189,22 @@ func (s VDMVDO) GetENINumber() (string, error) {
 	return "", errors.New("Sentence is not usable or not valid")
 }
 
+// GetIMONumber retrieves the IMO number of the vessel from the sentence
+func (s VDMVDO) GetIMONumber() (string, error) {
+	if shipStaticData, ok := s.Packet.(goAIS.ShipStaticData); ok && shipStaticData.Valid {
+		return fmt.Sprintf("%d", shipStaticData.ImoNumber), nil
+	}
+	return "", errors.New("Sentence is not usable or not valid")
+}
+
+// GetNavigationStatus retrieves the navigation status from the sentence
+func (s VDMVDO) GetNavigationStatus() (string, error) {
+	if positionReport, ok := s.Packet.(goAIS.PositionReport); ok && positionReport.Valid {
+		return navigationStatuses[positionReport.NavigationalStatus], nil
+	}
+	return navigationStatuses[15], errors.New("Sentence is not usable or not valid")
+}
+
 // GetVesselDimensions retrieves the length and beam of the vessel from the sentence
 func (s VDMVDO) GetVesselDimensions() (float64, float64, error) {
 	if binaryBroadcastMessage, ok := s.Packet.(goAIS.BinaryBroadcastMessage); ok && binaryBroadcastMessage.Valid && binaryBroadcastMessage.ApplicationID.DesignatedAreaCode == 200 && binaryBroadcastMessage.ApplicationID.FunctionIdentifier == 10 {
@@ -103,4 +219,31 @@ func (s VDMVDO) GetVesselDimensions() (float64, float64, error) {
 		return (unit.Length(length) * unit.Decimeter).Meters(), (unit.Length(beam) * unit.Decimeter).Meters(), nil
 	}
 	return 0.0, 0.0, errors.New("Sentence is not usable or not valid")
+}
+
+// GetVesselName retrieves the name of the vessel from the sentence
+func (s VDMVDO) GetVesselName() (string, error) {
+	if staticDataReport, ok := s.Packet.(goAIS.StaticDataReport); ok && staticDataReport.Valid && staticDataReport.ReportA.Valid {
+		return staticDataReport.ReportA.Name, nil
+	}
+	if shipStaticData, ok := s.Packet.(goAIS.ShipStaticData); ok && shipStaticData.Valid {
+		return shipStaticData.Name, nil
+	}
+	return "", errors.New("Sentence is not usable or not valid")
+}
+
+// GetVesselType retrieves the type of the vessel from the sentence
+func (s VDMVDO) GetVesselType() (string, error) {
+	var vesselTypeIndex uint8
+	if staticDataReport, ok := s.Packet.(goAIS.StaticDataReport); ok && staticDataReport.Valid && staticDataReport.ReportB.Valid {
+		vesselTypeIndex = staticDataReport.ReportB.ShipType
+	} else if shipStaticData, ok := s.Packet.(goAIS.ShipStaticData); ok && shipStaticData.Valid {
+		vesselTypeIndex = shipStaticData.Type
+	} else {
+		return vesselTypes[0], errors.New("Sentence is not usable or not valid")
+	}
+	if vesselTypeIndex < uint8(len(vesselTypes)) {
+		return vesselTypes[vesselTypeIndex], nil
+	}
+	return vesselTypes[0], errors.New("Unknown vessel type")
 }

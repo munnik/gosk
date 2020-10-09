@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"log"
 	"os"
 
-	"github.com/munnik/gosk/collector/nmea"
+	"github.com/munnik/gosk/collector"
+	nmeaCollector "github.com/munnik/gosk/collector/nmea0183"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/signalk/mapper"
 
@@ -14,23 +16,20 @@ import (
 )
 
 func main() {
-	setupLogging()
+	f := setupLogging()
+	defer f.Close()
 
-	tcpCollector := nmea.TCPCollector{
-		Config: nmea.TCPConfig{
-			Host: "192.168.1.151",
-			Port: 10110,
-		},
-	}
+	var tcpCollector collector.Collector
+	tcpCollector = nmeaCollector.NewTCPCollector("192.168.1.151", 10110, "Wheelhouse")
 	tcpCollectorPublisher := nanomsg.NewPub("tcp://127.0.0.1:40900")
 	defer tcpCollectorPublisher.Close()
 	go tcpCollector.Collect(nanomsg.Writer{Socket: tcpCollectorPublisher})
 
 	collectorProxy := nanomsg.NewPubSubProxy("tcp://127.0.0.1:40899")
 	defer collectorProxy.Close()
-	collectorProxy.AddSubscriber("tcp://127.0.0.1:40900", []byte(""))
+	collectorProxy.AddSubscriber("tcp://127.0.0.1:40900", []byte("collector/"))
 
-	collectorSubscriber := nanomsg.NewSub("tcp://127.0.0.1:40900", []byte(""))
+	collectorSubscriber := nanomsg.NewSub("tcp://127.0.0.1:40900", []byte("collector/"))
 	defer collectorSubscriber.Close()
 	receiveMessages(nanomsg.Reader{Socket: collectorSubscriber}) // subscribe to the proxy
 }
@@ -43,25 +42,33 @@ func receiveMessages(reader io.Reader) {
 		if err != nil {
 			log.Fatal(err)
 		}
-		delta, err := mapper.DeltaFromData(buffer[0:n], mapper.NMEAType, "NMEA0183 Collector")
+		split := bytes.SplitN(buffer[0:n], []byte("\x00"), 2)
+		if len(split) != 2 {
+			log.Fatal("Could not find separator character in received message")
+		}
+		msgHeader := bytes.Split(split[0], []byte("/"))
+		if len(msgHeader) < 3 {
+			log.Fatal("Not enough information in the message header")
+		}
+		delta, err := mapper.DeltaFromData(split[1], string(msgHeader[1]), string(msgHeader[2]))
 		if err != nil {
-			log.Print(err)
+			log.Println(err)
 		}
 		json, err := json.Marshal(delta)
 		if err != nil {
-			log.Print(err)
+			log.Fatal(err)
 		}
 		log.Println("Received a delta", string(json))
 	}
 }
 
-func setupLogging() {
+func setupLogging() *os.File {
 	var err error
 	f, err := os.Create("logs/output.txt")
 	if err != nil {
 		log.Fatalf("Error creating log file: %v", err)
 	}
-	defer f.Close()
 
 	log.SetOutput(f)
+	return f
 }

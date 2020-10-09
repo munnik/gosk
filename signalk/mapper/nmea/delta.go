@@ -7,8 +7,8 @@ import (
 	"github.com/munnik/gosk/signalk"
 )
 
-// DeltaFromNMEA tries to create a Signal K Delta from a NMEA sentence
-func DeltaFromNMEA(line []byte, collectorName string) (signalk.Delta, error) {
+// DeltaFromNMEA0183 tries to create a Signal K Delta from a NMEA sentence
+func DeltaFromNMEA0183(line []byte, collectorName string) (signalk.Delta, error) {
 	sentence, err := Parse(string(line))
 	if err != nil {
 		return &signalk.DeltaWithoutContext{}, err

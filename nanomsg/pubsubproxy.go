@@ -18,10 +18,10 @@ func NewPubSubProxy(url string) PubSubProxy {
 }
 
 // AddSubscriber adds a new subscriber
-func (p PubSubProxy) AddSubscriber(url string, topic []byte) {
+func (p PubSubProxy) AddSubscriber(url string) {
 	stopChannel := make(chan struct{})
 	p.stopChannels = append(p.stopChannels, stopChannel)
-	socket := NewSub(url, topic)
+	socket := NewSub(url, []byte(""))
 	go func(subscriber mangos.Socket) {
 		defer subscriber.Close()
 		for {

@@ -27,14 +27,14 @@ func main() {
 
 	collectorProxy := nanomsg.NewPubSubProxy("tcp://127.0.0.1:40899")
 	defer collectorProxy.Close()
-	collectorProxy.AddSubscriber("tcp://127.0.0.1:40900", []byte("collector/"))
+	collectorProxy.AddSubscriber("tcp://127.0.0.1:40900")
 
-	collectorSubscriber := nanomsg.NewSub("tcp://127.0.0.1:40900", []byte("collector/"))
-	defer collectorSubscriber.Close()
-	receiveMessages(nanomsg.Reader{Socket: collectorSubscriber}) // subscribe to the proxy
+	mapperSubscriber := nanomsg.NewSub("tcp://127.0.0.1:40900", []byte("collector/"))
+	defer mapperSubscriber.Close()
+	mapMessage(nanomsg.Reader{Socket: mapperSubscriber}) // subscribe to the proxy
 }
 
-func receiveMessages(reader io.Reader) {
+func mapMessage(reader io.Reader) {
 	const bufferSize = 1024
 	buffer := make([]byte, bufferSize)
 	for {

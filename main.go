@@ -21,13 +21,13 @@ func main() {
 
 	var tcpCollector collector.Collector
 	tcpCollector = nmeaCollector.NewTCPCollector("192.168.1.151", 10110, "Wheelhouse")
-	tcpCollectorPublisher := nanomsg.NewPub("tcp://127.0.0.1:40900")
+	tcpCollectorPublisher := nanomsg.NewPub("tcp://127.0.0.1:40899")
 	defer tcpCollectorPublisher.Close()
 	go tcpCollector.Collect(nanomsg.Writer{Socket: tcpCollectorPublisher})
 
-	collectorProxy := nanomsg.NewPubSubProxy("tcp://127.0.0.1:40899")
+	collectorProxy := nanomsg.NewPubSubProxy("tcp://127.0.0.1:40900")
 	defer collectorProxy.Close()
-	collectorProxy.AddSubscriber("tcp://127.0.0.1:40900")
+	collectorProxy.AddSubscriber("tcp://127.0.0.1:40899")
 
 	mapperSubscriber := nanomsg.NewSub("tcp://127.0.0.1:40900", []byte("collector/"))
 	defer mapperSubscriber.Close()

@@ -15,10 +15,10 @@ const (
 )
 
 // DeltaFromData tries to create a SignalK delta from the provided data
-func DeltaFromData(data []byte, dataType string) (signalk.Delta, error) {
+func DeltaFromData(data []byte, dataType string, collectorName string) (signalk.Delta, error) {
 	switch dataType {
 	case NMEAType:
-		return nmea.DeltaFromNMEA(data)
+		return nmea.DeltaFromNMEA(data, collectorName)
 	}
 	return signalk.DeltaWithContext{}, fmt.Errorf("Don't know how to handle %s", dataType)
 }

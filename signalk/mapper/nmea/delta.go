@@ -8,7 +8,7 @@ import (
 )
 
 // DeltaFromNMEA tries to create a Signal K Delta from a NMEA sentence
-func DeltaFromNMEA(line []byte) (signalk.Delta, error) {
+func DeltaFromNMEA(line []byte, collectorName string) (signalk.Delta, error) {
 	sentence, err := Parse(string(line))
 	if err != nil {
 		return &signalk.DeltaWithoutContext{}, err
@@ -19,7 +19,13 @@ func DeltaFromNMEA(line []byte) (signalk.Delta, error) {
 			Context: fmt.Sprintf("vessels.urn:mrn:imo:mmsi:%d", v.Packet.GetHeader().UserID),
 			Updates: []signalk.Update{
 				{
-					Source:    sentence.TalkerID(),
+					Source: signalk.Source{
+						Label:    collectorName,
+						Type:     "NMEA0183",
+						Sentence: sentence.DataType(),
+						Talker:   sentence.TalkerID(),
+						AisType:  v.Packet.GetHeader().MessageID,
+					},
 					Timestamp: time.Now().UTC().Format(time.RFC3339),
 				},
 			},
@@ -28,8 +34,12 @@ func DeltaFromNMEA(line []byte) (signalk.Delta, error) {
 		delta = signalk.DeltaWithoutContext{
 			Updates: []signalk.Update{
 				{
-					Source:    sentence.TalkerID(),
-					Timestamp: time.Now().UTC().Format(time.RFC3339),
+					Source: signalk.Source{
+						Label:    collectorName,
+						Type:     "NMEA0183",
+						Sentence: sentence.DataType(),
+						Talker:   sentence.TalkerID(),
+					}, Timestamp: time.Now().UTC().Format(time.RFC3339),
 				},
 			},
 		}

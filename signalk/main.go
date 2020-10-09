@@ -58,9 +58,18 @@ type Value struct {
 	Value interface{} `json:"value"`
 }
 
+// Source is part of an Update
+type Source struct {
+	Label    string `json:"label"`
+	Type     string `json:"type"`
+	Talker   string `json:"talker"`
+	Sentence string `json:"sentence"`
+	AisType  uint8  `json:"aisType"`
+}
+
 // Update is part of a Delta
 type Update struct {
-	Source    string  `json:"source"`
+	Source    Source  `json:"source"`
 	Timestamp string  `json:"timestamp"`
 	Values    []Value `json:"values"`
 }

@@ -4,61 +4,35 @@ import (
 	"encoding/json"
 	"io"
 	"log"
-	"time"
+	"os"
 
 	"github.com/munnik/gosk/collector/nmea"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/signalk/mapper"
 
-	"go.nanomsg.org/mangos/v3"
-	"go.nanomsg.org/mangos/v3/protocol/pub"
-	"go.nanomsg.org/mangos/v3/protocol/sub"
 	_ "go.nanomsg.org/mangos/v3/transport/all"
 )
 
 func main() {
-	var pubSocket mangos.Socket
-	var err error
-	pubSocket, err = pub.NewSocket()
-	if err != nil {
-		log.Fatalf("Can't create pubSocket: %s", err)
-	}
-	defer pubSocket.Close()
-	if err := pubSocket.Listen("tcp://127.0.0.1:40899"); err != nil {
-		log.Fatal(err)
-	}
+	setupLogging()
 
-	var subSocket mangos.Socket
-	subSocket, err = sub.NewSocket()
-	if err != nil {
-		log.Fatalf("Can't create subSocket: %s", err)
-	}
-	defer subSocket.Close()
-	if err := subSocket.Dial("tcp://127.0.0.1:40899"); err != nil {
-		log.Fatal(err)
-	}
-	if err = subSocket.SetOption(mangos.OptionSubscribe, []byte("")); err != nil {
-		log.Fatal("Could not subscribe to anything")
-	}
-
-	fileCollector := nmea.FileCollector{
-		Config: nmea.FileConfig{
-			Path:        "data/nmea-sample",
-			Interval:    time.Millisecond * 0,
-			LinesAtOnce: 1,
+	tcpCollector := nmea.TCPCollector{
+		Config: nmea.TCPConfig{
+			Host: "192.168.1.151",
+			Port: 10110,
 		},
 	}
-	go fileCollector.Collect(nanomsg.Writer{Socket: pubSocket})
+	tcpCollectorPublisher := nanomsg.NewPub("tcp://127.0.0.1:40900")
+	defer tcpCollectorPublisher.Close()
+	go tcpCollector.Collect(nanomsg.Writer{Socket: tcpCollectorPublisher})
 
-	// tcpCollector := nmea.TCPCollector{
-	// 	Config: nmea.TCPConfig{
-	// 		Host: "192.168.1.151",
-	// 		Port: 10110,
-	// 	},
-	// }
-	// go tcpCollector.Collect(nanomsg.Writer{Socket: pubSocket})
+	collectorProxy := nanomsg.NewPubSubProxy("tcp://127.0.0.1:40899")
+	defer collectorProxy.Close()
+	collectorProxy.AddSubscriber("tcp://127.0.0.1:40900", []byte(""))
 
-	receiveMessages(nanomsg.Reader{Socket: subSocket})
+	collectorSubscriber := nanomsg.NewSub("tcp://127.0.0.1:40900", []byte(""))
+	defer collectorSubscriber.Close()
+	receiveMessages(nanomsg.Reader{Socket: collectorSubscriber}) // subscribe to the proxy
 }
 
 func receiveMessages(reader io.Reader) {
@@ -69,7 +43,7 @@ func receiveMessages(reader io.Reader) {
 		if err != nil {
 			log.Fatal(err)
 		}
-		delta, err := mapper.DeltaFromData(buffer[0:n], mapper.NMEAType)
+		delta, err := mapper.DeltaFromData(buffer[0:n], mapper.NMEAType, "NMEA0183 Collector")
 		if err != nil {
 			log.Print(err)
 		}
@@ -79,4 +53,15 @@ func receiveMessages(reader io.Reader) {
 		}
 		log.Println("Received a delta", string(json))
 	}
+}
+
+func setupLogging() {
+	var err error
+	f, err := os.Create("logs/output.txt")
+	if err != nil {
+		log.Fatalf("Error creating log file: %v", err)
+	}
+	defer f.Close()
+
+	log.SetOutput(f)
 }

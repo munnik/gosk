@@ -3,11 +3,13 @@ package nmea0183
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"net"
+	"time"
 
 	"github.com/munnik/gosk/collector"
+	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/signalk/mapper"
+	"go.nanomsg.org/mangos/v3"
 )
 
 const (
@@ -38,7 +40,7 @@ func NewTCPCollector(host string, port uint16, name string) collector.Collector 
 }
 
 // Collect start the collection process and keeps running as long as there is data available
-func (c TCPCollector) Collect(writer io.Writer) error {
+func (c TCPCollector) Collect(socket mangos.Socket) error {
 	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", c.Config.Host, c.Config.Port))
 	if err != nil {
 		return err
@@ -50,7 +52,6 @@ func (c TCPCollector) Collect(writer io.Writer) error {
 	// used to hold the last line if it didn't end in a newline
 	lastLine := make([]byte, bufferSize)
 	lastLineLength := 0
-	msgPrefix := fmt.Sprintf(collector.Topic, mapper.NMEA0183Type, c.Name)
 	for {
 		if _, err := conn.Read(buffer); err != nil {
 			return err
@@ -60,11 +61,13 @@ func (c TCPCollector) Collect(writer io.Writer) error {
 		for index, line := range lines {
 			if index == 0 {
 				// prepend the lastLine to complete the line
-				if _, err := writer.Write(append([]byte(msgPrefix), append(lastLine[:lastLineLength], line...)...)); err != nil {
+				m := nanomsg.Create(append(lastLine[:lastLineLength], line...), time.Now(), []byte("collector"), []byte(mapper.NMEA0183Type), []byte(c.Name))
+				if err := socket.Send([]byte(m.String())); err != nil {
 					return err
 				}
 			} else if index != lastLineIndex {
-				if _, err := writer.Write(append([]byte(msgPrefix), line...)); err != nil {
+				m := nanomsg.Create(line, time.Now(), []byte("collector"), []byte(mapper.NMEA0183Type), []byte(c.Name))
+				if err := socket.Send([]byte(m.String())); err != nil {
 					return err
 				}
 			} else {

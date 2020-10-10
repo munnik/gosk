@@ -1,17 +1,17 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
-	"io"
 	"log"
 	"os"
 
 	"github.com/munnik/gosk/collector"
 	nmeaCollector "github.com/munnik/gosk/collector/nmea0183"
+	storeCollector "github.com/munnik/gosk/database/collector"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/signalk/mapper"
 
+	"go.nanomsg.org/mangos/v3"
 	_ "go.nanomsg.org/mangos/v3/transport/all"
 )
 
@@ -23,34 +23,34 @@ func main() {
 	tcpCollector = nmeaCollector.NewTCPCollector("192.168.1.151", 10110, "Wheelhouse")
 	tcpCollectorPublisher := nanomsg.NewPub("tcp://127.0.0.1:40899")
 	defer tcpCollectorPublisher.Close()
-	go tcpCollector.Collect(nanomsg.Writer{Socket: tcpCollectorPublisher})
+	go tcpCollector.Collect(tcpCollectorPublisher)
+
+	// TODO create a Modbus TCP collector
 
 	collectorProxy := nanomsg.NewPubSubProxy("tcp://127.0.0.1:40900")
 	defer collectorProxy.Close()
 	collectorProxy.AddSubscriber("tcp://127.0.0.1:40899")
 
+	storeSubscriber := nanomsg.NewSub("tcp://127.0.0.1:40900", []byte("collector/"))
+	defer storeSubscriber.Close()
+	go storeCollector.Store(storeSubscriber) // subscribe to the proxy
+
 	mapperSubscriber := nanomsg.NewSub("tcp://127.0.0.1:40900", []byte("collector/"))
 	defer mapperSubscriber.Close()
-	mapMessage(nanomsg.Reader{Socket: mapperSubscriber}) // subscribe to the proxy
+	mapMessage(mapperSubscriber) // subscribe to the proxy
 }
 
-func mapMessage(reader io.Reader) {
-	const bufferSize = 1024
-	buffer := make([]byte, bufferSize)
+func mapMessage(socket mangos.Socket) {
 	for {
-		n, err := reader.Read(buffer)
+		raw, err := socket.Recv()
 		if err != nil {
 			log.Fatal(err)
 		}
-		split := bytes.SplitN(buffer[0:n], []byte("\x00"), 2)
-		if len(split) != 2 {
-			log.Fatal("Could not find separator character in received message")
+		m, err := nanomsg.Parse(raw)
+		if err != nil {
+			log.Fatal(err)
 		}
-		msgHeader := bytes.Split(split[0], []byte("/"))
-		if len(msgHeader) < 3 {
-			log.Fatal("Not enough information in the message header")
-		}
-		delta, err := mapper.DeltaFromData(split[1], string(msgHeader[1]), string(msgHeader[2]))
+		delta, err := mapper.DeltaFromMessage(m)
 		if err != nil {
 			log.Println(err)
 		}

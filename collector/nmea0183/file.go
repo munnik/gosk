@@ -1,14 +1,14 @@
 package nmea0183
 
 import (
-	"fmt"
-	"io"
 	"io/ioutil"
 	"strings"
 	"time"
 
 	"github.com/munnik/gosk/collector"
+	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/signalk/mapper"
+	"go.nanomsg.org/mangos/v3"
 )
 
 // FileConfig has all the required configuration for a FileCollector
@@ -37,18 +37,18 @@ func NewFileCollector(path string, interval time.Duration, linesAtOnce uint16, n
 }
 
 // Collect start the collection process and keeps running as long as there is data available
-func (c FileCollector) Collect(writer io.Writer) error {
+func (c FileCollector) Collect(socket mangos.Socket) error {
 	data, err := ioutil.ReadFile(c.Config.Path)
 	if err != nil {
 		return err
 	}
 	defer time.Sleep(time.Second) // wait for messages to flush before exiting the function
 
-	lines := strings.Split(string(data[:]), "\n")
+	lines := strings.Split(string(data), "\n")
 	var lineCount uint16
-	msgPrefix := fmt.Sprintf(collector.Topic, mapper.NMEA0183Type, c.Name)
 	for _, line := range lines {
-		if _, err := writer.Write(append([]byte(msgPrefix), line...)); err != nil {
+		m := nanomsg.Create([]byte(line), time.Now(), []byte("collector"), []byte(mapper.NMEA0183Type), []byte(c.Name))
+		if err := socket.Send([]byte(m.String())); err != nil {
 			return err
 		}
 		if lineCount++; lineCount == c.Config.LinesAtOnce {

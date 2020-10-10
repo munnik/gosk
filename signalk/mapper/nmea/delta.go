@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/signalk"
 )
 
 // DeltaFromNMEA0183 tries to create a Signal K Delta from a NMEA sentence
-func DeltaFromNMEA0183(line []byte, collectorName string) (signalk.Delta, error) {
-	sentence, err := Parse(string(line))
+func DeltaFromNMEA0183(m nanomsg.Message) (signalk.Delta, error) {
+	sentence, err := Parse(string(m.Payload))
 	if err != nil {
 		return &signalk.DeltaWithoutContext{}, err
 	}
@@ -20,13 +21,13 @@ func DeltaFromNMEA0183(line []byte, collectorName string) (signalk.Delta, error)
 			Updates: []signalk.Update{
 				{
 					Source: signalk.Source{
-						Label:    collectorName,
-						Type:     "NMEA0183",
+						Label:    string(m.HeaderSegments[nanomsg.HEADERSEGMENTSOURCE]),
+						Type:     string(m.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL]),
 						Sentence: sentence.DataType(),
 						Talker:   sentence.TalkerID(),
 						AisType:  v.Packet.GetHeader().MessageID,
 					},
-					Timestamp: time.Now().UTC().Format(time.RFC3339),
+					Timestamp: m.Time.UTC().Format(time.RFC3339),
 				},
 			},
 		}
@@ -35,11 +36,11 @@ func DeltaFromNMEA0183(line []byte, collectorName string) (signalk.Delta, error)
 			Updates: []signalk.Update{
 				{
 					Source: signalk.Source{
-						Label:    collectorName,
-						Type:     "NMEA0183",
+						Label:    string(m.HeaderSegments[nanomsg.HEADERSEGMENTSOURCE]),
+						Type:     string(m.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL]),
 						Sentence: sentence.DataType(),
 						Talker:   sentence.TalkerID(),
-					}, Timestamp: time.Now().UTC().Format(time.RFC3339),
+					}, Timestamp: m.Time.UTC().Format(time.RFC3339),
 				},
 			},
 		}

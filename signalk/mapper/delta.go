@@ -3,6 +3,7 @@ package mapper
 import (
 	"fmt"
 
+	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/signalk"
 	"github.com/munnik/gosk/signalk/mapper/nmea"
 )
@@ -14,11 +15,11 @@ const (
 	ModbusType = "Modbus"
 )
 
-// DeltaFromData tries to create a SignalK delta from the provided data
-func DeltaFromData(data []byte, dataType string, collectorName string) (signalk.Delta, error) {
-	switch dataType {
+// DeltaFromMessage tries to create a SignalK delta from the provided data
+func DeltaFromMessage(m nanomsg.Message) (signalk.Delta, error) {
+	switch string(m.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL]) {
 	case NMEA0183Type:
-		return nmea.DeltaFromNMEA0183(data, collectorName)
+		return nmea.DeltaFromNMEA0183(m)
 	}
-	return signalk.DeltaWithContext{}, fmt.Errorf("Don't know how to handle %s", dataType)
+	return signalk.DeltaWithContext{}, fmt.Errorf("Don't know how to handle %s", m.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL])
 }

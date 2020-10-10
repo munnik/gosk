@@ -3,7 +3,9 @@ package mapper_test
 import (
 	"reflect"
 	"testing"
+	"time"
 
+	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/signalk"
 	"github.com/munnik/gosk/signalk/mapper"
 )
@@ -26,7 +28,8 @@ func TestDeltaFromData(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := mapper.DeltaFromData(test.args.data, test.args.dataType, "testCollector")
+			m := nanomsg.Create(test.args.data, time.Now(), []byte("collector"), []byte(test.args.dataType), []byte("test"))
+			got, err := mapper.DeltaFromMessage(m)
 			if (err != nil) != test.wantErr {
 				t.Errorf("DeltaFromData() error = %v, wantErr %v", err, test.wantErr)
 				return

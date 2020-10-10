@@ -1,13 +1,10 @@
 package collector
 
-import "io"
+import (
+	"go.nanomsg.org/mangos/v3"
+)
 
 // Collector interface
 type Collector interface {
-	Collect(io.Writer) error
+	Collect(mangos.Socket) error
 }
-
-const (
-	// Topic is used by the collectors, first string is the protocol name from the mapper, second string is the name of the collector.
-	Topic string = "collector/%s/%s\x00" // Null character separates from real message
-)

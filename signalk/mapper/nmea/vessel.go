@@ -24,14 +24,24 @@ type IMONumber interface {
 	GetIMONumber() (string, error)
 }
 
+// MMSI retrieves the MMSI of the vessel from the sentence
+type MMSI interface {
+	GetMMSI() (uint32, error)
+}
+
 // NavigationStatus retrieves the navigation status from the sentence
 type NavigationStatus interface {
 	GetNavigationStatus() (string, error)
 }
 
-// VesselDimensions retrieves the length and beam of the vessel from the sentence
-type VesselDimensions interface {
-	GetVesselDimensions() (float64, float64, error)
+// VesselLength retrieves the length of the vessel from the sentence
+type VesselLength interface {
+	GetVesselLength() (float64, error)
+}
+
+// VesselBeam retrieves the beam of the vessel from the sentence
+type VesselBeam interface {
+	GetVesselBeam() (float64, error)
 }
 
 // VesselName retrieves the name of the vessel from the sentence
@@ -197,6 +207,14 @@ func (s VDMVDO) GetIMONumber() (string, error) {
 	return "", errors.New("Sentence is not usable or not valid")
 }
 
+// GetMMSI retrieves the MMSI of the vessel from the sentence
+func (s VDMVDO) GetMMSI() (uint32, error) {
+	if header := s.Packet.GetHeader(); header != nil {
+		return header.UserID, nil
+	}
+	return 0, errors.New("Could not retrieve MMSI")
+}
+
 // GetNavigationStatus retrieves the navigation status from the sentence
 func (s VDMVDO) GetNavigationStatus() (string, error) {
 	if positionReport, ok := s.Packet.(goAIS.PositionReport); ok && positionReport.Valid {
@@ -205,20 +223,28 @@ func (s VDMVDO) GetNavigationStatus() (string, error) {
 	return navigationStatuses[15], errors.New("Sentence is not usable or not valid")
 }
 
-// GetVesselDimensions retrieves the length and beam of the vessel from the sentence
-func (s VDMVDO) GetVesselDimensions() (float64, float64, error) {
+// GetVesselBeam retrieves the beam of the vessel from the sentence
+func (s VDMVDO) GetVesselBeam() (float64, error) {
+	if binaryBroadcastMessage, ok := s.Packet.(goAIS.BinaryBroadcastMessage); ok && binaryBroadcastMessage.Valid && binaryBroadcastMessage.ApplicationID.DesignatedAreaCode == 200 && binaryBroadcastMessage.ApplicationID.FunctionIdentifier == 10 {
+		beam, err := extractNumber(binaryBroadcastMessage.BinaryData, 61, 10)
+		if err != nil {
+			return 0.0, errors.New("Could not extract beam from binary data")
+		}
+		return (unit.Length(beam) * unit.Decimeter).Meters(), nil
+	}
+	return 0.0, errors.New("Sentence is not usable or not valid")
+}
+
+// GetVesselLength retrieves the length of the vessel from the sentence
+func (s VDMVDO) GetVesselLength() (float64, error) {
 	if binaryBroadcastMessage, ok := s.Packet.(goAIS.BinaryBroadcastMessage); ok && binaryBroadcastMessage.Valid && binaryBroadcastMessage.ApplicationID.DesignatedAreaCode == 200 && binaryBroadcastMessage.ApplicationID.FunctionIdentifier == 10 {
 		length, err := extractNumber(binaryBroadcastMessage.BinaryData, 48, 13)
 		if err != nil {
-			return 0.0, 0.0, errors.New("Could not extract length from binary data")
+			return 0.0, errors.New("Could not extract length from binary data")
 		}
-		beam, err := extractNumber(binaryBroadcastMessage.BinaryData, 61, 10)
-		if err != nil {
-			return 0.0, 0.0, errors.New("Could not extract beam from binary data")
-		}
-		return (unit.Length(length) * unit.Decimeter).Meters(), (unit.Length(beam) * unit.Decimeter).Meters(), nil
+		return (unit.Length(length) * unit.Decimeter).Meters(), nil
 	}
-	return 0.0, 0.0, errors.New("Sentence is not usable or not valid")
+	return 0.0, errors.New("Sentence is not usable or not valid")
 }
 
 // GetVesselName retrieves the name of the vessel from the sentence

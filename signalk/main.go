@@ -1,70 +1,33 @@
 package signalk
 
-// Position2D is used for position values without altitude
-type Position2D struct {
+// Position is used for position values without altitude
+type Position struct {
 	Longitude float64 `json:"longitude"`
 	Latitude  float64 `json:"latitude"`
-}
-
-// Position3D is used for position values with altitude
-type Position3D struct {
-	Position2D
-	Altitude float64 `json:"altitude"`
-}
-
-// OverallLength is used for the overall length of a vessel
-type OverallLength struct {
-	Overall float64 `json:"overall"`
-}
-
-// HullLength is used for the hull length of a vessel
-type HullLength struct {
-	Hull float64 `json:"hull"`
-}
-
-// WaterlineLength is used for the water length of a vessel
-type WaterlineLength struct {
-	Waterline float64 `json:"waterline"`
-}
-
-// OverallAndHullLength is used for the combination of these lengths
-type OverallAndHullLength struct {
-	OverallLength
-	HullLength
-}
-
-// OverallAndWaterlineLength is used for the combination of these lengths
-type OverallAndWaterlineLength struct {
-	OverallLength
-	WaterlineLength
-}
-
-// HullAndWaterlineLength is used for the combination of these lengths
-type HullAndWaterlineLength struct {
-	HullLength
-	WaterlineLength
+	Altitude  float64 `json:"altitude,omitempty"`
 }
 
 // Length is used for the combination of all lengths
 type Length struct {
-	OverallLength
-	HullLength
-	WaterlineLength
+	Overall   float64 `json:"overall,omitempty"`
+	Hull      float64 `json:"hull,omitempty"`
+	Waterline float64 `json:"waterline,omitempty"`
 }
 
 // Value is part of an Update
 type Value struct {
-	Path  string      `json:"path"`
-	Value interface{} `json:"value"`
+	Context string      `json:"context"`
+	Path    string      `json:"path"`
+	Value   interface{} `json:"value"`
 }
 
 // Source is part of an Update
 type Source struct {
 	Label    string `json:"label"`
 	Type     string `json:"type"`
-	Talker   string `json:"talker"`
-	Sentence string `json:"sentence"`
-	AisType  uint8  `json:"aisType"`
+	Talker   string `json:"talker,omitempty"`
+	Sentence string `json:"sentence,omitempty"`
+	AisType  uint8  `json:"aisType,omitempty"`
 }
 
 // Update is part of a Delta
@@ -99,3 +62,35 @@ func (d DeltaWithoutContext) AppendValue(v Value) {
 func (d DeltaWithContext) AppendValue(v Value) {
 	d.Updates[0].Values = append(d.Updates[0].Values, v)
 }
+
+// var delta signalk.Delta
+// if v, ok := sentence.(VDMVDO); ok && v.Packet != nil {
+// 	delta = signalk.DeltaWithContext{
+// 		Context: fmt.Sprintf("vessels.urn:mrn:imo:mmsi:%d", v.Packet.GetHeader().UserID),
+// 		Updates: []signalk.Update{
+// 			{
+// 				Source: signalk.Source{
+// 					Label:    string(m.HeaderSegments[nanomsg.HEADERSEGMENTSOURCE]),
+// 					Type:     string(m.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL]),
+// 					Sentence: sentence.DataType(),
+// 					Talker:   sentence.TalkerID(),
+// 					AisType:  v.Packet.GetHeader().MessageID,
+// 				},
+// 				Timestamp: m.Time.UTC().Format(time.RFC3339),
+// 			},
+// 		},
+// 	}
+// } else {
+// 	delta = signalk.DeltaWithoutContext{
+// 		Updates: []signalk.Update{
+// 			{
+// 				Source: signalk.Source{
+// 					Label:    string(m.HeaderSegments[nanomsg.HEADERSEGMENTSOURCE]),
+// 					Type:     string(m.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL]),
+// 					Sentence: sentence.DataType(),
+// 					Talker:   sentence.TalkerID(),
+// 				}, Timestamp: m.Time.UTC().Format(time.RFC3339),
+// 			},
+// 		},
+// 	}
+// }

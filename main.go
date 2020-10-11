@@ -1,17 +1,17 @@
 package main
 
 import (
-	"encoding/json"
 	"log"
 	"os"
+	"time"
 
 	"github.com/munnik/gosk/collector"
 	nmeaCollector "github.com/munnik/gosk/collector/nmea0183"
-	storeCollector "github.com/munnik/gosk/database/collector"
+	keyvalueStoreCollector "github.com/munnik/gosk/database/keyvalue"
+	rawStoreCollector "github.com/munnik/gosk/database/raw"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/signalk/mapper"
 
-	"go.nanomsg.org/mangos/v3"
 	_ "go.nanomsg.org/mangos/v3/transport/all"
 )
 
@@ -21,44 +21,32 @@ func main() {
 
 	var tcpCollector collector.Collector
 	tcpCollector = nmeaCollector.NewTCPCollector("192.168.1.151", 10110, "Wheelhouse")
-	tcpCollectorPublisher := nanomsg.NewPub("tcp://127.0.0.1:40899")
+	tcpCollectorPublisher := nanomsg.NewPub("tcp://127.0.0.1:6000")
 	defer tcpCollectorPublisher.Close()
 	go tcpCollector.Collect(tcpCollectorPublisher)
 
 	// TODO create a Modbus TCP collector
 
-	collectorProxy := nanomsg.NewPubSubProxy("tcp://127.0.0.1:40900")
+	collectorProxy := nanomsg.NewPubSubProxy("tcp://127.0.0.1:6100")
 	defer collectorProxy.Close()
-	collectorProxy.AddSubscriber("tcp://127.0.0.1:40899")
+	collectorProxy.AddSubscriber("tcp://127.0.0.1:6000")
 
-	storeSubscriber := nanomsg.NewSub("tcp://127.0.0.1:40900", []byte("collector/"))
-	defer storeSubscriber.Close()
-	go storeCollector.Store(storeSubscriber) // subscribe to the proxy
+	rawStoreSubscriber := nanomsg.NewSub("tcp://127.0.0.1:6100", []byte("collector/"))
+	defer rawStoreSubscriber.Close()
+	go rawStoreCollector.Store(rawStoreSubscriber) // subscribe to the proxy
 
-	mapperSubscriber := nanomsg.NewSub("tcp://127.0.0.1:40900", []byte("collector/"))
+	mapperSubscriber := nanomsg.NewSub("tcp://127.0.0.1:6100", []byte("collector/"))
 	defer mapperSubscriber.Close()
-	mapMessage(mapperSubscriber) // subscribe to the proxy
-}
+	mapperPublisher := nanomsg.NewPub("tcp://127.0.0.1:6200")
+	defer mapperPublisher.Close()
+	go mapper.Map(mapperSubscriber, mapperPublisher) // subscribe to the proxy
 
-func mapMessage(socket mangos.Socket) {
+	keyvalueStoreSubscriber := nanomsg.NewSub("tcp://127.0.0.1:6200", []byte("mapper/"))
+	defer keyvalueStoreSubscriber.Close()
+	go keyvalueStoreCollector.Store(keyvalueStoreSubscriber)
+
 	for {
-		raw, err := socket.Recv()
-		if err != nil {
-			log.Fatal(err)
-		}
-		m, err := nanomsg.Parse(raw)
-		if err != nil {
-			log.Fatal(err)
-		}
-		delta, err := mapper.DeltaFromMessage(m)
-		if err != nil {
-			log.Println(err)
-		}
-		json, err := json.Marshal(delta)
-		if err != nil {
-			log.Fatal(err)
-		}
-		log.Println("Received a delta", string(json))
+		time.Sleep(time.Second)
 	}
 }
 

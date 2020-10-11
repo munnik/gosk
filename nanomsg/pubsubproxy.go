@@ -8,8 +8,8 @@ import (
 
 // PubSubProxy is a proxy which can subscribe to multiple sockets and publish to a single socket
 type PubSubProxy struct {
-	stopChannels []chan struct{}
 	publisher    mangos.Socket
+	stopChannels []chan struct{}
 }
 
 // NewPubSubProxy creates a new instance
@@ -18,7 +18,7 @@ func NewPubSubProxy(url string) PubSubProxy {
 }
 
 // AddSubscriber adds a new subscriber
-func (p PubSubProxy) AddSubscriber(url string) {
+func (p *PubSubProxy) AddSubscriber(url string) {
 	stopChannel := make(chan struct{})
 	p.stopChannels = append(p.stopChannels, stopChannel)
 	socket := NewSub(url, []byte(""))
@@ -30,7 +30,9 @@ func (p PubSubProxy) AddSubscriber(url string) {
 				if msg, err := subscriber.Recv(); err != nil {
 					log.Fatal(err)
 				} else {
+					log.Println("Proxy received a message", string(msg))
 					p.publisher.Send(msg)
+					log.Println("Proxy sended a message", string(msg))
 				}
 			case <-stopChannel:
 				return

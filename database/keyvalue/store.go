@@ -3,7 +3,6 @@ package keyvalue
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 
 	"github.com/jackc/pgx/v4"
@@ -30,17 +29,21 @@ func Store(socket mangos.Socket) {
 		if err != nil {
 			log.Fatal(err)
 		}
-		var value signalk.Value
-		json.Unmarshal(m.Payload, &value)
-		if value.Path == "" || value.Value == "" {
+		var signalKValueStruct signalk.Value
+		json.Unmarshal(m.Payload, &signalKValueStruct)
+		if signalKValueStruct.Path == "" || signalKValueStruct.Value == "" {
 			continue
 		}
-		if value.Context == "" {
-			if _, err = conn.Exec(context.Background(), queryWithoutContext, m.Time, m.HeaderSegments, value.Path, fmt.Sprintf("%v", value.Value)); err != nil {
+		value, err := json.Marshal(signalKValueStruct.Value)
+		if err != nil {
+			log.Fatalf("Can't represent %v in json", signalKValueStruct.Value)
+		}
+		if signalKValueStruct.Context == "" {
+			if _, err = conn.Exec(context.Background(), queryWithoutContext, m.Time, m.HeaderSegments, signalKValueStruct.Path, value); err != nil {
 				log.Fatal(err)
 			}
 		} else {
-			if _, err = conn.Exec(context.Background(), query, m.Time, m.HeaderSegments, value.Context, value.Path, fmt.Sprintf("%v", value.Value)); err != nil {
+			if _, err = conn.Exec(context.Background(), query, m.Time, m.HeaderSegments, signalKValueStruct.Context, signalKValueStruct.Path, value); err != nil {
 				log.Fatal(err)
 			}
 		}

@@ -1,7 +1,6 @@
 package mapper
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 
@@ -43,7 +42,7 @@ func Map(subscriber mangos.Socket, publisher mangos.Socket) {
 			log.Println(err)
 		}
 		for _, value := range values {
-			json, err := json.Marshal(value)
+			json, err := value.MarshalJSON()
 			if err != nil {
 				log.Fatal(err)
 			}

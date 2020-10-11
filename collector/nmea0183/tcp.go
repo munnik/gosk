@@ -1,8 +1,9 @@
 package nmea0183
 
 import (
-	"bytes"
+	"bufio"
 	"fmt"
+	"log"
 	"net"
 	"time"
 
@@ -46,34 +47,12 @@ func (c TCPCollector) Collect(socket mangos.Socket) error {
 		return err
 	}
 	defer conn.Close()
-
-	buffer := make([]byte, bufferSize)
-	newLine := []byte{13, 10}
-	// used to hold the last line if it didn't end in a newline
-	lastLine := make([]byte, bufferSize)
-	lastLineLength := 0
-	for {
-		if _, err := conn.Read(buffer); err != nil {
-			return err
-		}
-		lines := bytes.Split(buffer, newLine)
-		lastLineIndex := len(lines) - 1
-		for index, line := range lines {
-			if index == 0 {
-				// prepend the lastLine to complete the line
-				m := nanomsg.Create(append(lastLine[:lastLineLength], line...), time.Now(), []byte("collector"), []byte(mapper.NMEA0183Type), []byte(c.Name))
-				if err := socket.Send([]byte(m.String())); err != nil {
-					return err
-				}
-			} else if index != lastLineIndex {
-				m := nanomsg.Create(line, time.Now(), []byte("collector"), []byte(mapper.NMEA0183Type), []byte(c.Name))
-				if err := socket.Send([]byte(m.String())); err != nil {
-					return err
-				}
-			} else {
-				copy(lastLine, line)
-				lastLineLength = len(line)
-			}
+	scanner := bufio.NewScanner(conn)
+	for scanner.Scan() {
+		m := nanomsg.Create(scanner.Bytes(), time.Now(), []byte("collector"), []byte(mapper.NMEA0183Type), []byte(c.Name))
+		if err := socket.Send([]byte(m.String())); err != nil {
+			log.Fatal(err)
 		}
 	}
+	return nil
 }

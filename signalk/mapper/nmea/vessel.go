@@ -209,10 +209,10 @@ func (s VDMVDO) GetIMONumber() (string, error) {
 
 // GetMMSI retrieves the MMSI of the vessel from the sentence
 func (s VDMVDO) GetMMSI() (uint32, error) {
-	if header := s.Packet.GetHeader(); header != nil {
-		return header.UserID, nil
+	if s.Packet == nil || s.Packet.GetHeader() == nil {
+		return 0, errors.New("Could not retrieve MMSI")
 	}
-	return 0, errors.New("Could not retrieve MMSI")
+	return s.Packet.GetHeader().UserID, nil
 }
 
 // GetNavigationStatus retrieves the navigation status from the sentence

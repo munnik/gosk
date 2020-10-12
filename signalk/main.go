@@ -2,6 +2,24 @@ package signalk
 
 // remember to run `easyjson -all signalk/main.go` when changing a struct
 
+// Delta as specified in https://signalk.org/specification/1.4.0/doc/data_model.html
+type Delta struct {
+	Context string   `json:"context,omitempty"`
+	Updates []Update `json:"updates"`
+}
+
+// Full as specified in https://signalk.org/specification/1.4.0/doc/data_model.html
+type Full struct {
+	Version string            `json:"version"`
+	Self    string            `json:"self"`
+	Vessels map[string]Vessel `json:"vessels"`
+}
+
+// Vessel element of a Full model
+type Vessel struct {
+	elements map[string]Value
+}
+
 // Position is used for position values without altitude
 type Position struct {
 	Longitude float64 `json:"longitude"`
@@ -18,8 +36,8 @@ type Length struct {
 
 // Value is part of an Update
 type Value struct {
-	Context string      `json:"context"`
-	Path    string      `json:"path"`
+	Context string      `json:"context,omitempty"`
+	Path    []string    `json:"path"`
 	Value   interface{} `json:"value"`
 }
 
@@ -39,15 +57,26 @@ type Update struct {
 	Values    []Value `json:"values"`
 }
 
-// DeltaWithContext as specified in https://signalk.org/specification/1.4.0/doc/data_model.html
-type DeltaWithContext struct {
-	Context string   `json:"context,omitempty"`
-	Updates []Update `json:"updates"`
+// NewFull creates a Full model
+func NewFull(self string) *Full {
+	return &Full{
+		Version: "1.0.0",
+		Self:    self,
+		Vessels: make(map[string]Vessel, 0),
+	}
 }
 
-// Delta as specified in https://signalk.org/specification/1.4.0/doc/data_model.html
-type Delta interface {
-	AppendValue(v Value)
+// AddValue adds a value to the Full model
+func (full *Full) AddValue(value Value) {
+	if _, exists := full.Vessels[value.Context]; !exists {
+		full.Vessels[value.Context] = Vessel{}
+	}
+	vessel := full.Vessels[value.Context]
+	vessel.AddValue(value)
+}
+
+func (vessel *Vessel) AddValue(value Value) {
+
 }
 
 // var delta signalk.Delta

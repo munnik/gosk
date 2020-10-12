@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/munnik/gosk/collector"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/signalk/mapper"
 	"go.nanomsg.org/mangos/v3"
@@ -25,8 +24,8 @@ type FileCollector struct {
 }
 
 // NewFileCollector creates an instance of a file collector
-func NewFileCollector(path string, interval time.Duration, linesAtOnce uint16, name string) collector.Collector {
-	return FileCollector{
+func NewFileCollector(path string, interval time.Duration, linesAtOnce uint16, name string) *FileCollector {
+	return &FileCollector{
 		Config: FileConfig{
 			Path:        path,
 			Interval:    interval,
@@ -37,7 +36,7 @@ func NewFileCollector(path string, interval time.Duration, linesAtOnce uint16, n
 }
 
 // Collect start the collection process and keeps running as long as there is data available
-func (c FileCollector) Collect(socket mangos.Socket) error {
+func (c *FileCollector) Collect(socket mangos.Socket) error {
 	data, err := ioutil.ReadFile(c.Config.Path)
 	if err != nil {
 		return err
@@ -47,7 +46,7 @@ func (c FileCollector) Collect(socket mangos.Socket) error {
 	lines := strings.Split(string(data), "\n")
 	var lineCount uint16
 	for _, line := range lines {
-		m := nanomsg.Create([]byte(line), time.Now(), []byte("collector"), []byte(mapper.NMEA0183Type), []byte(c.Name))
+		m := nanomsg.NewMessage([]byte(line), time.Now(), []byte("collector"), []byte(mapper.NMEA0183Type), []byte(c.Name))
 		if err := socket.Send([]byte(m.String())); err != nil {
 			return err
 		}

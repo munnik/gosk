@@ -9,7 +9,7 @@ import (
 )
 
 // KeyValueFromNMEA0183 tries to create a Signal K Delta from a NMEA sentence
-func KeyValueFromNMEA0183(m nanomsg.Message) ([]signalk.Value, error) {
+func KeyValueFromNMEA0183(m *nanomsg.Message) ([]signalk.Value, error) {
 	result := make([]signalk.Value, 0)
 	sentence, err := Parse(string(m.Payload))
 	if err != nil {

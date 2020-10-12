@@ -18,12 +18,12 @@ const (
 )
 
 // KeyValueFromData tries to create a SignalK delta from the provided data
-func KeyValueFromData(m nanomsg.Message) ([]signalk.Value, error) {
+func KeyValueFromData(m *nanomsg.Message) ([]signalk.Value, error) {
 	switch string(m.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL]) {
 	case NMEA0183Type:
 		return nmea.KeyValueFromNMEA0183(m)
 	}
-	return []signalk.Value{}, fmt.Errorf("Don't know how to handle %s", m.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL])
+	return nil, fmt.Errorf("Don't know how to handle %s", m.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL])
 }
 
 // Map raw messages to key value messages
@@ -48,7 +48,7 @@ func Map(subscriber mangos.Socket, publisher mangos.Socket) {
 			}
 			mappedHeader := [][]byte{[]byte("mapper")}
 			mappedHeader = append(mappedHeader, rawMessage.HeaderSegments[1:]...)
-			mappedMessage := nanomsg.Create(json, rawMessage.Time, mappedHeader...)
+			mappedMessage := nanomsg.NewMessage(json, rawMessage.Time, mappedHeader...)
 			publisher.Send([]byte(mappedMessage.String()))
 		}
 	}

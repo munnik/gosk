@@ -13,8 +13,8 @@ type PubSubProxy struct {
 }
 
 // NewPubSubProxy creates a new instance
-func NewPubSubProxy(url string) PubSubProxy {
-	return PubSubProxy{publisher: NewPub(url)}
+func NewPubSubProxy(url string) *PubSubProxy {
+	return &PubSubProxy{publisher: NewPub(url)}
 }
 
 // AddSubscriber adds a new subscriber
@@ -42,7 +42,7 @@ func (p *PubSubProxy) AddSubscriber(url string) {
 }
 
 // Close stops and removes all subscribers
-func (p PubSubProxy) Close() {
+func (p *PubSubProxy) Close() {
 	for _, stopChannel := range p.stopChannels {
 		close(stopChannel)
 	}

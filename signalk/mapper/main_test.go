@@ -28,7 +28,7 @@ func TestDeltaFromData(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			m := nanomsg.Create(test.args.data, time.Now(), []byte("collector"), []byte(test.args.dataType), []byte("test"))
+			m := nanomsg.NewMessage(test.args.data, time.Now(), []byte("collector"), []byte(test.args.dataType), []byte("test"))
 			got, err := mapper.KeyValueFromData(m)
 			if (err != nil) != test.wantErr {
 				t.Errorf("DeltaFromData() error = %v, wantErr %v", err, test.wantErr)

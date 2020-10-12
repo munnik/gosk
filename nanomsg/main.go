@@ -30,31 +30,26 @@ type Message struct {
 }
 
 // Parse a raw message
-func Parse(raw []byte) (Message, error) {
+func Parse(raw []byte) (*Message, error) {
 	msgSplit := bytes.SplitN(raw, []byte(MESSAGESEPERATOR), 3)
 	if len(msgSplit) < 3 {
-		return Message{}, errors.New("Invalid message syntax, message should at least contain two null characters")
+		return nil, errors.New("Invalid message syntax, message should at least contain two null characters")
 	}
 	unixNano, err := strconv.ParseInt(string(msgSplit[1]), 10, 64)
 	if err != nil {
-		return Message{}, err
+		return nil, err
 	}
-	return Message{
-		Header:         msgSplit[0],
-		HeaderSegments: bytes.Split(msgSplit[0], []byte(HEADERSEPERATOR)),
-		Time:           time.Unix(0, unixNano),
-		Payload:        msgSplit[2],
-	}, nil
+	return NewMessage(msgSplit[2], time.Unix(0, unixNano), bytes.Split(msgSplit[0], []byte(HEADERSEPERATOR))...), nil
 }
 
-// Create builds a new message
-func Create(payload []byte, time time.Time, headerSegments ...[]byte) Message {
+// NewMessage builds a new message
+func NewMessage(payload []byte, time time.Time, headerSegments ...[]byte) *Message {
 	headerSegmentsAsString := make([]string, len(headerSegments))
 	for index, headerSegment := range headerSegments {
 		headerSegmentsAsString[index] = string(headerSegment)
 	}
 	header := []byte(strings.Join(headerSegmentsAsString, HEADERSEPERATOR))
-	return Message{
+	return &Message{
 		Payload:        payload,
 		Time:           time,
 		HeaderSegments: headerSegments,
@@ -62,6 +57,6 @@ func Create(payload []byte, time time.Time, headerSegments ...[]byte) Message {
 	}
 }
 
-func (m Message) String() string {
+func (m *Message) String() string {
 	return string(m.Header) + MESSAGESEPERATOR + strconv.FormatInt(m.Time.UTC().UnixNano(), 10) + MESSAGESEPERATOR + string(m.Payload)
 }

@@ -7,7 +7,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/munnik/gosk/collector"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/signalk/mapper"
 	"go.nanomsg.org/mangos/v3"
@@ -30,8 +29,8 @@ type TCPCollector struct {
 }
 
 // NewTCPCollector creates an instance of a TCP collector
-func NewTCPCollector(host string, port uint16, name string) collector.Collector {
-	return TCPCollector{
+func NewTCPCollector(host string, port uint16, name string) *TCPCollector {
+	return &TCPCollector{
 		Config: TCPConfig{
 			Host: host,
 			Port: port,
@@ -41,7 +40,7 @@ func NewTCPCollector(host string, port uint16, name string) collector.Collector 
 }
 
 // Collect start the collection process and keeps running as long as there is data available
-func (c TCPCollector) Collect(socket mangos.Socket) error {
+func (c *TCPCollector) Collect(socket mangos.Socket) error {
 	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", c.Config.Host, c.Config.Port))
 	if err != nil {
 		return err
@@ -49,7 +48,7 @@ func (c TCPCollector) Collect(socket mangos.Socket) error {
 	defer conn.Close()
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
-		m := nanomsg.Create(scanner.Bytes(), time.Now(), []byte("collector"), []byte(mapper.NMEA0183Type), []byte(c.Name))
+		m := nanomsg.NewMessage(scanner.Bytes(), time.Now(), []byte("collector"), []byte(mapper.NMEA0183Type), []byte(c.Name))
 		if err := socket.Send([]byte(m.String())); err != nil {
 			log.Fatal(err)
 		}

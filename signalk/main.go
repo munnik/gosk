@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 )
 
 var (
@@ -47,9 +48,11 @@ type Length struct {
 
 // Value is part of an Update
 type Value struct {
-	Context string      `json:"context,omitempty"`
-	Path    []string    `json:"path"`
-	Value   interface{} `json:"value"`
+	Context   string      `json:"context,omitempty"`
+	Path      []string    `json:"path,omitempty"`
+	Value     interface{} `json:"value"`
+	Source    Source      `json:"source"`
+	Timestamp time.Time   `json:"timestamp"`
 }
 
 // Source is part of an Update
@@ -97,7 +100,10 @@ func (vesselValues *VesselValues) AddValue(value Value) {
 		return
 	}
 	if len(value.Path) == 1 {
-		(*vesselValues)[value.Path[0]] = &value.Value
+		path := value.Path[0]
+		value.Path = nil
+		value.Context = ""
+		(*vesselValues)[path] = value
 		return
 	}
 

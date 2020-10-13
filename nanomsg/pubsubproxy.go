@@ -30,9 +30,7 @@ func (p *PubSubProxy) AddSubscriber(url string) {
 				if msg, err := subscriber.Recv(); err != nil {
 					log.Fatal(err)
 				} else {
-					log.Println("Proxy received a message", string(msg))
 					p.publisher.Send(msg)
-					log.Println("Proxy sended a message", string(msg))
 				}
 			case <-stopChannel:
 				return

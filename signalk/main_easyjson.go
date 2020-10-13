@@ -69,6 +69,12 @@ func easyjson89aae3efDecodeGithubComMunnikGoskSignalk(in *jlexer.Lexer, out *Val
 			} else {
 				out.Value = in.Interface()
 			}
+		case "source":
+			(out.Source).UnmarshalEasyJSON(in)
+		case "timestamp":
+			if data := in.Raw(); in.Ok() {
+				in.AddError((out.Timestamp).UnmarshalJSON(data))
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -89,7 +95,7 @@ func easyjson89aae3efEncodeGithubComMunnikGoskSignalk(out *jwriter.Writer, in Va
 		out.RawString(prefix[1:])
 		out.String(string(in.Context))
 	}
-	{
+	if len(in.Path) != 0 {
 		const prefix string = ",\"path\":"
 		if first {
 			first = false
@@ -97,9 +103,7 @@ func easyjson89aae3efEncodeGithubComMunnikGoskSignalk(out *jwriter.Writer, in Va
 		} else {
 			out.RawString(prefix)
 		}
-		if in.Path == nil && (out.Flags&jwriter.NilSliceAsEmpty) == 0 {
-			out.RawString("null")
-		} else {
+		{
 			out.RawByte('[')
 			for v2, v3 := range in.Path {
 				if v2 > 0 {
@@ -112,7 +116,12 @@ func easyjson89aae3efEncodeGithubComMunnikGoskSignalk(out *jwriter.Writer, in Va
 	}
 	{
 		const prefix string = ",\"value\":"
-		out.RawString(prefix)
+		if first {
+			first = false
+			out.RawString(prefix[1:])
+		} else {
+			out.RawString(prefix)
+		}
 		if m, ok := in.Value.(easyjson.Marshaler); ok {
 			m.MarshalEasyJSON(out)
 		} else if m, ok := in.Value.(json.Marshaler); ok {
@@ -120,6 +129,16 @@ func easyjson89aae3efEncodeGithubComMunnikGoskSignalk(out *jwriter.Writer, in Va
 		} else {
 			out.Raw(json.Marshal(in.Value))
 		}
+	}
+	{
+		const prefix string = ",\"source\":"
+		out.RawString(prefix)
+		(in.Source).MarshalEasyJSON(out)
+	}
+	{
+		const prefix string = ",\"timestamp\":"
+		out.RawString(prefix)
+		out.Raw((in.Timestamp).MarshalJSON())
 	}
 	out.RawByte('}')
 }
@@ -178,7 +197,7 @@ func easyjson89aae3efDecodeGithubComMunnikGoskSignalk1(in *jlexer.Lexer, out *Up
 				in.Delim('[')
 				if out.Values == nil {
 					if !in.IsDelim(']') {
-						out.Values = make([]Value, 0, 1)
+						out.Values = make([]Value, 0, 0)
 					} else {
 						out.Values = []Value{}
 					}

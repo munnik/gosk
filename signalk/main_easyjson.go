@@ -72,9 +72,7 @@ func easyjson89aae3efDecodeGithubComMunnikGoskSignalk(in *jlexer.Lexer, out *Val
 		case "source":
 			(out.Source).UnmarshalEasyJSON(in)
 		case "timestamp":
-			if data := in.Raw(); in.Ok() {
-				in.AddError((out.Timestamp).UnmarshalJSON(data))
-			}
+			out.Timestamp = string(in.String())
 		default:
 			in.SkipRecursive()
 		}
@@ -138,7 +136,7 @@ func easyjson89aae3efEncodeGithubComMunnikGoskSignalk(out *jwriter.Writer, in Va
 	{
 		const prefix string = ",\"timestamp\":"
 		out.RawString(prefix)
-		out.Raw((in.Timestamp).MarshalJSON())
+		out.String(string(in.Timestamp))
 	}
 	out.RawByte('}')
 }

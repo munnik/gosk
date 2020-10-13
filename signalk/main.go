@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"time"
 )
 
 var (
@@ -52,7 +51,7 @@ type Value struct {
 	Path      []string `json:",omitempty"`
 	Value     interface{}
 	Source    Source
-	Timestamp time.Time
+	Timestamp string
 }
 
 // Source is part of an Update

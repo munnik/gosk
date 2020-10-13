@@ -21,10 +21,11 @@ func StartServer() {
 		log.Fatal(err)
 	}
 
-	query := "select distinct on(_context, _path) _context, _path, _value from key_value_data order by _context, _path, _time desc"
+	query := "select distinct on(_context, _path) _context, _path, _value, _time from key_value_data order by _context, _path, _time desc"
 	var ctx string
 	var path string
 	var value string
+	var timestamp time.Time
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		queryStartTime := time.Now().UnixNano()
 		full := signalk.NewFull("test")
@@ -33,21 +34,23 @@ func StartServer() {
 			log.Fatal(err)
 		}
 		for rows.Next() {
-			err := rows.Scan(&ctx, &path, &value)
+			err := rows.Scan(&ctx, &path, &value, &timestamp)
 			if err != nil {
 				log.Fatal(err)
 			}
 			if len(value) == 0 {
 				full.AddValue(signalk.Value{
-					Context: ctx,
-					Path:    strings.Split(path, "."),
-					Value:   nil,
+					Context:   ctx,
+					Path:      strings.Split(path, "."),
+					Value:     nil,
+					Timestamp: timestamp.UTC().Format(time.RFC3339Nano),
 				})
 			} else if value[0] == byte(34) && value[len(value)-1] == byte(34) { // starts and ends with ", so it's a string
 				full.AddValue(signalk.Value{
-					Context: ctx,
-					Path:    strings.Split(path, "."),
-					Value:   string(value[1 : len(value)-1]),
+					Context:   ctx,
+					Path:      strings.Split(path, "."),
+					Value:     string(value[1 : len(value)-1]),
+					Timestamp: timestamp.UTC().Format(time.RFC3339Nano),
 				})
 			} else if value[0] == byte(123) && value[len(value)-1] == byte(125) { // starts with { and ends with }, so it's a object}
 				object, err := signalk.FromJSONToStruct(value, path)
@@ -55,9 +58,10 @@ func StartServer() {
 					log.Fatal(err)
 				}
 				full.AddValue(signalk.Value{
-					Context: ctx,
-					Path:    strings.Split(path, "."),
-					Value:   object,
+					Context:   ctx,
+					Path:      strings.Split(path, "."),
+					Value:     object,
+					Timestamp: timestamp.UTC().Format(time.RFC3339Nano),
 				})
 			} else { // it must be a number
 				floatValue, err := strconv.ParseFloat(value, 64)
@@ -65,9 +69,10 @@ func StartServer() {
 					log.Fatal("Can't parse as float")
 				}
 				full.AddValue(signalk.Value{
-					Context: ctx,
-					Path:    strings.Split(path, "."),
-					Value:   floatValue,
+					Context:   ctx,
+					Path:      strings.Split(path, "."),
+					Value:     floatValue,
+					Timestamp: timestamp.UTC().Format(time.RFC3339Nano),
 				})
 			}
 		}

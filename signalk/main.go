@@ -1,5 +1,18 @@
 package signalk
 
+import (
+	"fmt"
+	"log"
+	"strings"
+)
+
+var (
+	dataTypeForPath map[string]string = map[string]string{
+		"navigation.position": "Position",
+		"design.length":       "Length",
+	}
+)
+
 // remember to run `easyjson -all signalk/main.go` when changing a struct
 
 // Delta as specified in https://signalk.org/specification/1.4.0/doc/data_model.html
@@ -10,15 +23,13 @@ type Delta struct {
 
 // Full as specified in https://signalk.org/specification/1.4.0/doc/data_model.html
 type Full struct {
-	Version string            `json:"version"`
-	Self    string            `json:"self"`
-	Vessels map[string]Vessel `json:"vessels"`
+	Version string                   `json:"version"`
+	Self    string                   `json:"self"`
+	Vessels map[string]*VesselValues `json:"vessels"`
 }
 
-// Vessel element of a Full model
-type Vessel struct {
-	elements map[string]Value
-}
+// VesselValues element of a Full model
+type VesselValues map[string]interface{}
 
 // Position is used for position values without altitude
 type Position struct {
@@ -62,21 +73,68 @@ func NewFull(self string) *Full {
 	return &Full{
 		Version: "1.0.0",
 		Self:    self,
-		Vessels: make(map[string]Vessel, 0),
+		Vessels: make(map[string]*VesselValues),
 	}
 }
 
 // AddValue adds a value to the Full model
 func (full *Full) AddValue(value Value) {
-	if _, exists := full.Vessels[value.Context]; !exists {
-		full.Vessels[value.Context] = Vessel{}
+	objectType := strings.Split(value.Context, ".")[0]
+	context := value.Context[len(objectType)+1:]
+	switch objectType {
+	case "vessels":
+		if _, exists := full.Vessels[context]; !exists {
+			full.Vessels[context] = &VesselValues{}
+		}
+		value.Context = ""
+		full.Vessels[context].AddValue(value)
 	}
-	vessel := full.Vessels[value.Context]
-	vessel.AddValue(value)
 }
 
-func (vessel *Vessel) AddValue(value Value) {
+// AddValue adds a value to the Vessel
+func (vesselValues *VesselValues) AddValue(value Value) {
+	if len(value.Path) == 0 {
+		return
+	}
+	if len(value.Path) == 1 {
+		(*vesselValues)[value.Path[0]] = &value.Value
+		return
+	}
 
+	currentPath := value.Path[0]
+	value.Path = value.Path[1:]
+
+	if _, exist := (*vesselValues)[currentPath]; !exist {
+		(*vesselValues)[currentPath] = &VesselValues{}
+	}
+	(*vesselValues)[currentPath].(*VesselValues).AddValue(value)
+}
+
+// FromJSONToStruct tries convert a value to a struct, it lookups the path of the value
+// in a dictionary to find the corresponding data type. Then it tries to Unmarshal the
+// value to that data type.
+func FromJSONToStruct(value string, path string) (interface{}, error) {
+	typeOfValue, ok := dataTypeForPath[path]
+	if !ok {
+		return nil, fmt.Errorf("Lookup of the path %s failed", path)
+	}
+	switch typeOfValue {
+	case "Position":
+		var position Position
+		err := position.UnmarshalJSON([]byte(value))
+		if err != nil {
+			log.Fatal(err)
+		}
+		return position, nil
+	case "Length":
+		var length Length
+		err := length.UnmarshalJSON([]byte(value))
+		if err != nil {
+			log.Fatal(err)
+		}
+		return length, nil
+	}
+	return nil, fmt.Errorf("Not defined how to unmarshal %s", typeOfValue)
 }
 
 // var delta signalk.Delta

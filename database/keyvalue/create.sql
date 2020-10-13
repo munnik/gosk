@@ -8,4 +8,8 @@ create table key_value_data (
     _value varchar not null
 );
 
+alter table key_value_data owner to gosk;
+
 select create_hypertable('key_value_data', '_time');
+
+create index on key_value_data (_context, _path, _time desc);

@@ -10,6 +10,7 @@ import (
 	keyvalueStoreCollector "github.com/munnik/gosk/database/keyvalue"
 	rawStoreCollector "github.com/munnik/gosk/database/raw"
 	"github.com/munnik/gosk/nanomsg"
+	"github.com/munnik/gosk/signalk/http"
 	"github.com/munnik/gosk/signalk/mapper"
 
 	_ "go.nanomsg.org/mangos/v3/transport/all"
@@ -44,6 +45,8 @@ func main() {
 	keyvalueStoreSubscriber := nanomsg.NewSub("tcp://127.0.0.1:6200", []byte("mapper/"))
 	defer keyvalueStoreSubscriber.Close()
 	go keyvalueStoreCollector.Store(keyvalueStoreSubscriber)
+
+	go http.StartServer()
 
 	for {
 		time.Sleep(time.Second)

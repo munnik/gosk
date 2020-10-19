@@ -1,8 +1,6 @@
 package main
 
 import (
-	"log"
-	"os"
 	"time"
 
 	"github.com/munnik/gosk/collector"
@@ -16,9 +14,6 @@ import (
 )
 
 func main() {
-	f := setupLogging()
-	defer f.Close()
-
 	var tcpCollector collector.Collector
 	tcpCollector = nmeaCollector.NewTCPCollector("192.168.1.151", 10110, "Wheelhouse")
 	tcpCollectorPublisher := nanomsg.NewPub("tcp://127.0.0.1:6000")
@@ -31,32 +26,21 @@ func main() {
 	defer collectorProxy.Close()
 	collectorProxy.AddSubscriber("tcp://127.0.0.1:6000")
 
-	rawStoreSubscriber := nanomsg.NewSub("tcp://127.0.0.1:6100", []byte("collector/"))
+	rawStoreSubscriber := nanomsg.NewSub("tcp://127.0.0.1:6100", []byte(""))
 	defer rawStoreSubscriber.Close()
 	go rawStoreCollector.Store(rawStoreSubscriber) // subscribe to the proxy
 
-	mapperSubscriber := nanomsg.NewSub("tcp://127.0.0.1:6100", []byte("collector/"))
+	mapperSubscriber := nanomsg.NewSub("tcp://127.0.0.1:6100", []byte(""))
 	defer mapperSubscriber.Close()
 	mapperPublisher := nanomsg.NewPub("tcp://127.0.0.1:6200")
 	defer mapperPublisher.Close()
 	go mapper.Map(mapperSubscriber, mapperPublisher) // subscribe to the proxy
 
-	keyvalueStoreSubscriber := nanomsg.NewSub("tcp://127.0.0.1:6200", []byte("mapper/"))
+	keyvalueStoreSubscriber := nanomsg.NewSub("tcp://127.0.0.1:6200", []byte(""))
 	defer keyvalueStoreSubscriber.Close()
 	go keyvalueStoreCollector.Store(keyvalueStoreSubscriber)
 
 	for {
 		time.Sleep(time.Second)
 	}
-}
-
-func setupLogging() *os.File {
-	var err error
-	f, err := os.Create("logs/output.txt")
-	if err != nil {
-		log.Fatalf("Error creating log file: %v", err)
-	}
-
-	log.SetOutput(f)
-	return f
 }

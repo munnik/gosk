@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/jackc/pgx/v4"
 	"github.com/munnik/gosk/nanomsg"
 	"go.nanomsg.org/mangos/v3"
@@ -16,16 +17,16 @@ func Store(socket mangos.Socket) {
 		log.Fatal(err)
 	}
 	query := "insert into raw_data (_time, _key, _value) values ($1, $2, $3)"
+	m := &nanomsg.RawData{}
 	for {
-		raw, err := socket.Recv()
+		received, err := socket.Recv()
 		if err != nil {
 			log.Fatal(err)
 		}
-		m, err := nanomsg.Parse(raw)
-		if err != nil {
+		if err := proto.Unmarshal(received, m); err != nil {
 			log.Fatal(err)
 		}
-		if _, err = conn.Exec(context.Background(), query, m.Time, m.HeaderSegments, m.Payload); err != nil {
+		if _, err = conn.Exec(context.Background(), query, m.Timestamp.AsTime(), m.Header.HeaderSegments, m.Payload); err != nil {
 			log.Fatal(err)
 		}
 	}

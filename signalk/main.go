@@ -20,20 +20,6 @@ type Vessel struct {
 	elements map[string]Value
 }
 
-// Position is used for position values without altitude
-type Position struct {
-	Longitude float64 `json:"longitude"`
-	Latitude  float64 `json:"latitude"`
-	Altitude  float64 `json:"altitude,omitempty"`
-}
-
-// Length is used for the combination of all lengths
-type Length struct {
-	Overall   float64 `json:"overall,omitempty"`
-	Hull      float64 `json:"hull,omitempty"`
-	Waterline float64 `json:"waterline,omitempty"`
-}
-
 // Value is part of an Update
 type Value struct {
 	Context string      `json:"context,omitempty"`

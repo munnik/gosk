@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"time"
 
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/signalk/mapper"
 	"go.nanomsg.org/mangos/v3"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -48,8 +49,18 @@ func (c *TCPCollector) Collect(socket mangos.Socket) error {
 	defer conn.Close()
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
-		m := nanomsg.NewMessage(scanner.Bytes(), time.Now(), []byte("collector"), []byte(mapper.NMEA0183Type), []byte(c.Name))
-		if err := socket.Send([]byte(m.String())); err != nil {
+		m := &nanomsg.RawData{
+			Header: &nanomsg.Header{
+				HeaderSegments: []string{"collector", mapper.NMEA0183Type, c.Name},
+			},
+			Timestamp: timestamppb.Now(),
+			Payload:   scanner.Bytes(),
+		}
+		toSend, err := proto.Marshal(m)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if err := socket.Send(toSend); err != nil {
 			log.Fatal(err)
 		}
 	}

@@ -3,7 +3,9 @@ package mapper
 import (
 	"fmt"
 	"log"
+	"strings"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/signalk"
 	"github.com/munnik/gosk/signalk/mapper/nmea"
@@ -18,38 +20,85 @@ const (
 )
 
 // KeyValueFromData tries to create a SignalK delta from the provided data
-func KeyValueFromData(m *nanomsg.Message) ([]signalk.Value, error) {
-	switch string(m.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL]) {
+func KeyValueFromData(m *nanomsg.RawData) ([]signalk.Value, error) {
+	switch string(m.Header.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL]) {
 	case NMEA0183Type:
 		return nmea.KeyValueFromNMEA0183(m)
 	}
-	return nil, fmt.Errorf("Don't know how to handle %s", m.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL])
+	return nil, fmt.Errorf("Don't know how to handle %s", m.Header.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL])
 }
 
 // Map raw messages to key value messages
 func Map(subscriber mangos.Socket, publisher mangos.Socket) {
+	rawData := &nanomsg.RawData{}
 	for {
-		raw, err := subscriber.Recv()
+		received, err := subscriber.Recv()
 		if err != nil {
 			log.Fatal(err)
 		}
-		rawMessage, err := nanomsg.Parse(raw)
-		if err != nil {
+		if err := proto.Unmarshal(received, rawData); err != nil {
 			log.Fatal(err)
 		}
-		values, err := KeyValueFromData(rawMessage)
+		values, err := KeyValueFromData(rawData)
 		if err != nil {
 			log.Println(err)
 		}
 		for _, value := range values {
-			json, err := value.MarshalJSON()
+			var mappedData *nanomsg.MappedData
+			mappedData = nil
+			if v, ok := value.Value.(float64); ok {
+				mappedData = &nanomsg.MappedData{
+					Header: &nanomsg.Header{
+						HeaderSegments: append([]string{"mapper"}, rawData.Header.HeaderSegments[1:]...),
+					},
+					Timestamp:   rawData.Timestamp,
+					Context:     value.Context,
+					Path:        strings.Join(value.Path, "."),
+					Datatype:    nanomsg.DOUBLE,
+					DoubleValue: v,
+				}
+			} else if v, ok := value.Value.(string); ok {
+				mappedData = &nanomsg.MappedData{
+					Header: &nanomsg.Header{
+						HeaderSegments: append([]string{"mapper"}, rawData.Header.HeaderSegments[1:]...),
+					},
+					Timestamp:   rawData.Timestamp,
+					Context:     value.Context,
+					Path:        strings.Join(value.Path, "."),
+					Datatype:    nanomsg.STRING,
+					StringValue: v,
+				}
+			} else if v, ok := value.Value.(nanomsg.Position); ok {
+				mappedData = &nanomsg.MappedData{
+					Header: &nanomsg.Header{
+						HeaderSegments: append([]string{"mapper"}, rawData.Header.HeaderSegments[1:]...),
+					},
+					Timestamp:     rawData.Timestamp,
+					Context:       value.Context,
+					Path:          strings.Join(value.Path, "."),
+					Datatype:      nanomsg.POSITION,
+					PositionValue: &v,
+				}
+			} else if v, ok := value.Value.(nanomsg.Length); ok {
+				mappedData = &nanomsg.MappedData{
+					Header: &nanomsg.Header{
+						HeaderSegments: append([]string{"mapper"}, rawData.Header.HeaderSegments[1:]...),
+					},
+					Timestamp:   rawData.Timestamp,
+					Context:     value.Context,
+					Path:        strings.Join(value.Path, "."),
+					Datatype:    nanomsg.LENGTH,
+					LengthValue: &v,
+				}
+			} else {
+				continue
+			}
+
+			toSend, err := proto.Marshal(mappedData)
 			if err != nil {
 				log.Fatal(err)
 			}
-			mappedHeader := [][]byte{[]byte("mapper")}
-			mappedHeader = append(mappedHeader, rawMessage.HeaderSegments[1:]...)
-			mappedMessage := nanomsg.NewMessage(json, rawMessage.Time, mappedHeader...)
-			publisher.Send([]byte(mappedMessage.String()))
+			publisher.Send(toSend)
 		}
 	}
 }

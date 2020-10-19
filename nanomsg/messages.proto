@@ -1,0 +1,41 @@
+// build using `protoc --go_out=paths=source_relative:. .\nanomsg\messages.proto`
+
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/munnik/gosk/nanomsg";
+
+message Header {
+    repeated string headerSegments = 1;
+}
+
+message RawData {
+    Header header = 1;
+    google.protobuf.Timestamp timestamp = 2;
+    bytes payload = 3;
+}
+
+message MappedData {
+    Header header = 1;
+    string context = 2;
+    string path = 3;
+    google.protobuf.Timestamp timestamp = 4;
+    int32 datatype = 5;
+    double doubleValue = 6;
+    string stringValue = 7;
+    Position positionValue = 8;
+    Length lengthValue = 9;
+}
+
+message Position {
+    double latitude = 1;
+    double longitude = 2;
+    double altitude = 3;
+}
+
+message Length {
+    double overall = 1;
+    double hull = 2;
+    double waterline = 3;
+}

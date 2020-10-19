@@ -2,14 +2,13 @@ package keyvalue
 
 import (
 	"context"
-	"encoding/json"
+	"fmt"
 	"log"
-	"strings"
 
 	"github.com/jackc/pgx/v4"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/munnik/gosk/nanomsg"
-	"github.com/munnik/gosk/signalk"
 	"go.nanomsg.org/mangos/v3"
 )
 
@@ -20,32 +19,29 @@ func Store(socket mangos.Socket) {
 		log.Fatal(err)
 	}
 	query := "insert into key_value_data (_time, _key, _context, _path, _value) values ($1, $2, $3, $4, $5)"
-	queryWithoutContext := "insert into key_value_data (_time, _key, _path, _value) values ($1, $2, $3, $4)"
+	m := &nanomsg.MappedData{}
 	for {
-		raw, err := socket.Recv()
+		received, err := socket.Recv()
 		if err != nil {
 			log.Fatal(err)
 		}
-		m, err := nanomsg.Parse(raw)
-		if err != nil {
+		if err := proto.Unmarshal(received, m); err != nil {
 			log.Fatal(err)
 		}
-		var signalKValueStruct signalk.Value
-		json.Unmarshal(m.Payload, &signalKValueStruct)
-		if len(signalKValueStruct.Path) == 0 || signalKValueStruct.Value == "" {
-			continue
-		}
-		value, err := json.Marshal(signalKValueStruct.Value)
-		if err != nil {
-			log.Fatalf("Can't represent %v in json", signalKValueStruct.Value)
-		}
-		path := strings.Join(signalKValueStruct.Path, ".")
-		if signalKValueStruct.Context == "" {
-			if _, err = conn.Exec(context.Background(), queryWithoutContext, m.Time, m.HeaderSegments, path, value); err != nil {
+		if m.Datatype == nanomsg.DOUBLE {
+			if _, err = conn.Exec(context.Background(), query, m.Timestamp.AsTime(), m.Header.HeaderSegments, m.Context, m.Path, fmt.Sprintf("%f", m.DoubleValue)); err != nil {
 				log.Fatal(err)
 			}
-		} else {
-			if _, err = conn.Exec(context.Background(), query, m.Time, m.HeaderSegments, signalKValueStruct.Context, path, value); err != nil {
+		} else if m.Datatype == nanomsg.STRING {
+			if _, err = conn.Exec(context.Background(), query, m.Timestamp.AsTime(), m.Header.HeaderSegments, m.Context, m.Path, m.StringValue); err != nil {
+				log.Fatal(err)
+			}
+		} else if m.Datatype == nanomsg.POSITION {
+			if _, err = conn.Exec(context.Background(), query, m.Timestamp.AsTime(), m.Header.HeaderSegments, m.Context, m.Path, m.PositionValue.String()); err != nil {
+				log.Fatal(err)
+			}
+		} else if m.Datatype == nanomsg.LENGTH {
+			if _, err = conn.Exec(context.Background(), query, m.Timestamp.AsTime(), m.Header.HeaderSegments, m.Context, m.Path, m.LengthValue.String()); err != nil {
 				log.Fatal(err)
 			}
 		}

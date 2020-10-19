@@ -2,12 +2,15 @@ package nmea0183
 
 import (
 	"io/ioutil"
+	"log"
 	"strings"
 	"time"
 
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/signalk/mapper"
 	"go.nanomsg.org/mangos/v3"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // FileConfig has all the required configuration for a FileCollector
@@ -46,8 +49,18 @@ func (c *FileCollector) Collect(socket mangos.Socket) error {
 	lines := strings.Split(string(data), "\n")
 	var lineCount uint16
 	for _, line := range lines {
-		m := nanomsg.NewMessage([]byte(line), time.Now(), []byte("collector"), []byte(mapper.NMEA0183Type), []byte(c.Name))
-		if err := socket.Send([]byte(m.String())); err != nil {
+		m := &nanomsg.RawData{
+			Header: &nanomsg.Header{
+				HeaderSegments: []string{"collector", mapper.NMEA0183Type, c.Name},
+			},
+			Timestamp: timestamppb.Now(),
+			Payload:   []byte(line),
+		}
+		toSend, err := proto.Marshal(m)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if err := socket.Send(toSend); err != nil {
 			return err
 		}
 		if lineCount++; lineCount == c.Config.LinesAtOnce {

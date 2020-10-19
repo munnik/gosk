@@ -1,7 +1,6 @@
 package nmea
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/munnik/gosk/nanomsg"
@@ -9,7 +8,7 @@ import (
 )
 
 // KeyValueFromNMEA0183 tries to create a Signal K Delta from a NMEA sentence
-func KeyValueFromNMEA0183(m *nanomsg.Message) ([]signalk.Value, error) {
+func KeyValueFromNMEA0183(m *nanomsg.RawData) ([]signalk.Value, error) {
 	result := make([]signalk.Value, 0)
 	sentence, err := Parse(string(m.Payload))
 	if err != nil {
@@ -75,12 +74,12 @@ func KeyValueFromNMEA0183(m *nanomsg.Message) ([]signalk.Value, error) {
 	}
 	if v, ok := sentence.(Position2D); ok {
 		if lon, lat, err := v.GetPosition2D(); err == nil {
-			result = append(result, signalk.Value{Context: context, Path: []string{"navigation", "position"}, Value: signalk.Position{Longitude: lon, Latitude: lat}})
+			result = append(result, signalk.Value{Context: context, Path: []string{"navigation", "position"}, Value: nanomsg.Position{Longitude: lon, Latitude: lat}})
 		}
 	}
 	if v, ok := sentence.(Position3D); ok {
 		if lon, lat, alt, err := v.GetPosition3D(); err == nil {
-			result = append(result, signalk.Value{Context: context, Path: []string{"navigation", "position"}, Value: signalk.Position{Longitude: lon, Latitude: lat, Altitude: alt}})
+			result = append(result, signalk.Value{Context: context, Path: []string{"navigation", "position"}, Value: nanomsg.Position{Longitude: lon, Latitude: lat, Altitude: alt}})
 		}
 	}
 	if v, ok := sentence.(SpeedOverGround); ok {
@@ -115,7 +114,7 @@ func KeyValueFromNMEA0183(m *nanomsg.Message) ([]signalk.Value, error) {
 	}
 	if v, ok := sentence.(VesselLength); ok {
 		if length, err := v.GetVesselLength(); err == nil {
-			result = append(result, signalk.Value{Context: context, Path: []string{"design", "length"}, Value: signalk.Length{Overall: length}})
+			result = append(result, signalk.Value{Context: context, Path: []string{"design", "length"}, Value: nanomsg.Length{Overall: length}})
 		}
 	}
 	if v, ok := sentence.(VesselBeam); ok {
@@ -125,7 +124,7 @@ func KeyValueFromNMEA0183(m *nanomsg.Message) ([]signalk.Value, error) {
 	}
 
 	if len(result) == 0 {
-		return result, errors.New("Data cannot be mapped")
+		return result, fmt.Errorf("Data cannot be mapped: %s", sentence.String())
 	}
 	return result, nil
 }

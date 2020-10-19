@@ -1,6 +1,7 @@
 # GOSK <!-- omit in toc -->
 
 Go SignalK implementation and more.
+
 - [1. Design](#1-design)
   - [1.1. Micro services](#11-micro-services)
     - [1.1.1. Collectors](#111-collectors)
@@ -51,11 +52,11 @@ A publisher can provide the mapped data to other applications in different data 
 
 ### 1.2. Communication between micro services
 
-For communication between the different micro services [NNG](https://nng.nanomsg.org/) is used. Each message is a string of bytes and consists of a header, timestamp and the message body separated by a nul character. `<header>\x00<timestamp>\x00<message body>`. Only the first two nul characters are handled as separators so the message body can contain nul characters.
+For communication between the different micro services [NNG](https://nng.nanomsg.org/) is used. The messages are serialized using [protocol buffers](https://developers.google.com/protocol-buffers/).
 
 #### 1.2.1. Header
 
-The header consist of one or more header segments `<header segment>/<header segment>/<header segment>`, each header segment is separated by a forward slash. Header segments are strings and cannot contain a nul character or a forward slash. The header should give enough information to parse the message body.
+The header consist of one or more header segments, header segments are strings. The header should give enough information to parse the message body and can be used for subscription.
 
 #### 1.2.2. Timestamp
 

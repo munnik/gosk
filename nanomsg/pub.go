@@ -1,10 +1,13 @@
 package nanomsg
 
 import (
-	"log"
+	log "github.com/sirupsen/logrus"
 
 	"go.nanomsg.org/mangos/v3"
 	"go.nanomsg.org/mangos/v3/protocol/pub"
+
+	// register transports
+	_ "go.nanomsg.org/mangos/v3/transport/all"
 )
 
 // NewPub creates a new publisher socket

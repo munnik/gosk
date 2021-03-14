@@ -1,46 +1,44 @@
+/*
+Copyright © 2020 NAME HERE <EMAIL ADDRESS>
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
 package main
 
 import (
-	"time"
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 
-	"github.com/munnik/gosk/collector"
-	nmeaCollector "github.com/munnik/gosk/collector/nmea0183"
-	keyvalueStoreCollector "github.com/munnik/gosk/database/keyvalue"
-	rawStoreCollector "github.com/munnik/gosk/database/raw"
-	"github.com/munnik/gosk/nanomsg"
-	"github.com/munnik/gosk/signalk/mapper"
+	log "github.com/sirupsen/logrus"
 
-	_ "go.nanomsg.org/mangos/v3/transport/all"
+	"github.com/munnik/gosk/cmd"
 )
 
 func main() {
-	var tcpCollector collector.Collector
-	tcpCollector = nmeaCollector.NewTCPCollector("192.168.1.151", 10110, "Wheelhouse")
-	tcpCollectorPublisher := nanomsg.NewPub("tcp://127.0.0.1:6000")
-	defer tcpCollectorPublisher.Close()
-	go tcpCollector.Collect(tcpCollectorPublisher)
+	defer os.Exit(0)
+	signalChannel := make(chan os.Signal, 1)
+	signal.Notify(signalChannel)
+	go func() {
+		for {
+			s := <-signalChannel
+			// https://www.computerhope.com/unix/signals.htm
+			if s == syscall.SIGQUIT || s == syscall.SIGTERM || s == syscall.SIGINT {
+				log.Panic(fmt.Sprintf("Received signal: %s, trying to graceful stop the process", s))
+			}
+		}
+	}()
 
-	// TODO create a Modbus TCP collector
-
-	collectorProxy := nanomsg.NewPubSubProxy("tcp://127.0.0.1:6100")
-	defer collectorProxy.Close()
-	collectorProxy.AddSubscriber("tcp://127.0.0.1:6000")
-
-	rawStoreSubscriber := nanomsg.NewSub("tcp://127.0.0.1:6100", []byte(""))
-	defer rawStoreSubscriber.Close()
-	go rawStoreCollector.Store(rawStoreSubscriber) // subscribe to the proxy
-
-	mapperSubscriber := nanomsg.NewSub("tcp://127.0.0.1:6100", []byte(""))
-	defer mapperSubscriber.Close()
-	mapperPublisher := nanomsg.NewPub("tcp://127.0.0.1:6200")
-	defer mapperPublisher.Close()
-	go mapper.Map(mapperSubscriber, mapperPublisher) // subscribe to the proxy
-
-	keyvalueStoreSubscriber := nanomsg.NewSub("tcp://127.0.0.1:6200", []byte(""))
-	defer keyvalueStoreSubscriber.Close()
-	go keyvalueStoreCollector.Store(keyvalueStoreSubscriber)
-
-	for {
-		time.Sleep(time.Second)
-	}
+	cmd.Execute()
 }

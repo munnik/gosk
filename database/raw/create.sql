@@ -1,4 +1,4 @@
-drop table raw_data;
+drop table if exists raw_data;
 
 create table raw_data (
     _time timestamptz not null,

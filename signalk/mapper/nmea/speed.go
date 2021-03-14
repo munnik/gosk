@@ -33,7 +33,7 @@ func (s VTG) GetSpeedOverGround() (float64, error) {
 		return (unit.Speed(s.GroundSpeedKPH) * unit.KilometersPerHour).MetersPerSecond(), nil
 	}
 	if s.GroundSpeedKnots > 0 {
-		return (unit.Speed(s.GroundSpeedKnots) * unit.KilometersPerHour).MetersPerSecond(), nil
+		return (unit.Speed(s.GroundSpeedKnots) * unit.Knot).MetersPerSecond(), nil
 	}
 	return 0.0, nil
 }

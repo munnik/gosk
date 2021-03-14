@@ -2,8 +2,9 @@ package mapper
 
 import (
 	"fmt"
-	"log"
 	"strings"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/munnik/gosk/nanomsg"
@@ -34,14 +35,14 @@ func Map(subscriber mangos.Socket, publisher mangos.Socket) {
 	for {
 		received, err := subscriber.Recv()
 		if err != nil {
-			log.Fatal(err)
+			log.Warn(err)
 		}
 		if err := proto.Unmarshal(received, rawData); err != nil {
-			log.Fatal(err)
+			log.Warn(err)
 		}
 		values, err := KeyValueFromData(rawData)
 		if err != nil {
-			log.Println(err)
+			log.Warn(err)
 		}
 		for _, value := range values {
 			var mappedData *nanomsg.MappedData

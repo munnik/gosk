@@ -115,6 +115,8 @@ func Parse(raw string) (Sentence, error) {
 		return WPL(sentence.(goNMEA.WPL)), nil
 	case goNMEA.TypeZDA:
 		return ZDA(sentence.(goNMEA.ZDA)), nil
+	case TypeMDA, TypeMWV, TypeVWR:
+		return sentence, nil
 	}
 
 	return nil, fmt.Errorf("Don't know how to handle %s", sentence.DataType())

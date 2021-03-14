@@ -6,5 +6,5 @@ import (
 
 // Collector interface
 type Collector interface {
-	Collect(mangos.Socket) error
+	Collect(mangos.Socket)
 }

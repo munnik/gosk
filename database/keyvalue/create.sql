@@ -1,4 +1,4 @@
-drop table key_value_data;
+drop table if exists key_value_data;
 
 create table key_value_data (
     _time timestamptz not null,

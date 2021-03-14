@@ -16,6 +16,11 @@ type DepthBelowTransducer interface {
 	GetDepthBelowTransducer() (float64, error)
 }
 
+// WaterTemperature retrieves the water temperature from the sentence
+type WaterTemperature interface {
+	GetWaterTemperature() (float64, error)
+}
+
 // GetDepthBelowSurface retrieves the depth below surface from the sentence
 func (s DBS) GetDepthBelowSurface() (float64, error) {
 	if s.DepthMeters > 0 {
@@ -47,4 +52,9 @@ func (s DBT) GetDepthBelowTransducer() (float64, error) {
 // GetDepthBelowTransducer retrieves the depth below the transducer from the sentence
 func (s DPT) GetDepthBelowTransducer() (float64, error) {
 	return s.Depth, nil
+}
+
+// GetWaterTemperature retrieves the water temperature from the sentence
+func (s MDA) GetWaterTemperature() (float64, error) {
+	return unit.FromCelsius(s.WaterTemperature).Kelvin(), nil
 }

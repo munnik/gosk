@@ -122,6 +122,41 @@ func KeyValueFromNMEA0183(m *nanomsg.RawData) ([]signalk.Value, error) {
 			result = append(result, signalk.Value{Context: context, Path: []string{"design", "beam"}, Value: beam})
 		}
 	}
+	if v, ok := sentence.(TrueWindDirection); ok {
+		if trueWindDirection, err := v.GetTrueWindDirection(); err == nil {
+			result = append(result, signalk.Value{Context: context, Path: []string{"environment", "wind", "directionTrue"}, Value: trueWindDirection})
+		}
+	}
+	if v, ok := sentence.(MagneticWindDirection); ok {
+		if magneticWindDirection, err := v.GetMagneticWindDirection(); err == nil {
+			result = append(result, signalk.Value{Context: context, Path: []string{"environment", "wind", "directionMagnetic"}, Value: magneticWindDirection})
+		}
+	}
+	if v, ok := sentence.(WindSpeed); ok {
+		if windSpeed, err := v.GetWindSpeed(); err == nil {
+			result = append(result, signalk.Value{Context: context, Path: []string{"environment", "wind", "speedOverGround"}, Value: windSpeed})
+		}
+	}
+	if v, ok := sentence.(OutsideTemperature); ok {
+		if outsideTemperature, err := v.GetOutsideTemperature(); err == nil {
+			result = append(result, signalk.Value{Context: context, Path: []string{"environment", "outside", "temperature"}, Value: outsideTemperature})
+		}
+	}
+	if v, ok := sentence.(DewPointTemperature); ok {
+		if dewPointTemperature, err := v.GetDewPointTemperature(); err == nil {
+			result = append(result, signalk.Value{Context: context, Path: []string{"environment", "outside", "dewPointTemperature"}, Value: dewPointTemperature})
+		}
+	}
+	if v, ok := sentence.(Humidity); ok {
+		if humidity, err := v.GetHumidity(); err == nil {
+			result = append(result, signalk.Value{Context: context, Path: []string{"environment", "outside", "humidity"}, Value: humidity})
+		}
+	}
+	if v, ok := sentence.(WaterTemperature); ok {
+		if waterTemperature, err := v.GetWaterTemperature(); err == nil {
+			result = append(result, signalk.Value{Context: context, Path: []string{"environment", "water", "temperature"}, Value: waterTemperature})
+		}
+	}
 
 	if len(result) == 0 {
 		return result, fmt.Errorf("Data cannot be mapped: %s", sentence.String())

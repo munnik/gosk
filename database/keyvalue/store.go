@@ -3,7 +3,8 @@ package keyvalue
 import (
 	"context"
 	"fmt"
-	"log"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/jackc/pgx/v4"
 	"google.golang.org/protobuf/proto"

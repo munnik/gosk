@@ -27,7 +27,6 @@ import (
 )
 
 func main() {
-	defer os.Exit(0)
 	signalChannel := make(chan os.Signal, 1)
 	signal.Notify(signalChannel)
 	go func() {
@@ -35,7 +34,8 @@ func main() {
 			s := <-signalChannel
 			// https://www.computerhope.com/unix/signals.htm
 			if s == syscall.SIGQUIT || s == syscall.SIGTERM || s == syscall.SIGINT {
-				log.Panic(fmt.Sprintf("Received signal: %s, trying to graceful stop the process", s))
+				log.Info(fmt.Sprintf("Received signal: %s, trying to graceful stop the process", s))
+				os.Exit(0)
 			}
 		}
 	}()

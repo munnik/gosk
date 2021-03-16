@@ -2,12 +2,14 @@ package mapper
 
 import (
 	"fmt"
+	"log"
 	"strings"
 
-	"github.com/munnik/gosk/maper/signalk"
 	"github.com/munnik/gosk/mapper/nmea0183"
+	"github.com/munnik/gosk/mapper/signalk"
 	"github.com/munnik/gosk/nanomsg"
-	"go.nanomsg.org/mangos"
+	"go.nanomsg.org/mangos/v3"
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -17,6 +19,8 @@ const (
 	// ModbusType is used to identify the data as Modbus data
 	ModbusType = "Modbus"
 )
+
+var Logger *zap.Logger
 
 // KeyValueFromData tries to create a SignalK delta from the provided data
 func KeyValueFromData(m *nanomsg.RawData) ([]signalk.Value, error) {
@@ -33,14 +37,28 @@ func Map(subscriber mangos.Socket, publisher mangos.Socket) {
 	for {
 		received, err := subscriber.Recv()
 		if err != nil {
-			log.Warn(err)
+			Logger.Warn(
+				"Could not receive a message from the publisher",
+				zap.String("Error", err.Error()),
+			)
+			continue
 		}
 		if err := proto.Unmarshal(received, rawData); err != nil {
-			log.Warn(err)
+			Logger.Warn(
+				"Could not unmarshal the received data",
+				zap.ByteString("Received", received),
+				zap.String("Error", err.Error()),
+			)
+			continue
 		}
 		values, err := KeyValueFromData(rawData)
 		if err != nil {
-			log.Warn(err)
+			Logger.Warn(
+				"Could not extract values from the raw data",
+				zap.ByteString("Raw data", rawData.Payload),
+				zap.String("Error", err.Error()),
+			)
+			continue
 		}
 		for _, value := range values {
 			var mappedData *nanomsg.MappedData

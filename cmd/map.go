@@ -43,16 +43,19 @@ func init() {
 	mapCmd.Flags().StringVarP(&mapSubscribeURI, "subscribeURI", "s", "", "Nanomsg URI, the URI is used to listen for subscribed data.")
 	mapCmd.MarkFlagRequired("subscribeURI")
 
+	mapper.Logger = Logger
 }
 
 func doMap(cmd *cobra.Command, args []string) {
 	subscriber, err := nanomsg.NewSub(mapSubscribeURI, []byte{})
-	Logger.Fatal(
-		"Could not parse the URI",
-		zap.String("URI", mapSubscribeURI),
-		zap.String("Error", err.Error()),
-	)
-	os.Exit(1)
+	if err != nil {
+		Logger.Fatal(
+			"Could not parse the URI",
+			zap.String("URI", mapSubscribeURI),
+			zap.String("Error", err.Error()),
+		)
+		os.Exit(1)
+	}
 	mapper.Map(subscriber, nanomsg.NewPub(mapPublishURI))
 	for {
 	}

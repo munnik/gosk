@@ -1,4 +1,4 @@
-package nmea
+package nmea0183
 
 import (
 	"errors"

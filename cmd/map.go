@@ -19,8 +19,8 @@ package cmd
 import (
 	"os"
 
+	"github.com/munnik/gosk/mapper"
 	"github.com/munnik/gosk/nanomsg"
-	"github.com/munnik/gosk/signalk/mapper"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 )
@@ -42,14 +42,15 @@ func init() {
 	mapCmd.MarkFlagRequired("publishURI")
 	mapCmd.Flags().StringVarP(&mapSubscribeURI, "subscribeURI", "s", "", "Nanomsg URI, the URI is used to listen for subscribed data.")
 	mapCmd.MarkFlagRequired("subscribeURI")
+
 }
 
 func doMap(cmd *cobra.Command, args []string) {
 	subscriber, err := nanomsg.NewSub(mapSubscribeURI, []byte{})
-	logger.Fatal(
+	Logger.Fatal(
 		"Could not parse the URI",
 		zap.String("URI", mapSubscribeURI),
-		zap.Error(err),
+		zap.String("Error", err.Error()),
 	)
 	os.Exit(1)
 	mapper.Map(subscriber, nanomsg.NewPub(mapPublishURI))

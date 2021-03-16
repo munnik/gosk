@@ -4,13 +4,11 @@ import (
 	"fmt"
 	"strings"
 
-	log "github.com/sirupsen/logrus"
-
-	"github.com/golang/protobuf/proto"
+	"github.com/munnik/gosk/maper/signalk"
+	"github.com/munnik/gosk/mapper/nmea0183"
 	"github.com/munnik/gosk/nanomsg"
-	"github.com/munnik/gosk/signalk"
-	"github.com/munnik/gosk/signalk/mapper/nmea"
-	"go.nanomsg.org/mangos/v3"
+	"go.nanomsg.org/mangos"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -24,7 +22,7 @@ const (
 func KeyValueFromData(m *nanomsg.RawData) ([]signalk.Value, error) {
 	switch string(m.Header.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL]) {
 	case NMEA0183Type:
-		return nmea.KeyValueFromNMEA0183(m)
+		return nmea0183.KeyValueFromNMEA0183(m)
 	}
 	return nil, fmt.Errorf("Don't know how to handle %s", m.Header.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL])
 }
@@ -103,3 +101,35 @@ func Map(subscriber mangos.Socket, publisher mangos.Socket) {
 		}
 	}
 }
+
+// var delta signalk.Delta
+// if v, ok := sentence.(VDMVDO); ok && v.Packet != nil {
+// 	delta = signalk.DeltaWithContext{
+// 		Context: fmt.Sprintf("vessels.urn:mrn:imo:mmsi:%d", v.Packet.GetHeader().UserID),
+// 		Updates: []signalk.Update{
+// 			{
+// 				Source: signalk.Source{
+// 					Label:    string(m.HeaderSegments[nanomsg.HEADERSEGMENTSOURCE]),
+// 					Type:     string(m.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL]),
+// 					Sentence: sentence.DataType(),
+// 					Talker:   sentence.TalkerID(),
+// 					AisType:  v.Packet.GetHeader().MessageID,
+// 				},
+// 				Timestamp: m.Time.UTC().Format(time.RFC3339),
+// 			},
+// 		},
+// 	}
+// } else {
+// 	delta = signalk.DeltaWithoutContext{
+// 		Updates: []signalk.Update{
+// 			{
+// 				Source: signalk.Source{
+// 					Label:    string(m.HeaderSegments[nanomsg.HEADERSEGMENTSOURCE]),
+// 					Type:     string(m.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL]),
+// 					Sentence: sentence.DataType(),
+// 					Talker:   sentence.TalkerID(),
+// 				}, Timestamp: m.Time.UTC().Format(time.RFC3339),
+// 			},
+// 		},
+// 	}
+// }

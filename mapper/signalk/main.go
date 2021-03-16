@@ -1,6 +1,6 @@
 package signalk
 
-// remember to run `easyjson -all signalk/main.go` when changing a struct
+// remember to run `~/go/bin/easyjson -all mapper/signalk/main.go` when changing a struct
 
 // Delta as specified in https://signalk.org/specification/1.4.0/doc/data_model.html
 type Delta struct {
@@ -64,35 +64,3 @@ func (full *Full) AddValue(value Value) {
 func (vessel *Vessel) AddValue(value Value) {
 
 }
-
-// var delta signalk.Delta
-// if v, ok := sentence.(VDMVDO); ok && v.Packet != nil {
-// 	delta = signalk.DeltaWithContext{
-// 		Context: fmt.Sprintf("vessels.urn:mrn:imo:mmsi:%d", v.Packet.GetHeader().UserID),
-// 		Updates: []signalk.Update{
-// 			{
-// 				Source: signalk.Source{
-// 					Label:    string(m.HeaderSegments[nanomsg.HEADERSEGMENTSOURCE]),
-// 					Type:     string(m.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL]),
-// 					Sentence: sentence.DataType(),
-// 					Talker:   sentence.TalkerID(),
-// 					AisType:  v.Packet.GetHeader().MessageID,
-// 				},
-// 				Timestamp: m.Time.UTC().Format(time.RFC3339),
-// 			},
-// 		},
-// 	}
-// } else {
-// 	delta = signalk.DeltaWithoutContext{
-// 		Updates: []signalk.Update{
-// 			{
-// 				Source: signalk.Source{
-// 					Label:    string(m.HeaderSegments[nanomsg.HEADERSEGMENTSOURCE]),
-// 					Type:     string(m.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL]),
-// 					Sentence: sentence.DataType(),
-// 					Talker:   sentence.TalkerID(),
-// 				}, Timestamp: m.Time.UTC().Format(time.RFC3339),
-// 			},
-// 		},
-// 	}
-// }

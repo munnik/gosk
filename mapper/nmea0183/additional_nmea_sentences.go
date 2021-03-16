@@ -1,9 +1,9 @@
-package nmea
+package nmea0183
 
 import (
 	log "github.com/sirupsen/logrus"
 
-	"github.com/adrianmo/go-nmea"
+	goNMEA "github.com/adrianmo/go-nmea"
 )
 
 const (
@@ -17,7 +17,7 @@ const (
 
 // MDA Meteorological Composite
 type MDA struct {
-	nmea.BaseSentence
+	goNMEA.BaseSentence
 	BarometricPressureInInchesOfMercury float64
 	BarometricPressureInBar             float64
 	AirTemperature                      float64
@@ -33,7 +33,7 @@ type MDA struct {
 
 // MWV Wind Speed and Angle
 type MWV struct {
-	nmea.BaseSentence
+	goNMEA.BaseSentence
 	Angle         float64
 	Reference     string
 	WindSpeed     float64
@@ -43,7 +43,7 @@ type MWV struct {
 
 // VWR Relative Wind Speed and Angle
 type VWR struct {
-	nmea.BaseSentence
+	goNMEA.BaseSentence
 	Direction                    float64
 	LeftRightOfBow               string
 	WindSpeedInKnots             float64
@@ -52,8 +52,8 @@ type VWR struct {
 }
 
 func init() {
-	if err := nmea.RegisterParser("MDA", func(s nmea.BaseSentence) (nmea.Sentence, error) {
-		p := nmea.NewParser(s)
+	if err := goNMEA.RegisterParser("MDA", func(s goNMEA.BaseSentence) (goNMEA.Sentence, error) {
+		p := goNMEA.NewParser(s)
 		p.AssertType(TypeMDA)
 		return MDA{
 			BaseSentence:                        s,
@@ -72,8 +72,8 @@ func init() {
 	}); err != nil {
 		log.Panic(err)
 	}
-	if err := nmea.RegisterParser("MWV", func(s nmea.BaseSentence) (nmea.Sentence, error) {
-		p := nmea.NewParser(s)
+	if err := goNMEA.RegisterParser("MWV", func(s goNMEA.BaseSentence) (goNMEA.Sentence, error) {
+		p := goNMEA.NewParser(s)
 		p.AssertType(TypeMWV)
 		return MWV{
 			BaseSentence:  s,
@@ -86,8 +86,8 @@ func init() {
 	}); err != nil {
 		log.Panic(err)
 	}
-	if err := nmea.RegisterParser("VWR", func(s nmea.BaseSentence) (nmea.Sentence, error) {
-		p := nmea.NewParser(s)
+	if err := goNMEA.RegisterParser("VWR", func(s goNMEA.BaseSentence) (goNMEA.Sentence, error) {
+		p := goNMEA.NewParser(s)
 		p.AssertType(TypeVWR)
 		return VWR{
 			BaseSentence:                 s,
@@ -100,5 +100,4 @@ func init() {
 	}); err != nil {
 		log.Panic(err)
 	}
-
 }

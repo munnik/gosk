@@ -28,7 +28,7 @@ import (
 )
 
 var cfgFile string
-var logger *zap.Logger
+var Logger *zap.Logger
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -45,13 +45,13 @@ data can be published in different ways (e.g. HTTP or Websocket).`,
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		logger.Fatal(err.Error())
+		Logger.Fatal(err.Error())
 		os.Exit(1)
 	}
 }
 
 func init() {
-	logger, _ = zap.NewProduction()
+	Logger, _ = zap.NewProduction()
 
 	cobra.OnInitialize(initConfig)
 

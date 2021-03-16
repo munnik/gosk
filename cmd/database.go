@@ -21,8 +21,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/munnik/gosk/database/keyvalue"
-	"github.com/munnik/gosk/database/raw"
+	"github.com/munnik/gosk/database"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/spf13/cobra"
 )
@@ -56,32 +55,34 @@ func init() {
 	rawDatabaseCmd.MarkFlagRequired("subscribeURI")
 	keyValueDatabaseCmd.Flags().StringVarP(&databaseSubscribeURI, "subscribeURI", "s", "", "Nanomsg URI, the URI is used to listen for subscribed data.")
 	keyValueDatabaseCmd.MarkFlagRequired("subscribeURI")
+
+	database.Logger = Logger
 }
 
 func rawDatabase(cmd *cobra.Command, args []string) {
 	subscriber, err := nanomsg.NewSub(databaseSubscribeURI, []byte{})
 	if err != nil {
-		logger.Fatal(
+		Logger.Fatal(
 			"Could not subscribe to the URI",
 			zap.String("URI", databaseSubscribeURI),
-			zap.Error(err),
+			zap.String("Error", err.Error()),
 		)
 		os.Exit(1)
 	}
-	raw.Store(subscriber)
+	database.StoreRaw(subscriber)
 	for {
 	}
 }
 
 func keyValueDatabase(cmd *cobra.Command, args []string) {
 	subscriber, err := nanomsg.NewSub(databaseSubscribeURI, []byte{})
-	logger.Fatal(
+	Logger.Fatal(
 		"Could not subscribe to the URI",
 		zap.String("URI", databaseSubscribeURI),
-		zap.Error(err),
+		zap.String("Error", err.Error()),
 	)
 	os.Exit(1)
-	keyvalue.Store(subscriber)
+	database.StoreKeyValue(subscriber)
 	for {
 	}
 }

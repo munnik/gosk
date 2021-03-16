@@ -1,4 +1,4 @@
-package mapper_test
+package mapper
 
 import (
 	"reflect"
@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"github.com/munnik/gosk/nanomsg"
-	"github.com/munnik/gosk/signalk"
-	"github.com/munnik/gosk/signalk/mapper"
 )
 
 func TestDeltaFromData(t *testing.T) {

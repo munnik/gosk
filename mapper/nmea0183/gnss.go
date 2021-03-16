@@ -1,4 +1,4 @@
-package nmea
+package nmea0183
 
 // FixQuality retrieves the fix quality from the sentence
 type FixQuality interface {

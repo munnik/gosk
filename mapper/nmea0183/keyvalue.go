@@ -1,10 +1,10 @@
-package nmea
+package nmea0183
 
 import (
 	"fmt"
 
+	"github.com/munnik/gosk/mapper/signalk"
 	"github.com/munnik/gosk/nanomsg"
-	"github.com/munnik/gosk/signalk"
 )
 
 // KeyValueFromNMEA0183 tries to create a Signal K Delta from a NMEA sentence

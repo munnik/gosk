@@ -1,21 +1,19 @@
-package nmea_test
+package nmea0183
 
 import (
 	"math"
 	"testing"
-
-	"github.com/munnik/gosk/signalk/mapper/nmea"
 )
 
 func TestGetSpeedOverGround(t *testing.T) {
 	tests := []struct {
 		name    string
-		s       nmea.SpeedOverGround
+		s       SpeedOverGround
 		want    float64
 		wantErr bool
 	}{
-		{name: "Empty RMC", s: nmea.RMC{}, want: 0.0, wantErr: true},
-		{name: "Empty VTG", s: nmea.RMC{}, want: 0.0, wantErr: true},
+		{name: "Empty RMC", s: RMC{}, want: 0.0, wantErr: true},
+		{name: "Empty VTG", s: RMC{}, want: 0.0, wantErr: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -34,14 +32,14 @@ func TestGetSpeedOverGround(t *testing.T) {
 func TestGetSpeedThroughWater(t *testing.T) {
 	tests := []struct {
 		name    string
-		s       nmea.SpeedThroughWater
+		s       SpeedThroughWater
 		want    float64
 		wantErr bool
 	}{
-		{name: "Empty VHW", s: nmea.VHW{}, want: 0.0, wantErr: false},
-		{name: "VHW with speed through water in kmh", s: nmea.VHW{SpeedThroughWaterKPH: 12}, want: 3.333336, wantErr: false},
-		{name: "VHW with speed through water in knots", s: nmea.VHW{SpeedThroughWaterKnots: 7}, want: 3.601108, wantErr: false},
-		{name: "VHW with both speed through water in kmh and speed through water in knots", s: nmea.VHW{SpeedThroughWaterKPH: 12, SpeedThroughWaterKnots: 7}, want: 3.333336, wantErr: false},
+		{name: "Empty VHW", s: VHW{}, want: 0.0, wantErr: false},
+		{name: "VHW with speed through water in kmh", s: VHW{SpeedThroughWaterKPH: 12}, want: 3.333336, wantErr: false},
+		{name: "VHW with speed through water in knots", s: VHW{SpeedThroughWaterKnots: 7}, want: 3.601108, wantErr: false},
+		{name: "VHW with both speed through water in kmh and speed through water in knots", s: VHW{SpeedThroughWaterKPH: 12, SpeedThroughWaterKnots: 7}, want: 3.333336, wantErr: false},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

@@ -7,11 +7,11 @@ import (
 	"net/url"
 	"os"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/tarm/serial"
+	"go.uber.org/zap"
 
+	"github.com/munnik/gosk/mapper"
 	"github.com/munnik/gosk/nanomsg"
-	"github.com/munnik/gosk/signalk/mapper"
 	"go.nanomsg.org/mangos/v3"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -67,7 +67,10 @@ func (c *NMEA0183FileCollector) Collect(socket mangos.Socket) {
 
 func processStream(stream <-chan []byte, socket mangos.Socket, name string) {
 	for payload := range stream {
-		log.Debug(fmt.Sprintf("Retrieving a message from the stream: %s", payload))
+		Logger.Debug(
+			"Received a message from the stream",
+			zap.ByteString("Message", payload),
+		)
 		m := &nanomsg.RawData{
 			Header: &nanomsg.Header{
 				HeaderSegments: []string{"collector", mapper.NMEA0183Type, name},
@@ -77,14 +80,25 @@ func processStream(stream <-chan []byte, socket mangos.Socket, name string) {
 		}
 		toSend, err := proto.Marshal(m)
 		if err != nil {
-			log.Warn(err)
+			Logger.Warn(
+				"Unable to marshall the message to ProtoBuffer",
+				zap.ByteString("Message", payload),
+				zap.String("Error", err.Error()),
+			)
 			continue
 		}
 		if err := socket.Send(toSend); err != nil {
-			log.Warn(err)
+			Logger.Warn(
+				"Unable to send the message using NanoMSG",
+				zap.ByteString("Message", payload),
+				zap.String("Error", err.Error()),
+			)
 			continue
 		}
-		log.Debug(fmt.Sprintf("Forwarded the message on the Nanomsg socket: %s", payload))
+		Logger.Debug(
+			"Send the message on the NanoMSG socket",
+			zap.ByteString("Message", payload),
+		)
 	}
 }
 
@@ -122,7 +136,11 @@ func receiveFromFile(path string, baudRate int, stream chan<- []byte) error {
 }
 
 func receiveFromNetwork(url *url.URL, dial bool, stream chan<- []byte) error {
-	log.Info(fmt.Sprintf("Start to collect data from the network using the host and port %s:%s", url.Hostname(), url.Port()))
+	Logger.Info(
+		"Start to collect data from the network",
+		zap.String("Host", url.Hostname()),
+		zap.String("Port", url.Port()),
+	)
 	if dial {
 		if url.Scheme == "udp" || url.Scheme == "tcp" {
 			conn, err := net.Dial(url.Scheme, fmt.Sprintf("%s:%s", url.Hostname(), url.Port()))

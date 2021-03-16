@@ -53,6 +53,8 @@ func init() {
 	collectCmd.Flags().IntVarP(&baudRate, "baudRate", "b", 4800, "Baud rate for serial connections, default is 4800 baud.")
 	collectCmd.Flags().StringVarP(&collectPublishURI, "publishURI", "u", "", "Nanomsg URI, the URI is used to publish the collected data on. It listens for connections.")
 	collectCmd.MarkFlagRequired("publishURI")
+
+	collector.Logger = Logger
 }
 
 func collect(cmd *cobra.Command, args []string) {
@@ -60,10 +62,10 @@ func collect(cmd *cobra.Command, args []string) {
 	case "nmea0183":
 		uri, err := url.Parse(connectionURI)
 		if err != nil {
-			logger.Fatal(
+			Logger.Fatal(
 				"Could not parse the URI",
 				zap.String("URI", connectionURI),
-				zap.Error(err),
+				zap.String("Error", err.Error()),
 			)
 			os.Exit(1)
 		}
@@ -74,7 +76,7 @@ func collect(cmd *cobra.Command, args []string) {
 			collector.NewNMEA0183FileCollector(uri, baudRate, connectionName).Collect(nanomsg.NewPub(collectPublishURI))
 		}
 	default:
-		logger.Fatal(
+		Logger.Fatal(
 			"Not a supported protocol",
 			zap.String("Protocol", protocol),
 		)

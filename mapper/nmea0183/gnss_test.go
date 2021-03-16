@@ -1,19 +1,17 @@
-package nmea_test
+package nmea0183
 
 import (
 	"testing"
-
-	"github.com/munnik/gosk/signalk/mapper/nmea"
 )
 
 func TestGetFixQuality(t *testing.T) {
 	tests := []struct {
 		name    string
-		s       nmea.FixQuality
+		s       FixQuality
 		want    string
 		wantErr bool
 	}{
-		{name: "Empty GGA", s: nmea.GGA{}, want: "", wantErr: false},
+		{name: "Empty GGA", s: GGA{}, want: "", wantErr: false},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -32,11 +30,11 @@ func TestGetFixQuality(t *testing.T) {
 func TestGetFixType(t *testing.T) {
 	tests := []struct {
 		name    string
-		s       nmea.FixType
+		s       FixType
 		want    string
 		wantErr bool
 	}{
-		{name: "Empty GSA", s: nmea.GSA{}, want: "", wantErr: false},
+		{name: "Empty GSA", s: GSA{}, want: "", wantErr: false},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -55,13 +53,13 @@ func TestGetFixType(t *testing.T) {
 func TestGetNumberOfSatelites(t *testing.T) {
 	tests := []struct {
 		name    string
-		s       nmea.NumberOfSatelites
+		s       NumberOfSatelites
 		want    int64
 		wantErr bool
 	}{
-		{name: "Empty GGA", s: nmea.GGA{}, want: 0, wantErr: false},
-		{name: "Empty GSA", s: nmea.GSA{}, want: 0, wantErr: false},
-		{name: "Empty GSV", s: nmea.GSV{}, want: 0, wantErr: false},
+		{name: "Empty GGA", s: GGA{}, want: 0, wantErr: false},
+		{name: "Empty GSA", s: GSA{}, want: 0, wantErr: false},
+		{name: "Empty GSV", s: GSV{}, want: 0, wantErr: false},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

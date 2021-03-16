@@ -17,7 +17,9 @@ limitations under the License.
 package cmd
 
 import (
-	log "github.com/sirupsen/logrus"
+	"os"
+
+	"go.uber.org/zap"
 
 	"github.com/munnik/gosk/database/keyvalue"
 	"github.com/munnik/gosk/database/raw"
@@ -59,8 +61,12 @@ func init() {
 func rawDatabase(cmd *cobra.Command, args []string) {
 	subscriber, err := nanomsg.NewSub(databaseSubscribeURI, []byte{})
 	if err != nil {
-		log.Fatal(err)
-		panic(err)
+		logger.Fatal(
+			"Could not subscribe to the URI",
+			zap.String("URI", databaseSubscribeURI),
+			zap.Error(err),
+		)
+		os.Exit(1)
 	}
 	raw.Store(subscriber)
 	for {
@@ -69,10 +75,12 @@ func rawDatabase(cmd *cobra.Command, args []string) {
 
 func keyValueDatabase(cmd *cobra.Command, args []string) {
 	subscriber, err := nanomsg.NewSub(databaseSubscribeURI, []byte{})
-	if err != nil {
-		log.Fatal(err)
-		panic(err)
-	}
+	logger.Fatal(
+		"Could not subscribe to the URI",
+		zap.String("URI", databaseSubscribeURI),
+		zap.Error(err),
+	)
+	os.Exit(1)
 	keyvalue.Store(subscriber)
 	for {
 	}

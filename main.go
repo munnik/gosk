@@ -16,15 +16,15 @@ limitations under the License.
 package main
 
 import (
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/munnik/gosk/cmd"
+	"go.uber.org/zap"
 )
+
+var logger *zap.Logger
 
 func main() {
 	signalChannel := make(chan os.Signal, 1)
@@ -34,11 +34,18 @@ func main() {
 			s := <-signalChannel
 			// https://www.computerhope.com/unix/signals.htm
 			if s == syscall.SIGQUIT || s == syscall.SIGTERM || s == syscall.SIGINT {
-				log.Info(fmt.Sprintf("Received signal: %s, trying to graceful stop the process", s))
+				logger.Error(
+					"Receive a signal from to OS to stop the application",
+					zap.String("Signal", s.String()),
+				)
 				os.Exit(0)
 			}
 		}
 	}()
 
 	cmd.Execute()
+}
+
+func init() {
+	logger, _ = zap.NewProduction()
 }

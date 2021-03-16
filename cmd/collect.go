@@ -17,13 +17,13 @@ limitations under the License.
 package cmd
 
 import (
-	"fmt"
 	"net/url"
 	"os"
 
 	"github.com/munnik/gosk/collector"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/spf13/cobra"
+	"go.uber.org/zap"
 )
 
 var (
@@ -58,9 +58,14 @@ func init() {
 func collect(cmd *cobra.Command, args []string) {
 	switch protocol {
 	case "nmea0183":
-		uri, error := url.Parse(connectionURI)
-		if error != nil {
-			fmt.Printf("Could not parse the uri %s\n", connectionURI)
+		uri, err := url.Parse(connectionURI)
+		if err != nil {
+			logger.Fatal(
+				"Could not parse the URI",
+				zap.String("URI", connectionURI),
+				zap.Error(err),
+			)
+			os.Exit(1)
 		}
 		if uri.Scheme == "tcp" || uri.Scheme == "udp" {
 			collector.NewNMEA0183NetworkCollector(uri, dial, connectionName).Collect(nanomsg.NewPub(collectPublishURI))
@@ -69,7 +74,10 @@ func collect(cmd *cobra.Command, args []string) {
 			collector.NewNMEA0183FileCollector(uri, baudRate, connectionName).Collect(nanomsg.NewPub(collectPublishURI))
 		}
 	default:
-		fmt.Printf("%s is not a supported protocol\n", protocol)
+		logger.Fatal(
+			"Not a supported protocol",
+			zap.String("Protocol", protocol),
+		)
 		os.Exit(1)
 	}
 }

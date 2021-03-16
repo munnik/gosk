@@ -21,12 +21,14 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"go.uber.org/zap"
 
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
 )
 
 var cfgFile string
+var logger *zap.Logger
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -43,12 +45,14 @@ data can be published in different ways (e.g. HTTP or Websocket).`,
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
+		logger.Fatal(err.Error())
 		os.Exit(1)
 	}
 }
 
 func init() {
+	logger, _ = zap.NewProduction()
+
 	cobra.OnInitialize(initConfig)
 
 	// Here you will define your flags and configuration settings.

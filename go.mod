@@ -25,6 +25,8 @@ require (
 	github.com/spf13/viper v1.7.1
 	github.com/tarm/serial v0.0.0-20180830185346-98f6abe2eb07
 	go.nanomsg.org/mangos/v3 v3.1.3
+	go.uber.org/multierr v1.6.0 // indirect
+	go.uber.org/zap v1.16.0
 	golang.org/x/crypto v0.0.0-20210220033148-5ea612d1eb83 // indirect
 	golang.org/x/sys v0.0.0-20210313110737-8e9fff1a3a18 // indirect
 	golang.org/x/text v0.3.5 // indirect

@@ -17,10 +17,12 @@ limitations under the License.
 package cmd
 
 import (
+	"os"
+
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/signalk/mapper"
-	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"go.uber.org/zap"
 )
 
 var (
@@ -44,10 +46,12 @@ func init() {
 
 func doMap(cmd *cobra.Command, args []string) {
 	subscriber, err := nanomsg.NewSub(mapSubscribeURI, []byte{})
-	if err != nil {
-		log.Fatal(err)
-		panic(err)
-	}
+	logger.Fatal(
+		"Could not parse the URI",
+		zap.String("URI", mapSubscribeURI),
+		zap.Error(err),
+	)
+	os.Exit(1)
 	mapper.Map(subscriber, nanomsg.NewPub(mapPublishURI))
 	for {
 	}

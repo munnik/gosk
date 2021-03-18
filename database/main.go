@@ -3,7 +3,6 @@ package database
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/jackc/pgx/v4"
 	"go.uber.org/zap"
@@ -23,7 +22,6 @@ func StoreRaw(socket mangos.Socket) {
 			"Could not connect to the database",
 			zap.String("Error", err.Error()),
 		)
-		os.Exit(1)
 	}
 	query := "insert into raw_data (_time, _key, _value) values ($1, $2, $3)"
 	m := &nanomsg.RawData{}
@@ -60,7 +58,6 @@ func StoreKeyValue(socket mangos.Socket) {
 			"Could not connect to the database",
 			zap.String("Error", err.Error()),
 		)
-		os.Exit(1)
 	}
 	query := "insert into key_value_data (_time, _key, _context, _path, _value) values ($1, $2, $3, $4, $5)"
 	m := &nanomsg.MappedData{}

@@ -17,8 +17,6 @@ limitations under the License.
 package cmd
 
 import (
-	"os"
-
 	"github.com/munnik/gosk/mapper"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/spf13/cobra"
@@ -54,7 +52,6 @@ func doMap(cmd *cobra.Command, args []string) {
 			zap.String("URI", mapSubscribeURI),
 			zap.String("Error", err.Error()),
 		)
-		os.Exit(1)
 	}
 	mapper.Map(subscriber, nanomsg.NewPub(mapPublishURI))
 	for {

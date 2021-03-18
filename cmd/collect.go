@@ -18,7 +18,6 @@ package cmd
 
 import (
 	"net/url"
-	"os"
 
 	"github.com/munnik/gosk/collector"
 	"github.com/munnik/gosk/nanomsg"
@@ -67,7 +66,6 @@ func collect(cmd *cobra.Command, args []string) {
 				zap.String("URI", connectionURI),
 				zap.String("Error", err.Error()),
 			)
-			os.Exit(1)
 		}
 		if uri.Scheme == "tcp" || uri.Scheme == "udp" {
 			collector.NewNMEA0183NetworkCollector(uri, dial, connectionName).Collect(nanomsg.NewPub(collectPublishURI))
@@ -80,6 +78,5 @@ func collect(cmd *cobra.Command, args []string) {
 			"Not a supported protocol",
 			zap.String("Protocol", protocol),
 		)
-		os.Exit(1)
 	}
 }

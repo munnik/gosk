@@ -1,8 +1,6 @@
 package nanomsg
 
 import (
-	"os"
-
 	"go.nanomsg.org/mangos/v3"
 	"go.uber.org/zap"
 
@@ -34,7 +32,6 @@ func (p *Proxy) SubscribeTo(url string) {
 			zap.ByteString("Topic", topic),
 			zap.String("Error", err.Error()),
 		)
-		os.Exit(1)
 	}
 	go func(url string, topic []byte) {
 		defer socket.Close()

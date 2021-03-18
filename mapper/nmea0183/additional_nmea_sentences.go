@@ -1,8 +1,6 @@
 package nmea0183
 
 import (
-	"os"
-
 	goNMEA "github.com/adrianmo/go-nmea"
 	"go.uber.org/zap"
 )
@@ -76,7 +74,6 @@ func init() {
 		}, p.Err()
 	}); err != nil {
 		Logger.Fatal("Could not register parser for MDA")
-		os.Exit(1)
 	}
 	if err := goNMEA.RegisterParser("MWV", func(s goNMEA.BaseSentence) (goNMEA.Sentence, error) {
 		p := goNMEA.NewParser(s)
@@ -91,7 +88,6 @@ func init() {
 		}, p.Err()
 	}); err != nil {
 		Logger.Fatal("Could not register parser for MWV")
-		os.Exit(1)
 	}
 	if err := goNMEA.RegisterParser("VWR", func(s goNMEA.BaseSentence) (goNMEA.Sentence, error) {
 		p := goNMEA.NewParser(s)
@@ -106,6 +102,5 @@ func init() {
 		}, p.Err()
 	}); err != nil {
 		Logger.Fatal("Could not register parser for VWR")
-		os.Exit(1)
 	}
 }

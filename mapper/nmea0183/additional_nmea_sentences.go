@@ -1,9 +1,10 @@
 package nmea0183
 
 import (
-	log "github.com/sirupsen/logrus"
+	"os"
 
 	goNMEA "github.com/adrianmo/go-nmea"
+	"go.uber.org/zap"
 )
 
 const (
@@ -41,6 +42,8 @@ type MWV struct {
 	Status        string
 }
 
+var Logger *zap.Logger
+
 // VWR Relative Wind Speed and Angle
 type VWR struct {
 	goNMEA.BaseSentence
@@ -52,6 +55,8 @@ type VWR struct {
 }
 
 func init() {
+	Logger, _ := zap.NewProduction()
+
 	if err := goNMEA.RegisterParser("MDA", func(s goNMEA.BaseSentence) (goNMEA.Sentence, error) {
 		p := goNMEA.NewParser(s)
 		p.AssertType(TypeMDA)
@@ -70,7 +75,8 @@ func init() {
 			WindSpeedInMetersPerSecond:          p.Float64(18, "WindSpeedInMetersPerSecond"),
 		}, p.Err()
 	}); err != nil {
-		log.Panic(err)
+		Logger.Fatal("Could not register parser for MDA")
+		os.Exit(1)
 	}
 	if err := goNMEA.RegisterParser("MWV", func(s goNMEA.BaseSentence) (goNMEA.Sentence, error) {
 		p := goNMEA.NewParser(s)
@@ -84,7 +90,8 @@ func init() {
 			Status:        p.String(4, "Status"),
 		}, p.Err()
 	}); err != nil {
-		log.Panic(err)
+		Logger.Fatal("Could not register parser for MWV")
+		os.Exit(1)
 	}
 	if err := goNMEA.RegisterParser("VWR", func(s goNMEA.BaseSentence) (goNMEA.Sentence, error) {
 		p := goNMEA.NewParser(s)
@@ -98,6 +105,7 @@ func init() {
 			WindSpeedInKilometersPerHour: p.Float64(6, "SpeedInKilometersPerHour"),
 		}, p.Err()
 	}); err != nil {
-		log.Panic(err)
+		Logger.Fatal("Could not register parser for VWR")
+		os.Exit(1)
 	}
 }

@@ -1,10 +1,9 @@
 package nanomsg
 
 import (
-	log "github.com/sirupsen/logrus"
-
 	"go.nanomsg.org/mangos/v3"
 	"go.nanomsg.org/mangos/v3/protocol/pub"
+	"go.uber.org/zap"
 
 	// register transports
 	_ "go.nanomsg.org/mangos/v3/transport/all"
@@ -14,10 +13,17 @@ import (
 func NewPub(url string) mangos.Socket {
 	socket, err := pub.NewSocket()
 	if err != nil {
-		log.Fatalf("Can't create pubSocket: %s", err)
+		Logger.Fatal(
+			"Could not create publisher",
+			zap.String("Error", err.Error()),
+		)
 	}
 	if err := socket.Listen(url); err != nil {
-		log.Fatal(err)
+		Logger.Fatal(
+			"Could not listen on the URL",
+			zap.String("URL", url),
+			zap.String("Error", err.Error()),
+		)
 	}
 	return socket
 }

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/munnik/gosk/mapper/signalk"
 	"github.com/munnik/gosk/nanomsg"
 )
 
@@ -22,12 +23,12 @@ func TestDeltaFromData(t *testing.T) {
 	}{
 		{name: "Invalid data type", args: args{data: []byte{}, dataType: invalidDataType}, want: signalk.DeltaWithContext{}, wantErr: true},
 		// TODO should errors from the nmea library result in an error or just an empty delta?
-		{name: "Empty bytes NMEA message", args: args{data: []byte{}, dataType: mapper.NMEA0183Type}, want: signalk.DeltaWithContext{}, wantErr: true},
+		{name: "Empty bytes NMEA message", args: args{data: []byte{}, dataType: NMEA0183Type}, want: signalk.DeltaWithContext{}, wantErr: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			m := nanomsg.NewMessage(test.args.data, time.Now(), []byte("collector"), []byte(test.args.dataType), []byte("test"))
-			got, err := mapper.KeyValueFromData(m)
+			got, err := KeyValueFromData(m)
 			if (err != nil) != test.wantErr {
 				t.Errorf("DeltaFromData() error = %v, wantErr %v", err, test.wantErr)
 				return

@@ -2,7 +2,6 @@ package mapper
 
 import (
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/munnik/gosk/mapper/nmea0183"
@@ -113,7 +112,11 @@ func Map(subscriber mangos.Socket, publisher mangos.Socket) {
 
 			toSend, err := proto.Marshal(mappedData)
 			if err != nil {
-				log.Fatal(err)
+				Logger.Warn(
+					"Could not marshall the mapped data",
+					zap.String("Mapped data", mappedData.String()),
+					zap.String("Error", err.Error()),
+				)
 			}
 			publisher.Send(toSend)
 		}

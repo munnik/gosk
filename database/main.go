@@ -3,7 +3,6 @@ package database
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/jackc/pgx/v4"
@@ -57,7 +56,11 @@ func StoreRaw(socket mangos.Socket) {
 func StoreKeyValue(socket mangos.Socket) {
 	conn, err := pgx.Connect(context.Background(), "postgresql://gosk:gosk@localhost:5432")
 	if err != nil {
-		log.Fatal(err)
+		Logger.Fatal(
+			"Could not connect to the database",
+			zap.String("Error", err.Error()),
+		)
+		os.Exit(1)
 	}
 	query := "insert into key_value_data (_time, _key, _context, _path, _value) values ($1, $2, $3, $4, $5)"
 	m := &nanomsg.MappedData{}

@@ -45,8 +45,10 @@ data can be published in different ways (e.g. HTTP or Websocket).`,
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		Logger.Fatal(err.Error())
-		os.Exit(1)
+		Logger.Fatal(
+			"Could not execute the Cobra root command",
+			zap.String("Error", err.Error()),
+		)
 	}
 }
 

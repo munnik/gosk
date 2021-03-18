@@ -37,6 +37,8 @@ func init() {
 	proxyCmd.Flags().StringVarP(&proxyPublishURI, "publishURI", "u", "", "Nanomsg URI, the URI is used to publish the collected data on. It listens for connections.")
 	proxyCmd.MarkFlagRequired("publishURI")
 	proxyCmd.Flags().StringSliceVarP(&proxySubscribeURI, "subscribeURI", "s", []string{}, "Nanomsg URI, the URI is used to listen for subscribed data.")
+
+	nanomsg.Logger = Logger
 }
 
 func proxy(cmd *cobra.Command, args []string) {

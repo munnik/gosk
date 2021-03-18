@@ -1,11 +1,10 @@
 package nanomsg
 
 import (
-	"fmt"
-
-	log "github.com/sirupsen/logrus"
+	"os"
 
 	"go.nanomsg.org/mangos/v3"
+	"go.uber.org/zap"
 
 	// register transports
 	_ "go.nanomsg.org/mangos/v3/transport/all"
@@ -29,8 +28,13 @@ func (p *Proxy) SubscribeTo(url string) {
 	topic := []byte("")
 	socket, err := NewSub(url, topic)
 	if err != nil {
-		log.Fatal(err)
-		panic(err)
+		Logger.Fatal(
+			"Could not subscribe",
+			zap.String("URL", url),
+			zap.ByteString("Topic", topic),
+			zap.String("Error", err.Error()),
+		)
+		os.Exit(1)
 	}
 	go func(url string, topic []byte) {
 		defer socket.Close()
@@ -38,13 +42,13 @@ func (p *Proxy) SubscribeTo(url string) {
 			select {
 			default:
 				if msg, err := socket.Recv(); err != nil {
-					log.Warn(err)
+					Logger.Warn(
+						"Error occured when receiving a message",
+					)
 				} else {
-					log.Debug(fmt.Sprintf("The proxy received a message from one of the publishers: %s", msg))
 					p.publisher.Send(msg)
 				}
 			case <-stopChannel:
-				log.Debug("In stop channel")
 				return
 			}
 		}
@@ -53,11 +57,9 @@ func (p *Proxy) SubscribeTo(url string) {
 
 // Close stops and removes all subscribers
 func (p *Proxy) Close() {
-	log.Info("Closing all subscribtions")
 	for _, stopChannel := range p.stopChannels {
 		close(stopChannel)
 	}
 	p.stopChannels = nil
-	log.Info("Closing the publisher")
 	p.publisher.Close()
 }

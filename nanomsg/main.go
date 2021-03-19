@@ -1,7 +1,5 @@
 package nanomsg
 
-import "go.uber.org/zap"
-
 // Used identify header segments
 const (
 	HEADERSEGMENTPROCESS  = 0
@@ -16,5 +14,3 @@ const (
 	POSITION = 2
 	LENGTH   = 3
 )
-
-var Logger *zap.Logger

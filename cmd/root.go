@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/munnik/gosk/logger"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
@@ -28,7 +29,6 @@ import (
 )
 
 var cfgFile string
-var Logger *zap.Logger
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -45,7 +45,7 @@ data can be published in different ways (e.g. HTTP or Websocket).`,
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		Logger.Fatal(
+		logger.GetLogger().Fatal(
 			"Could not execute the Cobra root command",
 			zap.String("Error", err.Error()),
 		)
@@ -53,8 +53,6 @@ func Execute() {
 }
 
 func init() {
-	Logger, _ = zap.NewProduction()
-
 	cobra.OnInitialize(initConfig)
 
 	// Here you will define your flags and configuration settings.

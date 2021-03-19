@@ -1,6 +1,7 @@
 package nanomsg
 
 import (
+	"github.com/munnik/gosk/logger"
 	"go.nanomsg.org/mangos/v3"
 	"go.uber.org/zap"
 
@@ -26,7 +27,7 @@ func (p *Proxy) SubscribeTo(url string) {
 	topic := []byte("")
 	socket, err := NewSub(url, topic)
 	if err != nil {
-		Logger.Fatal(
+		logger.GetLogger().Fatal(
 			"Could not subscribe",
 			zap.String("URL", url),
 			zap.ByteString("Topic", topic),
@@ -39,7 +40,7 @@ func (p *Proxy) SubscribeTo(url string) {
 			select {
 			default:
 				if msg, err := socket.Recv(); err != nil {
-					Logger.Warn(
+					logger.GetLogger().Warn(
 						"Error occured when receiving a message",
 					)
 				} else {

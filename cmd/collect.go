@@ -20,6 +20,7 @@ import (
 	"net/url"
 
 	"github.com/munnik/gosk/collector"
+	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
@@ -32,12 +33,14 @@ var (
 		Long:  `Collect data using a specific protocol`,
 		Run:   collect,
 	}
-	protocol          string
-	connectionURI     string
-	connectionName    string
-	dial              bool
-	baudRate          int
-	collectPublishURI string
+	protocol              string
+	connectionURI         string
+	connectionName        string
+	dial                  bool
+	baudRate              int
+	collectPublishURI     string
+	pollingInterval       int
+	modbusRegisterStrings []string
 )
 
 func init() {
@@ -52,8 +55,8 @@ func init() {
 	collectCmd.Flags().IntVarP(&baudRate, "baudRate", "b", 4800, "Baud rate for serial connections, default is 4800 baud.")
 	collectCmd.Flags().StringVarP(&collectPublishURI, "publishURI", "u", "", "Nanomsg URI, the URI is used to publish the collected data on. It listens for connections.")
 	collectCmd.MarkFlagRequired("publishURI")
-
-	collector.Logger = Logger
+	collectCmd.Flags().IntVarP(&pollingInterval, "pollingInterval", "i", 1000, "Modbus polling interval in milliseconds, default is 1000 ms.")
+	collectCmd.Flags().StringSliceVarP(&modbusRegisterStrings, "registers", "r", []string{}, "One or more ranges of modbus registers, format is <function code>:<start register>:<number of registers>, e.g. 4:312:12.")
 }
 
 func collect(cmd *cobra.Command, args []string) {
@@ -61,7 +64,7 @@ func collect(cmd *cobra.Command, args []string) {
 	case "nmea0183":
 		uri, err := url.Parse(connectionURI)
 		if err != nil {
-			Logger.Fatal(
+			logger.GetLogger().Fatal(
 				"Could not parse the URI",
 				zap.String("URI", connectionURI),
 				zap.String("Error", err.Error()),
@@ -73,8 +76,20 @@ func collect(cmd *cobra.Command, args []string) {
 		if uri.Scheme == "file" {
 			collector.NewNMEA0183FileCollector(uri, baudRate, connectionName).Collect(nanomsg.NewPub(collectPublishURI))
 		}
+	case "modbus":
+		uri, err := url.Parse(connectionURI)
+		if err != nil {
+			logger.GetLogger().Fatal(
+				"Could not parse the URI",
+				zap.String("URI", connectionURI),
+				zap.String("Error", err.Error()),
+			)
+		}
+		if uri.Scheme == "tcp" {
+			collector.NewModbusNetworkCollector(uri, connectionName, modbusRegisterStrings, pollingInterval).Collect(nanomsg.NewPub(collectPublishURI))
+		}
 	default:
-		Logger.Fatal(
+		logger.GetLogger().Fatal(
 			"Not a supported protocol",
 			zap.String("Protocol", protocol),
 		)

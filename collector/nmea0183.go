@@ -7,14 +7,12 @@ import (
 	"net/url"
 	"os"
 
+	"github.com/munnik/gosk/logger"
+	"github.com/munnik/gosk/mapper"
 	"github.com/tarm/serial"
 	"go.uber.org/zap"
 
-	"github.com/munnik/gosk/mapper"
-	"github.com/munnik/gosk/nanomsg"
 	"go.nanomsg.org/mangos/v3"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // NMEA0183NetworkCollector collects NMEA from a tcp server
@@ -31,15 +29,6 @@ type NMEA0183FileCollector struct {
 	Name     string
 }
 
-// NewNMEA0183NetworkCollector creates an instance of a TCP collector
-func NewNMEA0183NetworkCollector(url *url.URL, dial bool, name string) *NMEA0183NetworkCollector {
-	return &NMEA0183NetworkCollector{
-		URL:  url,
-		Dial: dial,
-		Name: name,
-	}
-}
-
 // NewNMEA0183FileCollector creates an instance of a file collector
 func NewNMEA0183FileCollector(url *url.URL, baudRate int, name string) *NMEA0183FileCollector {
 	return &NMEA0183FileCollector{
@@ -50,65 +39,22 @@ func NewNMEA0183FileCollector(url *url.URL, baudRate int, name string) *NMEA0183
 }
 
 // Collect start the collection process and keeps running as long as there is data available
-func (c *NMEA0183NetworkCollector) Collect(socket mangos.Socket) {
-	stream := make(chan []byte, 1)
-
-	go receiveFromNetwork(c.URL, c.Dial, stream)
-	processStream(stream, socket, c.Name)
-}
-
-// Collect start the collection process and keeps running as long as there is data available
 func (c *NMEA0183FileCollector) Collect(socket mangos.Socket) {
 	stream := make(chan []byte, 1)
 
-	go receiveFromFile(c.Path, c.BaudRate, stream)
-	processStream(stream, socket, c.Name)
+	go c.receive(stream)
+	processStream(stream, mapper.NMEA0183Type, socket, c.Name)
 }
 
-func processStream(stream <-chan []byte, socket mangos.Socket, name string) {
-	for payload := range stream {
-		Logger.Debug(
-			"Received a message from the stream",
-			zap.ByteString("Message", payload),
-		)
-		m := &nanomsg.RawData{
-			Header: &nanomsg.Header{
-				HeaderSegments: []string{"collector", mapper.NMEA0183Type, name},
-			},
-			Timestamp: timestamppb.Now(),
-			Payload:   payload,
-		}
-		toSend, err := proto.Marshal(m)
-		if err != nil {
-			Logger.Warn(
-				"Unable to marshall the message to ProtoBuffer",
-				zap.ByteString("Message", payload),
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
-		if err := socket.Send(toSend); err != nil {
-			Logger.Warn(
-				"Unable to send the message using NanoMSG",
-				zap.ByteString("Message", payload),
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
-		Logger.Debug(
-			"Send the message on the NanoMSG socket",
-			zap.ByteString("Message", payload),
-		)
-	}
-}
+func (c *NMEA0183FileCollector) receive(stream chan<- []byte) error {
+	defer close(stream)
 
-func receiveFromFile(path string, baudRate int, stream chan<- []byte) error {
-	fi, err := os.Stat(path)
+	fi, err := os.Stat(c.Path)
 	if err != nil {
 		return err
 	}
 	if fi.Mode()&os.ModeCharDevice == os.ModeCharDevice {
-		s, err := serial.OpenPort(&serial.Config{Name: path, Baud: baudRate})
+		s, err := serial.OpenPort(&serial.Config{Name: c.Path, Baud: c.BaudRate})
 		if err != nil {
 			return err
 		}
@@ -121,7 +67,7 @@ func receiveFromFile(path string, baudRate int, stream chan<- []byte) error {
 			stream <- buffer[:n]
 		}
 	} else {
-		file, err := os.Open(path)
+		file, err := os.Open(c.Path)
 		if err != nil {
 			return err
 		}
@@ -131,19 +77,37 @@ func receiveFromFile(path string, baudRate int, stream chan<- []byte) error {
 		}
 	}
 
-	close(stream)
 	return nil
 }
 
-func receiveFromNetwork(url *url.URL, dial bool, stream chan<- []byte) error {
-	Logger.Info(
-		"Start to collect data from the network",
-		zap.String("Host", url.Hostname()),
-		zap.String("Port", url.Port()),
+// NewNMEA0183NetworkCollector creates an instance of a TCP collector
+func NewNMEA0183NetworkCollector(url *url.URL, dial bool, name string) *NMEA0183NetworkCollector {
+	return &NMEA0183NetworkCollector{
+		URL:  url,
+		Dial: dial,
+		Name: name,
+	}
+}
+
+// Collect start the collection process and keeps running as long as there is data available
+func (c *NMEA0183NetworkCollector) Collect(socket mangos.Socket) {
+	stream := make(chan []byte, 1)
+
+	go c.receive(stream)
+	processStream(stream, mapper.NMEA0183Type, socket, c.Name)
+}
+
+func (c *NMEA0183NetworkCollector) receive(stream chan<- []byte) error {
+	defer close(stream)
+
+	logger.GetLogger().Info(
+		"Start to collect NMEA0183 data from the network",
+		zap.String("Host", c.URL.Hostname()),
+		zap.String("Port", c.URL.Port()),
 	)
-	if dial {
-		if url.Scheme == "udp" || url.Scheme == "tcp" {
-			conn, err := net.Dial(url.Scheme, fmt.Sprintf("%s:%s", url.Hostname(), url.Port()))
+	if c.Dial {
+		if c.URL.Scheme == "udp" || c.URL.Scheme == "tcp" {
+			conn, err := net.Dial(c.URL.Scheme, fmt.Sprintf("%s:%s", c.URL.Hostname(), c.URL.Port()))
 			if err != nil {
 				return err
 			}
@@ -151,8 +115,8 @@ func receiveFromNetwork(url *url.URL, dial bool, stream chan<- []byte) error {
 			handleConnection(conn, stream)
 		}
 	} else {
-		if url.Scheme == "tcp" {
-			listener, err := net.Listen("tcp", fmt.Sprintf("%s:%s", url.Hostname(), url.Port()))
+		if c.URL.Scheme == "tcp" {
+			listener, err := net.Listen("tcp", fmt.Sprintf("%s:%s", c.URL.Hostname(), c.URL.Port()))
 			if err != nil {
 				return err
 			}
@@ -165,8 +129,8 @@ func receiveFromNetwork(url *url.URL, dial bool, stream chan<- []byte) error {
 				}
 				go handleConnection(conn, stream)
 			}
-		} else if url.Scheme == "udp" {
-			conn, err := net.ListenPacket("udp", fmt.Sprintf("%s:%s", url.Hostname(), url.Port()))
+		} else if c.URL.Scheme == "udp" {
+			conn, err := net.ListenPacket("udp", fmt.Sprintf("%s:%s", c.URL.Hostname(), c.URL.Port()))
 			if err != nil {
 				return err
 			}
@@ -181,14 +145,5 @@ func receiveFromNetwork(url *url.URL, dial bool, stream chan<- []byte) error {
 			}
 		}
 	}
-	close(stream)
 	return nil
-}
-
-func handleConnection(conn net.Conn, payloadStream chan<- []byte) {
-	scanner := bufio.NewScanner(conn)
-	for scanner.Scan() {
-		buffer := scanner.Bytes()
-		payloadStream <- buffer
-	}
 }

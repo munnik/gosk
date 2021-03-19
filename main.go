@@ -21,10 +21,9 @@ import (
 	"syscall"
 
 	"github.com/munnik/gosk/cmd"
+	"github.com/munnik/gosk/logger"
 	"go.uber.org/zap"
 )
-
-var logger *zap.Logger
 
 func main() {
 	signalChannel := make(chan os.Signal, 1)
@@ -34,7 +33,7 @@ func main() {
 			s := <-signalChannel
 			// https://www.computerhope.com/unix/signals.htm
 			if s == syscall.SIGQUIT || s == syscall.SIGTERM || s == syscall.SIGINT {
-				logger.Error(
+				logger.GetLogger().Error(
 					"Receive a signal from to OS to stop the application",
 					zap.String("Signal", s.String()),
 				)
@@ -44,8 +43,4 @@ func main() {
 	}()
 
 	cmd.Execute()
-}
-
-func init() {
-	logger, _ = zap.NewProduction()
 }

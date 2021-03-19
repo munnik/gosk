@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/mapper/nmea0183"
 	"github.com/munnik/gosk/mapper/signalk"
 	"github.com/munnik/gosk/nanomsg"
@@ -18,8 +19,6 @@ const (
 	// ModbusType is used to identify the data as Modbus data
 	ModbusType = "Modbus"
 )
-
-var Logger *zap.Logger
 
 // KeyValueFromData tries to create a SignalK delta from the provided data
 func KeyValueFromData(m *nanomsg.RawData) ([]signalk.Value, error) {
@@ -36,14 +35,14 @@ func Map(subscriber mangos.Socket, publisher mangos.Socket) {
 	for {
 		received, err := subscriber.Recv()
 		if err != nil {
-			Logger.Warn(
+			logger.GetLogger().Warn(
 				"Could not receive a message from the publisher",
 				zap.String("Error", err.Error()),
 			)
 			continue
 		}
 		if err := proto.Unmarshal(received, rawData); err != nil {
-			Logger.Warn(
+			logger.GetLogger().Warn(
 				"Could not unmarshal the received data",
 				zap.ByteString("Received", received),
 				zap.String("Error", err.Error()),
@@ -52,7 +51,7 @@ func Map(subscriber mangos.Socket, publisher mangos.Socket) {
 		}
 		values, err := KeyValueFromData(rawData)
 		if err != nil {
-			Logger.Warn(
+			logger.GetLogger().Warn(
 				"Could not extract values from the raw data",
 				zap.ByteString("Raw data", rawData.Payload),
 				zap.String("Error", err.Error()),
@@ -112,7 +111,7 @@ func Map(subscriber mangos.Socket, publisher mangos.Socket) {
 
 			toSend, err := proto.Marshal(mappedData)
 			if err != nil {
-				Logger.Warn(
+				logger.GetLogger().Warn(
 					"Could not marshall the mapped data",
 					zap.String("Mapped data", mappedData.String()),
 					zap.String("Error", err.Error()),

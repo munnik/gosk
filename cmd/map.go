@@ -17,6 +17,7 @@ limitations under the License.
 package cmd
 
 import (
+	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/mapper"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/spf13/cobra"
@@ -40,15 +41,13 @@ func init() {
 	mapCmd.MarkFlagRequired("publishURI")
 	mapCmd.Flags().StringVarP(&mapSubscribeURI, "subscribeURI", "s", "", "Nanomsg URI, the URI is used to listen for subscribed data.")
 	mapCmd.MarkFlagRequired("subscribeURI")
-
-	mapper.Logger = Logger
 }
 
 func doMap(cmd *cobra.Command, args []string) {
 	subscriber, err := nanomsg.NewSub(mapSubscribeURI, []byte{})
 	if err != nil {
-		Logger.Fatal(
-			"Could not parse the URI",
+		logger.GetLogger().Fatal(
+			"Could not subscribe",
 			zap.String("URI", mapSubscribeURI),
 			zap.String("Error", err.Error()),
 		)

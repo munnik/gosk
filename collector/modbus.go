@@ -26,7 +26,7 @@ type ModbusNetworkCollector struct {
 
 // ModbusRegisterRange contains all data to request one modbus register range
 type ModbusRegisterRange struct {
-	FunctionCode  uint8
+	FunctionCode  uint16
 	StartRegister uint16
 	RegisterCount uint16
 }
@@ -70,7 +70,7 @@ func toModbusRegisterRange(registerStrings []string) []ModbusRegisterRange {
 		for registerCount > 0 {
 			if registerCount > MaximumNumberOfRegisters {
 				result = append(result, ModbusRegisterRange{
-					FunctionCode:  uint8(functionCode),
+					FunctionCode:  uint16(functionCode),
 					StartRegister: uint16(startRegister),
 					RegisterCount: uint16(MaximumNumberOfRegisters),
 				})
@@ -78,7 +78,7 @@ func toModbusRegisterRange(registerStrings []string) []ModbusRegisterRange {
 				registerCount -= MaximumNumberOfRegisters
 			} else {
 				result = append(result, ModbusRegisterRange{
-					FunctionCode:  uint8(functionCode),
+					FunctionCode:  uint16(functionCode),
 					StartRegister: uint16(startRegister),
 					RegisterCount: uint16(registerCount),
 				})
@@ -140,7 +140,7 @@ func (c *ModbusNetworkCollector) receive(stream chan<- []byte) error {
 				} else {
 					logger.GetLogger().Warn(
 						"Function code is not supported",
-						zap.Uint8("Function code", registerRange.FunctionCode),
+						zap.Uint16("Function code", registerRange.FunctionCode),
 					)
 					continue
 				}
@@ -154,10 +154,11 @@ func (c *ModbusNetworkCollector) receive(stream chan<- []byte) error {
 						"Could not read Modbus registers",
 						zap.Uint16("Start register", registerRange.StartRegister),
 						zap.Uint16("Count", registerRange.RegisterCount),
-						zap.Uint8("Function code", registerRange.FunctionCode),
+						zap.Uint16("Function code", registerRange.FunctionCode),
 					)
 					continue
 				}
+				result = append([]uint16{registerRange.FunctionCode, registerRange.StartRegister, registerRange.RegisterCount}, result...)
 				stream <- uint16sToBytes(result)
 			}
 		case <-quitChannel:

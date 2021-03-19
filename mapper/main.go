@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/munnik/gosk/logger"
+	"github.com/munnik/gosk/mapper/modbus"
 	"github.com/munnik/gosk/mapper/nmea0183"
 	"github.com/munnik/gosk/mapper/signalk"
 	"github.com/munnik/gosk/nanomsg"
@@ -25,8 +26,25 @@ func KeyValueFromData(m *nanomsg.RawData) ([]signalk.Value, error) {
 	switch string(m.Header.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL]) {
 	case NMEA0183Type:
 		return nmea0183.KeyValueFromNMEA0183(m)
+	case ModbusType:
+		config := modbus.MappingConfig{
+			RegisterMappings: map[uint16]modbus.RegisterMapping{
+				uint16(51300): {
+					Size:            2,
+					MappingFunction: "(registers[0] * 65536 + registers[1]) / 60000.0",
+					SignalKPath:     []string{"propulsion", "mainEngine", "revolutions"},
+				},
+				uint16(51460): {
+					Size:            2,
+					MappingFunction: "273.15 + (registers[0] * 65536 + registers[1]) / 1000.0",
+					SignalKPath:     []string{"propulsion", "mainEngine", "oilTemperature"},
+				},
+			},
+			Context: "vessels.urn:mrn:imo:mmsi:244770688",
+		}
+		return modbus.KeyValueFromModbus(m, config)
 	}
-	return nil, fmt.Errorf("Don't know how to handle %s", m.Header.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL])
+	return nil, fmt.Errorf("don't know how to handle %s", m.Header.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL])
 }
 
 // Map raw messages to key value messages

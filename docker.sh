@@ -1,5 +1,6 @@
 #!/bin/bash
 
+docker network rm gosk
 docker network create -d bridge gosk
 
 docker run \
@@ -30,3 +31,4 @@ docker run \
 grafana/grafana
 
 docker ps -a
+docker network inspect gosk

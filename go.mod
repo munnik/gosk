@@ -6,6 +6,7 @@ require (
 	github.com/BertoldVdb/go-ais v0.0.0-20210129141056-62b4c9149def
 	github.com/Microsoft/go-winio v0.4.16 // indirect
 	github.com/adrianmo/go-nmea v1.3.0
+	github.com/antonmedv/expr v1.8.9
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/golang/protobuf v1.5.1
 	github.com/jackc/pgproto3/v2 v2.0.7 // indirect

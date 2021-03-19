@@ -17,6 +17,8 @@ limitations under the License.
 package cmd
 
 import (
+	"sync"
+
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/spf13/cobra"
 )
@@ -42,10 +44,10 @@ func init() {
 func proxy(cmd *cobra.Command, args []string) {
 	proxy := nanomsg.NewProxy(proxyPublishURI)
 	defer proxy.Close()
+	var wg sync.WaitGroup
 	for _, proxySubscribeURI := range proxySubscribeURIs {
-		proxy.SubscribeTo(proxySubscribeURI)
+		proxy.SubscribeTo(proxySubscribeURI, &wg)
+		wg.Add(1)
 	}
-	for {
-		// never exit
-	}
+	wg.Wait()
 }

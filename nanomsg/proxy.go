@@ -1,6 +1,8 @@
 package nanomsg
 
 import (
+	"sync"
+
 	"github.com/munnik/gosk/logger"
 	"go.nanomsg.org/mangos/v3"
 	"go.uber.org/zap"
@@ -21,7 +23,7 @@ func NewProxy(url string) *Proxy {
 }
 
 // SubscribeTo a publisher
-func (p *Proxy) SubscribeTo(url string) {
+func (p *Proxy) SubscribeTo(url string, wg *sync.WaitGroup) {
 	stopChannel := make(chan struct{})
 	p.stopChannels = append(p.stopChannels, stopChannel)
 	topic := []byte("")
@@ -47,6 +49,7 @@ func (p *Proxy) SubscribeTo(url string) {
 					p.publisher.Send(msg)
 				}
 			case <-stopChannel:
+				wg.Done()
 				return
 			}
 		}

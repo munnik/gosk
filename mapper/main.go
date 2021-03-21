@@ -18,37 +18,22 @@ const (
 	// NMEA0183Type is used to identify the data as NMEA 0183 data
 	NMEA0183Type = "NMEA0183"
 	// ModbusType is used to identify the data as Modbus data
-	ModbusType = "Modbus"
+	ModbusType = "MODBUS"
 )
 
 // KeyValueFromData tries to create a SignalK delta from the provided data
-func KeyValueFromData(m *nanomsg.RawData) ([]signalk.Value, error) {
+func KeyValueFromData(m *nanomsg.RawData, configFilePath string) ([]signalk.Value, error) {
 	switch string(m.Header.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL]) {
 	case NMEA0183Type:
 		return nmea0183.KeyValueFromNMEA0183(m)
 	case ModbusType:
-		config := modbus.MappingConfig{
-			RegisterMappings: map[uint16]modbus.RegisterMapping{
-				uint16(51300): {
-					Size:            2,
-					MappingFunction: "(registers[0] * 65536 + registers[1]) / 60000.0",
-					SignalKPath:     []string{"propulsion", "mainEngine", "revolutions"},
-				},
-				uint16(51460): {
-					Size:            2,
-					MappingFunction: "273.15 + (registers[0] * 65536 + registers[1]) / 1000.0",
-					SignalKPath:     []string{"propulsion", "mainEngine", "oilTemperature"},
-				},
-			},
-			Context: "vessels.urn:mrn:imo:mmsi:244770688",
-		}
-		return modbus.KeyValueFromModbus(m, config)
+		return modbus.KeyValueFromModbus(m, modbus.CreateConfig(configFilePath))
 	}
 	return nil, fmt.Errorf("don't know how to handle %s", m.Header.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL])
 }
 
 // Map raw messages to key value messages
-func Map(subscriber mangos.Socket, publisher mangos.Socket) {
+func Map(subscriber mangos.Socket, publisher mangos.Socket, configFilePath string) {
 	rawData := &nanomsg.RawData{}
 	for {
 		received, err := subscriber.Recv()
@@ -67,7 +52,7 @@ func Map(subscriber mangos.Socket, publisher mangos.Socket) {
 			)
 			continue
 		}
-		values, err := KeyValueFromData(rawData)
+		values, err := KeyValueFromData(rawData, configFilePath)
 		if err != nil {
 			logger.GetLogger().Warn(
 				"Could not extract values from the raw data",

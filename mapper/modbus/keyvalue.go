@@ -11,17 +11,6 @@ import (
 	"go.uber.org/zap"
 )
 
-type RegisterMapping struct {
-	Size            uint16 // number of register to include in this mapping
-	MappingFunction string
-	SignalKPath     []string
-}
-
-type MappingConfig struct {
-	RegisterMappings map[uint16]RegisterMapping // index is starting register
-	Context          string
-}
-
 var env = map[string]interface{}{
 	"registers": []uint16{},
 }
@@ -53,11 +42,11 @@ func KeyValueFromModbus(m *nanomsg.RawData, config MappingConfig) ([]signalk.Val
 	for i := uint16(0); i < registerCount; i += 1 {
 		if registerMapping, ok := config.RegisterMappings[i+startRegister]; ok {
 			env["registers"] = registerData[i : i+registerMapping.Size]
-			program, err := expr.Compile(registerMapping.MappingFunction, expr.Env(env))
+			program, err := expr.Compile(registerMapping.Function, expr.Env(env))
 			if err != nil {
 				logger.GetLogger().Warn(
 					"Could not compile the mapping function",
-					zap.String("Mapping function", registerMapping.MappingFunction),
+					zap.String("Mapping function", registerMapping.Function),
 					zap.String("Error", err.Error()),
 				)
 				continue
@@ -66,7 +55,7 @@ func KeyValueFromModbus(m *nanomsg.RawData, config MappingConfig) ([]signalk.Val
 			if err != nil {
 				logger.GetLogger().Warn(
 					"Could not run the mapping function",
-					zap.String("Mapping function", registerMapping.MappingFunction),
+					zap.String("Mapping function", registerMapping.Function),
 					zap.String("Error", err.Error()),
 				)
 				continue

@@ -17,6 +17,7 @@ limitations under the License.
 package cmd
 
 import (
+	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/mapper"
 	"github.com/munnik/gosk/nanomsg"
@@ -33,7 +34,6 @@ var (
 	}
 	mapSubscribeURI string
 	mapPublishURI   string
-	configFilePath  string
 )
 
 func init() {
@@ -42,7 +42,6 @@ func init() {
 	mapCmd.MarkFlagRequired("publishURI")
 	mapCmd.Flags().StringVarP(&mapSubscribeURI, "subscribeURI", "s", "", "Nanomsg URI, the URI is used to listen for subscribed data.")
 	mapCmd.MarkFlagRequired("subscribeURI")
-	mapCmd.Flags().StringVarP(&configFilePath, "configfile", "c", "", "Path to a config file that contains mapping rules.")
 }
 
 func doMap(cmd *cobra.Command, args []string) {
@@ -54,5 +53,6 @@ func doMap(cmd *cobra.Command, args []string) {
 			zap.String("Error", err.Error()),
 		)
 	}
-	mapper.Map(subscriber, nanomsg.NewPub(mapPublishURI), configFilePath)
+	config := config.NewModbusConfig(cfgFile)
+	mapper.Map(subscriber, nanomsg.NewPub(mapPublishURI), config)
 }

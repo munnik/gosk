@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/mapper/modbus"
 	"github.com/munnik/gosk/mapper/nmea0183"
@@ -22,18 +23,18 @@ const (
 )
 
 // KeyValueFromData tries to create a SignalK delta from the provided data
-func KeyValueFromData(m *nanomsg.RawData, configFilePath string) ([]signalk.Value, error) {
+func KeyValueFromData(m *nanomsg.RawData, cfg interface{}) ([]signalk.Value, error) {
 	switch string(m.Header.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL]) {
 	case NMEA0183Type:
 		return nmea0183.KeyValueFromNMEA0183(m)
 	case ModbusType:
-		return modbus.KeyValueFromModbus(m, modbus.CreateConfig(configFilePath))
+		return modbus.KeyValueFromModbus(m, cfg.(config.ModbusConfig))
 	}
 	return nil, fmt.Errorf("don't know how to handle %s", m.Header.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL])
 }
 
 // Map raw messages to key value messages
-func Map(subscriber mangos.Socket, publisher mangos.Socket, configFilePath string) {
+func Map(subscriber mangos.Socket, publisher mangos.Socket, cfg interface{}) {
 	rawData := &nanomsg.RawData{}
 	for {
 		received, err := subscriber.Recv()
@@ -52,7 +53,7 @@ func Map(subscriber mangos.Socket, publisher mangos.Socket, configFilePath strin
 			)
 			continue
 		}
-		values, err := KeyValueFromData(rawData, configFilePath)
+		values, err := KeyValueFromData(rawData, cfg)
 		if err != nil {
 			logger.GetLogger().Warn(
 				"Could not extract values from the raw data",

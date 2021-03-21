@@ -20,6 +20,7 @@ import (
 	"net/url"
 
 	"github.com/munnik/gosk/collector"
+	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/spf13/cobra"
@@ -33,14 +34,12 @@ var (
 		Long:  `Collect data using a specific protocol`,
 		Run:   collect,
 	}
-	protocol              string
-	connectionURI         string
-	connectionName        string
-	dial                  bool
-	baudRate              int
-	collectPublishURI     string
-	pollingInterval       int
-	modbusRegisterStrings []string
+	protocol          string
+	connectionURI     string
+	connectionName    string
+	dial              bool
+	baudRate          int
+	collectPublishURI string
 )
 
 func init() {
@@ -55,8 +54,6 @@ func init() {
 	collectCmd.Flags().IntVarP(&baudRate, "baudRate", "b", 4800, "Baud rate for serial connections, default is 4800 baud.")
 	collectCmd.Flags().StringVarP(&collectPublishURI, "publishURI", "u", "", "Nanomsg URI, the URI is used to publish the collected data on. It listens for connections.")
 	collectCmd.MarkFlagRequired("publishURI")
-	collectCmd.Flags().IntVarP(&pollingInterval, "pollingInterval", "i", 1000, "Modbus polling interval in milliseconds, default is 1000 ms.")
-	collectCmd.Flags().StringSliceVarP(&modbusRegisterStrings, "registers", "r", []string{}, "One or more ranges of modbus registers, format is <function code>:<start register>:<number of registers>, e.g. 4:312:12.")
 }
 
 func collect(cmd *cobra.Command, args []string) {
@@ -86,7 +83,8 @@ func collect(cmd *cobra.Command, args []string) {
 			)
 		}
 		if uri.Scheme == "tcp" {
-			collector.NewModbusNetworkCollector(uri, connectionName, modbusRegisterStrings, pollingInterval).Collect(nanomsg.NewPub(collectPublishURI))
+			modbusConfig := config.NewModbusConfig(cfgFile)
+			collector.NewModbusNetworkCollector(uri, connectionName, modbusConfig).Collect(nanomsg.NewPub(collectPublishURI))
 		}
 	default:
 		logger.GetLogger().Fatal(

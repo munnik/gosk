@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/antonmedv/expr"
+	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/mapper/signalk"
 	"github.com/munnik/gosk/nanomsg"
@@ -15,7 +16,7 @@ var env = map[string]interface{}{
 	"registers": []uint16{},
 }
 
-func KeyValueFromModbus(m *nanomsg.RawData, config MappingConfig) ([]signalk.Value, error) {
+func KeyValueFromModbus(m *nanomsg.RawData, cfg config.ModbusConfig) ([]signalk.Value, error) {
 	result := make([]signalk.Value, 0)
 
 	var functionCode uint16
@@ -40,22 +41,16 @@ func KeyValueFromModbus(m *nanomsg.RawData, config MappingConfig) ([]signalk.Val
 	)
 
 	for i := uint16(0); i < registerCount; i += 1 {
-		if registerMapping, ok := config.RegisterMappings[i+startRegister]; ok {
-			env["registers"] = registerData[i : i+registerMapping.Size]
-			program, err := expr.Compile(registerMapping.Function, expr.Env(env))
-			if err != nil {
-				logger.GetLogger().Warn(
-					"Could not compile the mapping function",
-					zap.String("Mapping function", registerMapping.Function),
-					zap.String("Error", err.Error()),
-				)
+		if registerMapping, ok := cfg.RegisterMappings[i+startRegister]; ok {
+			if registerMapping.CompiledExpression == nil {
 				continue
 			}
-			output, err := expr.Run(program, env)
+			env["registers"] = registerData[i : i+registerMapping.Size]
+			output, err := expr.Run(registerMapping.CompiledExpression, env)
 			if err != nil {
 				logger.GetLogger().Warn(
-					"Could not run the mapping function",
-					zap.String("Mapping function", registerMapping.Function),
+					"Could not run the execute expression",
+					zap.String("Mapping expression", registerMapping.Expression),
 					zap.String("Error", err.Error()),
 				)
 				continue
@@ -64,7 +59,7 @@ func KeyValueFromModbus(m *nanomsg.RawData, config MappingConfig) ([]signalk.Val
 			result = append(
 				result,
 				signalk.Value{
-					Context: config.Context,
+					Context: cfg.Context,
 					Path:    registerMapping.SignalKPath,
 					Value:   output,
 				},

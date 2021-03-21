@@ -2,10 +2,9 @@ package collector
 
 import (
 	"net/url"
-	"strconv"
-	"strings"
 	"time"
 
+	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/mapper"
 	"github.com/simonvetter/modbus"
@@ -18,75 +17,18 @@ const MaximumNumberOfRegisters = 120
 
 // ModbusNetworkCollector collects Modbus data over a tcp connection
 type ModbusNetworkCollector struct {
-	URL             *url.URL
-	Name            string
-	RegisterRanges  []ModbusRegisterRange
-	PollingInterval int
-}
-
-// ModbusRegisterRange contains all data to request one modbus register range
-type ModbusRegisterRange struct {
-	FunctionCode  uint16
-	StartRegister uint16
-	RegisterCount uint16
+	URL    *url.URL
+	Name   string
+	Config config.ModbusConfig
 }
 
 // NewModbusNetworkCollector creates an instance of a TCP collector
-func NewModbusNetworkCollector(url *url.URL, name string, registerStrings []string, pollingInterval int) *ModbusNetworkCollector {
+func NewModbusNetworkCollector(url *url.URL, name string, cfg config.ModbusConfig) *ModbusNetworkCollector {
 	return &ModbusNetworkCollector{
-		URL:             url,
-		Name:            name,
-		RegisterRanges:  toModbusRegisterRange(registerStrings),
-		PollingInterval: pollingInterval,
+		URL:    url,
+		Name:   name,
+		Config: cfg,
 	}
-}
-
-func toModbusRegisterRange(registerStrings []string) []ModbusRegisterRange {
-	result := make([]ModbusRegisterRange, 0)
-	for _, registerString := range registerStrings {
-		splits := strings.SplitN(registerString, ":", 3)
-		functionCode, err := strconv.ParseInt(splits[0], 0, 0)
-		if err != nil {
-			logger.GetLogger().Fatal(
-				"Could not parse modbus register",
-				zap.String("Provided register", registerString),
-			)
-		}
-		startRegister, err := strconv.ParseInt(splits[1], 0, 0)
-		if err != nil {
-			logger.GetLogger().Fatal(
-				"Could not parse modbus register",
-				zap.String("Provided register", registerString),
-			)
-		}
-		registerCount, err := strconv.ParseInt(splits[2], 0, 0)
-		if err != nil {
-			logger.GetLogger().Fatal(
-				"Could not parse modbus register",
-				zap.String("Provided register", registerString),
-			)
-		}
-
-		for registerCount > 0 {
-			if registerCount > MaximumNumberOfRegisters {
-				result = append(result, ModbusRegisterRange{
-					FunctionCode:  uint16(functionCode),
-					StartRegister: uint16(startRegister),
-					RegisterCount: uint16(MaximumNumberOfRegisters),
-				})
-				startRegister += MaximumNumberOfRegisters
-				registerCount -= MaximumNumberOfRegisters
-			} else {
-				result = append(result, ModbusRegisterRange{
-					FunctionCode:  uint16(functionCode),
-					StartRegister: uint16(startRegister),
-					RegisterCount: uint16(registerCount),
-				})
-				registerCount = 0
-			}
-		}
-	}
-	return result
 }
 
 // Collect start the collection process and keeps running as long as there is data available
@@ -126,39 +68,39 @@ func (c *ModbusNetworkCollector) receive(stream chan<- []byte) error {
 		)
 	}
 
-	ticker := time.NewTicker(time.Duration(c.PollingInterval) * time.Millisecond)
+	ticker := time.NewTicker(c.Config.PollingInterval)
 	quitChannel := make(chan struct{})
 	for {
 		select {
 		case <-ticker.C:
-			for _, registerRange := range c.RegisterRanges {
+			for startRegister, registerMapping := range c.Config.RegisterMappings {
 				var registerType modbus.RegType
-				if registerRange.FunctionCode == 0x03 {
+				if registerMapping.FunctionCode == 0x03 {
 					registerType = modbus.HOLDING_REGISTER
-				} else if registerRange.FunctionCode == 0x04 {
+				} else if registerMapping.FunctionCode == 0x04 {
 					registerType = modbus.INPUT_REGISTER
 				} else {
 					logger.GetLogger().Warn(
 						"Function code is not supported",
-						zap.Uint16("Function code", registerRange.FunctionCode),
+						zap.Uint16("Function code", registerMapping.FunctionCode),
 					)
 					continue
 				}
 				result, err := client.ReadRegisters(
-					registerRange.StartRegister,
-					registerRange.RegisterCount,
+					startRegister,
+					registerMapping.Size,
 					registerType,
 				)
 				if err != nil {
 					logger.GetLogger().Warn(
 						"Could not read Modbus registers",
-						zap.Uint16("Start register", registerRange.StartRegister),
-						zap.Uint16("Count", registerRange.RegisterCount),
-						zap.Uint16("Function code", registerRange.FunctionCode),
+						zap.Uint16("Start register", startRegister),
+						zap.Uint16("Count", registerMapping.Size),
+						zap.Uint16("Function code", registerMapping.FunctionCode),
 					)
 					continue
 				}
-				result = append([]uint16{registerRange.FunctionCode, registerRange.StartRegister, registerRange.RegisterCount}, result...)
+				result = append([]uint16{registerMapping.FunctionCode, startRegister, registerMapping.Size}, result...)
 				stream <- uint16sToBytes(result)
 			}
 		case <-quitChannel:

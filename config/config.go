@@ -10,9 +10,12 @@ import (
 	"go.uber.org/zap"
 )
 
-var modbusEnv = map[string]interface{}{
-	"registers": []uint16{},
-}
+const (
+	// NMEA0183Type is used to identify the data as NMEA 0183 data
+	NMEA0183Type = "NMEA0183"
+	// ModbusType is used to identify the data as Modbus data
+	ModbusType = "MODBUS"
+)
 
 type ModbusRegister struct {
 	FunctionCode       uint16   `mapstructure:"FunctionCode"`
@@ -23,13 +26,26 @@ type ModbusRegister struct {
 }
 
 type ModbusConfig struct {
-	RegisterMappings map[uint16]*ModbusRegister `mapstructure:"Mappings"`
+	Name             string                     `mapstructure:"Name"`
 	Context          string                     `mapstructure:"Context"`
+	URI              string                     `mapstructure:"URI"`
+	RegisterMappings map[uint16]*ModbusRegister `mapstructure:"Mappings"`
 	PollingInterval  time.Duration              `mapstructure:"PollingInterval"`
+}
+
+type NMEA0183Config struct {
+	Name     string `mapstructure:"Name"`
+	Context  string `mapstructure:"Context"`
+	URI      string `mapstructure:"URI"`
+	Listen   bool   `mapstructure:"Listen"`
+	Baudrate int    `mapstructure:"Baudrate"`
 }
 
 func NewModbusConfig(configFilePath string) ModbusConfig {
 	var result ModbusConfig
+	var modbusEnv = map[string]interface{}{
+		"registers": []uint16{},
+	}
 
 	viper.SetConfigFile(configFilePath)
 	viper.ReadInConfig()
@@ -57,6 +73,24 @@ func NewModbusConfig(configFilePath string) ModbusConfig {
 			continue
 		}
 		registerMapping.CompiledExpression = program
+	}
+
+	return result
+}
+
+func NewNMEA0183Config(configFilePath string) NMEA0183Config {
+	var result NMEA0183Config
+
+	viper.SetConfigFile(configFilePath)
+	viper.ReadInConfig()
+
+	err := viper.Unmarshal(&result)
+	if err != nil {
+		logger.GetLogger().Fatal(
+			"Unable to read the configuration",
+			zap.String("Config file", configFilePath),
+			zap.String("Error", err.Error()),
+		)
 	}
 
 	return result

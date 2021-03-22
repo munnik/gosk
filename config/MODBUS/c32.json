@@ -1,6 +1,7 @@
 {
-    "Name":"Engine room",
+    "Name":"C32",
     "Context": "vessels.urn:mrn:imo:mmsi:244770688",
+    "URI": "tcp://localhost:5020",
     "PollingInterval": 500000000,
     "Mappings": {
         "51300": {

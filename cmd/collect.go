@@ -34,57 +34,54 @@ var (
 		Long:  `Collect data using a specific protocol`,
 		Run:   collect,
 	}
-	protocol          string
-	connectionURI     string
-	connectionName    string
-	dial              bool
-	baudRate          int
 	collectPublishURI string
 )
 
 func init() {
 	rootCmd.AddCommand(collectCmd)
-	collectCmd.Flags().StringVarP(&protocol, "protocol", "p", "", "Protocol to use for collection of data (required)")
-	collectCmd.MarkFlagRequired("protocol")
-	collectCmd.Flags().StringVarP(&connectionURI, "connectionURI", "c", "", "Connection URI, if URI refers to this machine then gosk listens for incoming connections, otherwise gosk will try to dial the remote system.")
-	collectCmd.MarkFlagRequired("connectionURI")
-	collectCmd.Flags().StringVarP(&connectionName, "connectionName", "n", "", "Name of the connection, this is used when logging/storing the data.")
-	collectCmd.MarkFlagRequired("connectionName")
-	collectCmd.Flags().BoolVarP(&dial, "dial", "d", false, "Forces to dial to connectionURI instead of listening, default behavior is to listen for network connections. This flag is ignored for file based connections.")
-	collectCmd.Flags().IntVarP(&baudRate, "baudRate", "b", 4800, "Baud rate for serial connections, default is 4800 baud.")
 	collectCmd.Flags().StringVarP(&collectPublishURI, "publishURI", "u", "", "Nanomsg URI, the URI is used to publish the collected data on. It listens for connections.")
 	collectCmd.MarkFlagRequired("publishURI")
 }
 
 func collect(cmd *cobra.Command, args []string) {
+	protocol, err := getProtocol(cfgFile)
+	if err != nil {
+		logger.GetLogger().Fatal(
+			"Could not determine the protocol, make sure the protocol is in the path of the config file",
+			zap.String("Config file", cfgFile),
+			zap.String("Error", err.Error()),
+		)
+	}
 	switch protocol {
-	case "nmea0183":
-		uri, err := url.Parse(connectionURI)
+	case config.NMEA0183Type:
+		cfg := config.NewNMEA0183Config(cfgFile)
+		uri, err := url.Parse(cfg.URI)
 		if err != nil {
 			logger.GetLogger().Fatal(
 				"Could not parse the URI",
-				zap.String("URI", connectionURI),
+				zap.String("URI", cfg.URI),
 				zap.String("Error", err.Error()),
 			)
 		}
 		if uri.Scheme == "tcp" || uri.Scheme == "udp" {
-			collector.NewNMEA0183NetworkCollector(uri, dial, connectionName).Collect(nanomsg.NewPub(collectPublishURI))
+			collector.NewNMEA0183NetworkCollector(uri, cfg).Collect(nanomsg.NewPub(collectPublishURI))
 		}
 		if uri.Scheme == "file" {
-			collector.NewNMEA0183FileCollector(uri, baudRate, connectionName).Collect(nanomsg.NewPub(collectPublishURI))
+			collector.NewNMEA0183FileCollector(uri, cfg).Collect(nanomsg.NewPub(collectPublishURI))
 		}
-	case "modbus":
-		uri, err := url.Parse(connectionURI)
+	case config.ModbusType:
+		cfg := config.NewModbusConfig(cfgFile)
+		uri, err := url.Parse(cfg.URI)
 		if err != nil {
 			logger.GetLogger().Fatal(
 				"Could not parse the URI",
-				zap.String("URI", connectionURI),
+				zap.String("URI", cfg.URI),
 				zap.String("Error", err.Error()),
 			)
 		}
 		if uri.Scheme == "tcp" {
 			modbusConfig := config.NewModbusConfig(cfgFile)
-			collector.NewModbusNetworkCollector(uri, connectionName, modbusConfig).Collect(nanomsg.NewPub(collectPublishURI))
+			collector.NewModbusNetworkCollector(uri, modbusConfig).Collect(nanomsg.NewPub(collectPublishURI))
 		}
 	default:
 		logger.GetLogger().Fatal(

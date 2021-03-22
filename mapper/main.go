@@ -15,22 +15,23 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-const (
-	// NMEA0183Type is used to identify the data as NMEA 0183 data
-	NMEA0183Type = "NMEA0183"
-	// ModbusType is used to identify the data as Modbus data
-	ModbusType = "MODBUS"
-)
-
 // KeyValueFromData tries to create a SignalK delta from the provided data
 func KeyValueFromData(m *nanomsg.RawData, cfg interface{}) ([]signalk.Value, error) {
 	switch string(m.Header.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL]) {
-	case NMEA0183Type:
-		return nmea0183.KeyValueFromNMEA0183(m)
-	case ModbusType:
-		return modbus.KeyValueFromModbus(m, cfg.(config.ModbusConfig))
+	case config.NMEA0183Type:
+		if _, ok := cfg.(config.NMEA0183Config); ok && cfg.(config.NMEA0183Config).Name == m.Header.HeaderSegments[nanomsg.HEADERSEGMENTSOURCE] {
+			return nmea0183.KeyValueFromNMEA0183(m, cfg.(config.NMEA0183Config))
+		}
+	case config.ModbusType:
+		if _, ok := cfg.(config.ModbusConfig); ok && cfg.(config.ModbusConfig).Name == m.Header.HeaderSegments[nanomsg.HEADERSEGMENTSOURCE] {
+			return modbus.KeyValueFromModbus(m, cfg.(config.ModbusConfig))
+		}
 	}
-	return nil, fmt.Errorf("don't know how to handle %s", m.Header.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL])
+	return nil, fmt.Errorf(
+		"no suitable config for %s: %s",
+		m.Header.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL],
+		m.Header.HeaderSegments[nanomsg.HEADERSEGMENTSOURCE],
+	)
 }
 
 // Map raw messages to key value messages

@@ -3,19 +3,20 @@ package nmea0183
 import (
 	"fmt"
 
+	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/mapper/signalk"
 	"github.com/munnik/gosk/nanomsg"
 )
 
 // KeyValueFromNMEA0183 tries to create a Signal K Delta from a NMEA sentence
-func KeyValueFromNMEA0183(m *nanomsg.RawData) ([]signalk.Value, error) {
+func KeyValueFromNMEA0183(m *nanomsg.RawData, cfg config.NMEA0183Config) ([]signalk.Value, error) {
 	result := make([]signalk.Value, 0)
 	sentence, err := Parse(string(m.Payload))
 	if err != nil {
 		return result, err
 	}
 
-	context := ""
+	context := cfg.Context
 	if v, ok := sentence.(MMSI); ok {
 		if mmsi, err := v.GetMMSI(); err == nil {
 			context = fmt.Sprintf("vessels.urn:mrn:imo:mmsi:%d", mmsi)

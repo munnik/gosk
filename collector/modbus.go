@@ -6,7 +6,6 @@ import (
 
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
-	"github.com/munnik/gosk/mapper"
 	"github.com/simonvetter/modbus"
 	"go.nanomsg.org/mangos/v3"
 	"go.uber.org/zap"
@@ -18,15 +17,13 @@ const MaximumNumberOfRegisters = 120
 // ModbusNetworkCollector collects Modbus data over a tcp connection
 type ModbusNetworkCollector struct {
 	URL    *url.URL
-	Name   string
 	Config config.ModbusConfig
 }
 
 // NewModbusNetworkCollector creates an instance of a TCP collector
-func NewModbusNetworkCollector(url *url.URL, name string, cfg config.ModbusConfig) *ModbusNetworkCollector {
+func NewModbusNetworkCollector(url *url.URL, cfg config.ModbusConfig) *ModbusNetworkCollector {
 	return &ModbusNetworkCollector{
 		URL:    url,
-		Name:   name,
 		Config: cfg,
 	}
 }
@@ -36,7 +33,7 @@ func (c *ModbusNetworkCollector) Collect(socket mangos.Socket) {
 	stream := make(chan []byte, 1)
 
 	go c.receive(stream)
-	processStream(stream, mapper.ModbusType, socket, c.Name)
+	processStream(stream, config.ModbusType, socket, c.Config.Name)
 }
 
 func (c *ModbusNetworkCollector) receive(stream chan<- []byte) error {

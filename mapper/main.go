@@ -1,7 +1,6 @@
 package mapper
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/munnik/gosk/config"
@@ -15,6 +14,15 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+type WrongMapperError struct {
+	ExpectedSource string
+	FoundSource    string
+}
+
+func (e *WrongMapperError) Error() string {
+	return "Wrong protocol or source name does not match"
+}
+
 // KeyValueFromData tries to create a SignalK delta from the provided data
 func KeyValueFromData(m *nanomsg.RawData, cfg interface{}) ([]signalk.Value, error) {
 	switch string(m.Header.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL]) {
@@ -27,11 +35,7 @@ func KeyValueFromData(m *nanomsg.RawData, cfg interface{}) ([]signalk.Value, err
 			return modbus.KeyValueFromModbus(m, cfg.(config.ModbusConfig))
 		}
 	}
-	return nil, fmt.Errorf(
-		"no suitable config for %s: %s",
-		m.Header.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL],
-		m.Header.HeaderSegments[nanomsg.HEADERSEGMENTSOURCE],
-	)
+	return nil, &WrongMapperError{}
 }
 
 // Map raw messages to key value messages
@@ -56,11 +60,13 @@ func Map(subscriber mangos.Socket, publisher mangos.Socket, cfg interface{}) {
 		}
 		values, err := KeyValueFromData(rawData, cfg)
 		if err != nil {
-			logger.GetLogger().Warn(
-				"Could not extract values from the raw data",
-				zap.ByteString("Raw data", rawData.Payload),
-				zap.String("Error", err.Error()),
-			)
+			if _, ok := err.(*WrongMapperError); !ok {
+				logger.GetLogger().Warn(
+					"Could not extract values from the raw data",
+					zap.ByteString("Raw data", rawData.Payload),
+					zap.String("Error", err.Error()),
+				)
+			}
 			continue
 		}
 		for _, value := range values {

@@ -66,8 +66,6 @@ func rawDatabase(cmd *cobra.Command, args []string) {
 		)
 	}
 	database.StoreRaw(subscriber)
-	for {
-	}
 }
 
 func keyValueDatabase(cmd *cobra.Command, args []string) {
@@ -80,6 +78,4 @@ func keyValueDatabase(cmd *cobra.Command, args []string) {
 		)
 	}
 	database.StoreKeyValue(subscriber)
-	for {
-	}
 }

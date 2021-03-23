@@ -9,6 +9,7 @@ require (
 	github.com/antonmedv/expr v1.8.9
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/golang/protobuf v1.5.1
+	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/jackc/pgproto3/v2 v2.0.7 // indirect
 	github.com/jackc/pgx/v4 v4.10.1
 	github.com/magiconair/properties v1.8.4 // indirect

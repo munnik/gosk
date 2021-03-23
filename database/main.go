@@ -104,6 +104,13 @@ func StoreKeyValue(socket mangos.Socket) {
 					zap.String("Error", err.Error()),
 				)
 			}
+		} else if m.Datatype == nanomsg.VESSELDATA {
+			if _, err = conn.Exec(context.Background(), query, m.Timestamp.AsTime(), m.Header.HeaderSegments, m.Context, m.Path, m.VesselDataValue.String()); err != nil {
+				logger.GetLogger().Warn(
+					"Error on inserting the received data in the database",
+					zap.String("Error", err.Error()),
+				)
+			}
 		}
 	}
 }

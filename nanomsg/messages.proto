@@ -26,6 +26,7 @@ message MappedData {
     string stringValue = 7;
     Position positionValue = 8;
     Length lengthValue = 9;
+    VesselData vesselDataValue = 10;
 }
 
 message Position {
@@ -38,4 +39,9 @@ message Length {
     double overall = 1;
     double hull = 2;
     double waterline = 3;
+}
+
+message VesselData {
+    uint32 mmsi = 1;
+    string name = 2;
 }

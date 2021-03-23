@@ -116,6 +116,17 @@ func Map(subscriber mangos.Socket, publisher mangos.Socket, cfg interface{}) {
 					Datatype:    nanomsg.LENGTH,
 					LengthValue: &v,
 				}
+			} else if v, ok := value.Value.(nanomsg.VesselData); ok {
+				mappedData = &nanomsg.MappedData{
+					Header: &nanomsg.Header{
+						HeaderSegments: append([]string{"mapper"}, rawData.Header.HeaderSegments[1:]...),
+					},
+					Timestamp:       rawData.Timestamp,
+					Context:         value.Context,
+					Path:            strings.Join(value.Path, "."),
+					Datatype:        nanomsg.VESSELDATA,
+					VesselDataValue: &v,
+				}
 			} else {
 				continue
 			}

@@ -5,6 +5,7 @@
 package signalkws
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -93,9 +94,14 @@ func (h *Hub) receive(socket mangos.Socket) {
 		case nanomsg.STRING:
 			valueAsString = fmt.Sprintf(`"%s"`, m.StringValue)
 		case nanomsg.POSITION:
-			valueAsString = fmt.Sprintf(`{"latitude": %f, "longitude": %f, "altitude": %f}`, m.PositionValue.Latitude, m.PositionValue.Longitude, m.PositionValue.Altitude)
+			bytes, _ := json.Marshal(m.PositionValue)
+			valueAsString = string(bytes)
 		case nanomsg.LENGTH:
-			valueAsString = fmt.Sprintf(`{"overall": %f, "hull": %f, "waterline": %f}`, m.LengthValue.Overall, m.LengthValue.Hull, m.LengthValue.Waterline)
+			bytes, _ := json.Marshal(m.LengthValue)
+			valueAsString = string(bytes)
+		case nanomsg.VESSELDATA:
+			bytes, _ := json.Marshal(m.VesselDataValue)
+			valueAsString = string(bytes)
 		default:
 			continue
 		}
@@ -104,7 +110,7 @@ func (h *Hub) receive(socket mangos.Socket) {
 				deltaTemplate,
 				m.Context,
 				m.Header.HeaderSegments[nanomsg.HEADERSEGMENTSOURCE],
-				m.Timestamp.AsTime().UTC().Format(time.RFC3339),
+				m.Timestamp.AsTime().UTC().Format(time.RFC3339Nano),
 				m.Path,
 				valueAsString,
 			),

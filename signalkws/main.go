@@ -8,34 +8,8 @@ import (
 	"go.uber.org/zap"
 )
 
-const helloTemplate = `{
-    "name": "GOSK",
-    "version": "1.0.0",
-    "timestamp": "%s",
-	"self": "vessels.urn:mrn:imo:mmsi:244770688",
-    "roles": [
-        "master",
-        "main"
-    ]
-}`
-
-const deltaTemplate = `{
-	"context": "%s",
-	"updates": [
-		{
-			"source": {
-				"label": "%s"
-			},
-			"timestamp": "%s",
-			"values": [
-				{
-				"path": "%s",
-				"value": %s
-				}
-			]
-		}
-	]
-}`
+const helloTemplate = `{"name":"GOSK","version":"1.0.0","self":"vessels.urn:mrn:imo:mmsi:244770688","roles":["master","main"],"timestamp":"%s"}`
+const deltaTemplate = `{"context":"%s","updates":[{"source":{"label":"%s"},"timestamp":"%s","values":[{"path":"%s","value":%s}]}]}`
 
 // serveWs handles websocket requests from the peer.
 func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {

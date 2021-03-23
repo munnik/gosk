@@ -8,25 +8,16 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/munnik/gosk/logger"
+	"go.uber.org/zap"
 )
 
 const (
 	// Time allowed to write a message to the peer.
 	writeWait = 10 * time.Second
 
-	// Time allowed to read the next pong message from the peer.
-	pongWait = 60 * time.Second
-
 	// Send pings to peer with this period. Must be less than pongWait.
-	pingPeriod = (pongWait * 9) / 10
-
-	// Maximum message size allowed from peer.
-	maxMessageSize = 512
-)
-
-var (
-	newline = []byte{'\n'}
-	space   = []byte{' '}
+	pingPeriod = 60 * time.Second
 )
 
 var upgrader = websocket.Upgrader{
@@ -63,25 +54,30 @@ func (c *Client) writePump() {
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
 				// The hub closed the channel.
-				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				if err := c.conn.WriteMessage(websocket.CloseMessage, []byte{}); err != nil {
+					logger.GetLogger().Warn(
+						"Could not send the close message",
+						zap.String("Error", err.Error()),
+					)
+				}
 				return
 			}
 
-			n := len(c.send)
-			for i := 0; i < n; i++ {
-				w, err := c.conn.NextWriter(websocket.TextMessage)
-				if err != nil {
-					return
-				}
-				w.Write(message)
-				if err := w.Close(); err != nil {
-					return
-				}
+			if err := c.conn.WriteMessage(websocket.TextMessage, message); err != nil {
+				logger.GetLogger().Warn(
+					"Could not write to client",
+					zap.ByteString("Message", message),
+					zap.String("Error", err.Error()),
+				)
 			}
 
 		case <-ticker.C:
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				logger.GetLogger().Warn(
+					"Could not ping the client",
+					zap.String("Error", err.Error()),
+				)
 				return
 			}
 		}

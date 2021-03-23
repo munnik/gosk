@@ -20,6 +20,7 @@ func KeyValueFromNMEA0183(m *nanomsg.RawData, cfg config.NMEA0183Config) ([]sign
 	if v, ok := sentence.(MMSI); ok {
 		if mmsi, err := v.GetMMSI(); err == nil {
 			context = fmt.Sprintf("vessels.urn:mrn:imo:mmsi:%d", mmsi)
+			result = append(result, signalk.Value{Context: context, Path: []string{""}, Value: nanomsg.VesselData{Mmsi: mmsi}})
 		}
 	}
 
@@ -95,7 +96,7 @@ func KeyValueFromNMEA0183(m *nanomsg.RawData, cfg config.NMEA0183Config) ([]sign
 	}
 	if v, ok := sentence.(VesselName); ok {
 		if vesselName, err := v.GetVesselName(); err == nil {
-			result = append(result, signalk.Value{Context: context, Path: []string{"name"}, Value: vesselName})
+			result = append(result, signalk.Value{Context: context, Path: []string{""}, Value: nanomsg.VesselData{Name: vesselName}})
 		}
 	}
 	if v, ok := sentence.(CallSign); ok {

@@ -9,8 +9,9 @@ const (
 
 // Used to determine the datatype of the value
 const (
-	DOUBLE   = 0
-	STRING   = 1
-	POSITION = 2
-	LENGTH   = 3
+	DOUBLE     = 0
+	STRING     = 1
+	POSITION   = 2
+	LENGTH     = 3
+	VESSELDATA = 4
 )

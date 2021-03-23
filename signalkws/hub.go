@@ -5,7 +5,6 @@
 package signalkws
 
 import (
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/munnik/gosk/nanomsg"
 	"go.nanomsg.org/mangos/v3"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -94,13 +94,13 @@ func (h *Hub) receive(socket mangos.Socket) {
 		case nanomsg.STRING:
 			valueAsString = fmt.Sprintf(`"%s"`, m.StringValue)
 		case nanomsg.POSITION:
-			bytes, _ := json.Marshal(m.PositionValue)
+			bytes, _ := protojson.Marshal(m.PositionValue)
 			valueAsString = string(bytes)
 		case nanomsg.LENGTH:
-			bytes, _ := json.Marshal(m.LengthValue)
+			bytes, _ := protojson.Marshal(m.LengthValue)
 			valueAsString = string(bytes)
 		case nanomsg.VESSELDATA:
-			bytes, _ := json.Marshal(m.VesselDataValue)
+			bytes, _ := protojson.Marshal(m.VesselDataValue)
 			valueAsString = string(bytes)
 		default:
 			continue

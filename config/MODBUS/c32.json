@@ -13,13 +13,13 @@
         "51360": {
             "FunctionCode": 4,
             "Size": 2,
-            "Expression": "(registers[0] * 65536 + registers[1]) * 3.6",
+            "Expression": "(registers[0] * 65536 + registers[1]) * 36.0",
             "SignalKPath": ["propulsion","mainEngine","runTime"]
         },
         "51372": {
             "FunctionCode": 4,
             "Size": 2,
-            "Expression": "(registers[0] * 65536 + registers[1]) * 3.6",
+            "Expression": "(registers[0] * 65536 + registers[1]) / 1000000.0",
             "SignalKPath": ["propulsion","mainEngine","fuel","used"]
         },
         "51408": {
@@ -55,7 +55,7 @@
         "51436": {
             "FunctionCode": 4,
             "Size": 2,
-            "Expression": "(registers[0] * 65536 + registers[1]) * 1.0",
+            "Expression": "(registers[0] * 65536 + registers[1]) / 3600000000.0",
             "SignalKPath": ["propulsion","mainEngine","fuel","rate"]
         },
         "51440": {

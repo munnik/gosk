@@ -25,6 +25,11 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
+type subscription struct {
+	context string
+	paths   []string
+}
+
 // Client is a middleman between the websocket connection and the hub.
 type Client struct {
 	hub *Hub
@@ -34,6 +39,9 @@ type Client struct {
 
 	// Buffered channel of outbound messages.
 	send chan []byte
+
+	subscription     []subscription
+	sendCachedValues bool
 }
 
 // writePump pumps messages from the hub to the websocket connection.
@@ -82,4 +90,23 @@ func (c *Client) writePump() {
 			}
 		}
 	}
+}
+func (c *Client) isSubscribedTo(d delta) bool {
+	for _, subscription := range c.subscription {
+		if subscription.context == "*" || subscription.context == d.Context {
+			for _, subscribedPath := range subscription.paths {
+				if subscribedPath == "*" {
+					return true
+				}
+				for _, update := range d.Updates {
+					for _, value := range update.Values {
+						if subscribedPath == value.Path {
+							return true
+						}
+					}
+				}
+			}
+		}
+	}
+	return false
 }

@@ -2,14 +2,42 @@ package signalkws
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/munnik/gosk/logger"
 	"go.nanomsg.org/mangos/v3"
 	"go.uber.org/zap"
 )
 
-const helloTemplate = `{"name":"GOSK","version":"1.0.0","self":"vessels.urn:mrn:imo:mmsi:244770688","roles":["master","main"],"timestamp":"%s"}`
-const deltaTemplate = `{"context":"%s","updates":[{"source":{"label":"%s"},"timestamp":"%s","values":[{"path":"%s","value":%s}]}]}`
+const self = "vessels.urn:mrn:imo:mmsi:244770688"
+
+type hello struct {
+	Name      string    `json:"name"`
+	Version   string    `json:"version"`
+	Self      string    `json:"self"`
+	Roles     []string  `json:"roles"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+type delta struct {
+	Context string   `json:"context"`
+	Updates []update `json:"updates"`
+}
+
+type update struct {
+	Source    source    `json:"source"`
+	Timestamp time.Time `json:"timestmap"`
+	Values    []value   `json:"values"`
+}
+
+type source struct {
+	Label string `json:"label"`
+}
+
+type value struct {
+	Path  string      `json:"path"`
+	Value interface{} `json:"value"`
+}
 
 // serveWs handles websocket requests from the peer.
 func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
@@ -25,7 +53,23 @@ func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		)
 		return
 	}
-	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256)}
+
+	subscribeContext := self
+	if q := r.URL.Query().Get("subscribe"); len(q) > 0 {
+		if q == "all" {
+			subscribeContext = "*"
+		} else if q == "none" {
+			subscribeContext = ""
+		}
+	}
+	client := &Client{
+		hub:  hub,
+		conn: conn,
+		send: make(chan []byte, 256),
+		subscription: []subscription{
+			{context: subscribeContext, paths: []string{"*"}},
+		},
+	}
 	client.hub.register <- client
 
 	go client.writePump()

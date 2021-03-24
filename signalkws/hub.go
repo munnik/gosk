@@ -5,9 +5,9 @@
 package signalkws
 
 import (
-	"encoding/json"
-	"fmt"
 	"time"
+
+	"github.com/goccy/go-json"
 
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/nanomsg"
@@ -23,7 +23,7 @@ type Hub struct {
 	clients map[*Client]bool
 
 	// Inbound messages from the clients.
-	broadcast chan []byte
+	broadcast chan delta
 
 	// Register requests from the clients.
 	register chan *Client
@@ -34,7 +34,7 @@ type Hub struct {
 
 func newHub() *Hub {
 	return &Hub{
-		broadcast:  make(chan []byte),
+		broadcast:  make(chan delta),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
 		clients:    make(map[*Client]bool),
@@ -46,7 +46,20 @@ func (h *Hub) run() {
 		select {
 		case client := <-h.register:
 			h.clients[client] = true
-			client.send <- []byte(fmt.Sprintf(helloTemplate, time.Now().UTC().Format(time.RFC3339)))
+			message, err := json.Marshal(hello{
+				Name:      "GOSK",
+				Version:   "1.0.0",
+				Self:      self,
+				Roles:     []string{"main", "master"},
+				Timestamp: time.Now().UTC(),
+			})
+			if err != nil {
+				logger.GetLogger().Warn(
+					"Could not marshall the hello message",
+					zap.String("Error", err.Error()),
+				)
+			}
+			client.send <- message
 		case client := <-h.unregister:
 			logger.GetLogger().Info(
 				"Client lost",
@@ -55,8 +68,18 @@ func (h *Hub) run() {
 				delete(h.clients, client)
 				close(client.send)
 			}
-		case message := <-h.broadcast:
+		case delta := <-h.broadcast:
 			for client := range h.clients {
+				if !client.isSubscribedTo(delta) {
+					continue
+				}
+				message, err := json.Marshal(delta)
+				if err != nil {
+					logger.GetLogger().Warn(
+						"Could not marshall the delta message",
+						zap.String("Error", err.Error()),
+					)
+				}
 				select {
 				case client.send <- message:
 				default:
@@ -70,7 +93,7 @@ func (h *Hub) run() {
 
 func (h *Hub) receive(socket mangos.Socket) {
 	m := &nanomsg.MappedData{}
-	var valueAsString string
+	var v interface{}
 	for {
 		received, err := socket.Recv()
 		if err != nil {
@@ -90,30 +113,34 @@ func (h *Hub) receive(socket mangos.Socket) {
 
 		switch m.Datatype {
 		case nanomsg.DOUBLE:
-			valueAsString = fmt.Sprintf("%f", m.DoubleValue)
+			v = m.DoubleValue
 		case nanomsg.STRING:
-			valueAsString = fmt.Sprintf(`"%s"`, m.StringValue)
+			v = m.StringValue
 		case nanomsg.POSITION:
-			bytes, _ := json.Marshal(m.PositionValue)
-			valueAsString = string(bytes)
+			v = m.PositionValue
 		case nanomsg.LENGTH:
-			bytes, _ := json.Marshal(m.LengthValue)
-			valueAsString = string(bytes)
+			v = m.LengthValue
 		case nanomsg.VESSELDATA:
-			bytes, _ := json.Marshal(m.VesselDataValue)
-			valueAsString = string(bytes)
+			v = m.VesselDataValue
 		default:
 			continue
 		}
-		h.broadcast <- []byte(
-			fmt.Sprintf(
-				deltaTemplate,
-				m.Context,
-				m.Header.HeaderSegments[nanomsg.HEADERSEGMENTSOURCE],
-				m.Timestamp.AsTime().UTC().Format(time.RFC3339Nano),
-				m.Path,
-				valueAsString,
-			),
-		)
+		h.broadcast <- delta{
+			Context: m.Context,
+			Updates: []update{
+				{
+					Source: source{
+						Label: m.Header.HeaderSegments[nanomsg.HEADERSEGMENTSOURCE],
+					},
+					Timestamp: time.Now().UTC(),
+					Values: []value{
+						{
+							Path:  m.Path,
+							Value: v,
+						},
+					},
+				},
+			},
+		}
 	}
 }

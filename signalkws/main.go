@@ -2,7 +2,6 @@ package signalkws
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/munnik/gosk/logger"
 	"go.nanomsg.org/mangos/v3"
@@ -10,34 +9,6 @@ import (
 )
 
 const self = "vessels.urn:mrn:imo:mmsi:244770688"
-
-type hello struct {
-	Name      string    `json:"name"`
-	Version   string    `json:"version"`
-	Self      string    `json:"self"`
-	Roles     []string  `json:"roles"`
-	Timestamp time.Time `json:"timestamp"`
-}
-
-type delta struct {
-	Context string   `json:"context"`
-	Updates []update `json:"updates"`
-}
-
-type update struct {
-	Source    source    `json:"source"`
-	Timestamp time.Time `json:"timestmap"`
-	Values    []value   `json:"values"`
-}
-
-type source struct {
-	Label string `json:"label"`
-}
-
-type value struct {
-	Path  string      `json:"path"`
-	Value interface{} `json:"value"`
-}
 
 // serveWs handles websocket requests from the peer.
 func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
@@ -54,25 +25,25 @@ func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	subscribeContext := self
-	if q := r.URL.Query().Get("subscribe"); len(q) > 0 {
-		if q == "all" {
-			subscribeContext = "*"
-		} else if q == "none" {
-			subscribeContext = ""
-		}
-	}
-	client := &Client{
+	c := &Client{
 		hub:  hub,
 		conn: conn,
 		send: make(chan []byte, 256),
-		subscription: []subscription{
-			{context: subscribeContext, paths: []string{"*"}},
-		},
 	}
-	client.hub.register <- client
 
-	go client.writePump()
+	q := r.URL.Query().Get("subscribe")
+	if q == "none" {
+		// don't subscribe to anything
+	} else if q == "all" {
+		c.handleSubscribeMessages(subscribeMessage{Context: "*", Subscribe: []subscribeSection{{Path: "*"}}})
+	} else {
+		c.handleSubscribeMessages(subscribeMessage{Context: self, Subscribe: []subscribeSection{{Path: "*"}}})
+	}
+
+	c.hub.register <- c
+
+	go c.writePump()
+	go c.readPump()
 }
 
 // StoreKeyValue saves all received key value messages in the database

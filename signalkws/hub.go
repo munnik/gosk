@@ -23,7 +23,7 @@ type Hub struct {
 	clients map[*Client]bool
 
 	// Inbound messages from the clients.
-	broadcast chan delta
+	broadcast chan deltaMessage
 
 	// Register requests from the clients.
 	register chan *Client
@@ -34,7 +34,7 @@ type Hub struct {
 
 func newHub() *Hub {
 	return &Hub{
-		broadcast:  make(chan delta),
+		broadcast:  make(chan deltaMessage),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
 		clients:    make(map[*Client]bool),
@@ -46,7 +46,7 @@ func (h *Hub) run() {
 		select {
 		case client := <-h.register:
 			h.clients[client] = true
-			message, err := json.Marshal(hello{
+			message, err := json.Marshal(helloMessage{
 				Name:      "GOSK",
 				Version:   "1.0.0",
 				Self:      self,
@@ -125,15 +125,15 @@ func (h *Hub) receive(socket mangos.Socket) {
 		default:
 			continue
 		}
-		h.broadcast <- delta{
+		h.broadcast <- deltaMessage{
 			Context: m.Context,
-			Updates: []update{
+			Updates: []updateSection{
 				{
-					Source: source{
+					Source: sourceSection{
 						Label: m.Header.HeaderSegments[nanomsg.HEADERSEGMENTSOURCE],
 					},
 					Timestamp: time.Now().UTC(),
-					Values: []value{
+					Values: []valueSection{
 						{
 							Path:  m.Path,
 							Value: v,

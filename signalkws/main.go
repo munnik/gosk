@@ -26,15 +26,16 @@ func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	}
 
 	c := &Client{
-		hub:  hub,
-		conn: conn,
-		send: make(chan []byte, 256),
+		hub:              hub,
+		conn:             conn,
+		send:             make(chan []byte, 256),
+		sendCachedValues: r.URL.Query().Get("sendCachedValues") != "false",
 	}
 
-	q := r.URL.Query().Get("subscribe")
-	if q == "none" {
+	subscribeParam := r.URL.Query().Get("subscribe")
+	if subscribeParam == "none" {
 		// don't subscribe to anything
-	} else if q == "all" {
+	} else if subscribeParam == "all" {
 		c.handleSubscribeMessages(subscribeMessage{Context: "*", Subscribe: []subscribeSection{{Path: "*"}}})
 	} else {
 		c.handleSubscribeMessages(subscribeMessage{Context: self, Subscribe: []subscribeSection{{Path: "*"}}})

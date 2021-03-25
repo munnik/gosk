@@ -30,6 +30,8 @@ type Hub struct {
 
 	// Unregister requests from clients.
 	unregister chan *Client
+
+	cache cacheType
 }
 
 func newHub() *Hub {
@@ -38,6 +40,7 @@ func newHub() *Hub {
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
 		clients:    make(map[*Client]bool),
+		cache:      cacheType{},
 	}
 }
 
@@ -60,6 +63,16 @@ func (h *Hub) run() {
 				)
 			}
 			client.send <- message
+			for _, delta := range h.cache.retrieveAll() {
+				message, err = json.Marshal(delta)
+				if err != nil {
+					logger.GetLogger().Warn(
+						"Could not marshall the delta message",
+						zap.String("Error", err.Error()),
+					)
+				}
+				client.send <- message
+			}
 		case client := <-h.unregister:
 			logger.GetLogger().Info(
 				"Client lost",
@@ -69,6 +82,7 @@ func (h *Hub) run() {
 				close(client.send)
 			}
 		case delta := <-h.broadcast:
+			h.cache.injectOrUpdate(delta)
 			for client := range h.clients {
 				if !client.isSubscribedTo(delta) {
 					continue

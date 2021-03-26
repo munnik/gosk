@@ -1,5 +1,7 @@
 package signalk
 
+import "github.com/munnik/gosk/nanomsg"
+
 // remember to run `~/go/bin/easyjson -all mapper/signalk/main.go` when changing a struct
 
 // Delta as specified in https://signalk.org/specification/1.4.0/doc/data_model.html
@@ -22,9 +24,9 @@ type Vessel struct {
 
 // Value is part of an Update
 type Value struct {
-	Context string      `json:"context,omitempty"`
-	Path    []string    `json:"path"`
-	Value   interface{} `json:"value"`
+	Context string                    `json:"context,omitempty"`
+	Path    []string                  `json:"path"`
+	Value   nanomsg.MappedDataCreator `json:"value"`
 }
 
 // Source is part of an Update

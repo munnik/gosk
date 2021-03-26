@@ -1,8 +1,6 @@
 package mapper
 
 import (
-	"strings"
-
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/mapper/modbus"
@@ -71,62 +69,8 @@ func Map(subscriber mangos.Socket, publisher mangos.Socket, cfg interface{}) {
 		}
 		for _, value := range values {
 			var mappedData *nanomsg.MappedData
-			mappedData = nil
-			if v, ok := value.Value.(float64); ok {
-				mappedData = &nanomsg.MappedData{
-					Header: &nanomsg.Header{
-						HeaderSegments: append([]string{"mapper"}, rawData.Header.HeaderSegments[1:]...),
-					},
-					Timestamp:   rawData.Timestamp,
-					Context:     value.Context,
-					Path:        strings.Join(value.Path, "."),
-					Datatype:    nanomsg.DOUBLE,
-					DoubleValue: v,
-				}
-			} else if v, ok := value.Value.(string); ok {
-				mappedData = &nanomsg.MappedData{
-					Header: &nanomsg.Header{
-						HeaderSegments: append([]string{"mapper"}, rawData.Header.HeaderSegments[1:]...),
-					},
-					Timestamp:   rawData.Timestamp,
-					Context:     value.Context,
-					Path:        strings.Join(value.Path, "."),
-					Datatype:    nanomsg.STRING,
-					StringValue: v,
-				}
-			} else if v, ok := value.Value.(nanomsg.Position); ok {
-				mappedData = &nanomsg.MappedData{
-					Header: &nanomsg.Header{
-						HeaderSegments: append([]string{"mapper"}, rawData.Header.HeaderSegments[1:]...),
-					},
-					Timestamp:     rawData.Timestamp,
-					Context:       value.Context,
-					Path:          strings.Join(value.Path, "."),
-					Datatype:      nanomsg.POSITION,
-					PositionValue: &v,
-				}
-			} else if v, ok := value.Value.(nanomsg.Length); ok {
-				mappedData = &nanomsg.MappedData{
-					Header: &nanomsg.Header{
-						HeaderSegments: append([]string{"mapper"}, rawData.Header.HeaderSegments[1:]...),
-					},
-					Timestamp:   rawData.Timestamp,
-					Context:     value.Context,
-					Path:        strings.Join(value.Path, "."),
-					Datatype:    nanomsg.LENGTH,
-					LengthValue: &v,
-				}
-			} else if v, ok := value.Value.(nanomsg.VesselData); ok {
-				mappedData = &nanomsg.MappedData{
-					Header: &nanomsg.Header{
-						HeaderSegments: append([]string{"mapper"}, rawData.Header.HeaderSegments[1:]...),
-					},
-					Timestamp:       rawData.Timestamp,
-					Context:         value.Context,
-					Path:            strings.Join(value.Path, "."),
-					Datatype:        nanomsg.VESSELDATA,
-					VesselDataValue: &v,
-				}
+			if v, ok := value.Value.(nanomsg.MappedDataCreator); ok {
+				mappedData = v.CreateMappedData(rawData, value.Context, value.Path)
 			} else {
 				continue
 			}
@@ -143,35 +87,3 @@ func Map(subscriber mangos.Socket, publisher mangos.Socket, cfg interface{}) {
 		}
 	}
 }
-
-// var delta signalk.Delta
-// if v, ok := sentence.(VDMVDO); ok && v.Packet != nil {
-// 	delta = signalk.DeltaWithContext{
-// 		Context: fmt.Sprintf("vessels.urn:mrn:imo:mmsi:%d", v.Packet.GetHeader().UserID),
-// 		Updates: []signalk.Update{
-// 			{
-// 				Source: signalk.Source{
-// 					Label:    string(m.HeaderSegments[nanomsg.HEADERSEGMENTSOURCE]),
-// 					Type:     string(m.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL]),
-// 					Sentence: sentence.DataType(),
-// 					Talker:   sentence.TalkerID(),
-// 					AisType:  v.Packet.GetHeader().MessageID,
-// 				},
-// 				Timestamp: m.Time.UTC().Format(time.RFC3339),
-// 			},
-// 		},
-// 	}
-// } else {
-// 	delta = signalk.DeltaWithoutContext{
-// 		Updates: []signalk.Update{
-// 			{
-// 				Source: signalk.Source{
-// 					Label:    string(m.HeaderSegments[nanomsg.HEADERSEGMENTSOURCE]),
-// 					Type:     string(m.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL]),
-// 					Sentence: sentence.DataType(),
-// 					Talker:   sentence.TalkerID(),
-// 				}, Timestamp: m.Time.UTC().Format(time.RFC3339),
-// 			},
-// 		},
-// 	}
-// }

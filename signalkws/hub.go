@@ -107,7 +107,6 @@ func (h *Hub) run() {
 
 func (h *Hub) receive(socket mangos.Socket) {
 	m := &nanomsg.MappedData{}
-	var v interface{}
 	for {
 		received, err := socket.Recv()
 		if err != nil {
@@ -125,20 +124,6 @@ func (h *Hub) receive(socket mangos.Socket) {
 			continue
 		}
 
-		switch m.Datatype {
-		case nanomsg.DOUBLE:
-			v = m.DoubleValue
-		case nanomsg.STRING:
-			v = m.StringValue
-		case nanomsg.POSITION:
-			v = m.PositionValue
-		case nanomsg.LENGTH:
-			v = m.LengthValue
-		case nanomsg.VESSELDATA:
-			v = m.VesselDataValue
-		default:
-			continue
-		}
 		h.broadcast <- deltaMessage{
 			Context: m.Context,
 			Updates: []updateSection{
@@ -150,7 +135,7 @@ func (h *Hub) receive(socket mangos.Socket) {
 					Values: []valueSection{
 						{
 							Path:  m.Path,
-							Value: v,
+							Value: m.Value,
 						},
 					},
 				},

@@ -21,27 +21,28 @@ message MappedData {
     string context = 2;
     string path = 3;
     google.protobuf.Timestamp timestamp = 4;
-    int32 datatype = 5;
-    double doubleValue = 6;
-    string stringValue = 7;
-    Position positionValue = 8;
-    Length lengthValue = 9;
-    VesselData vesselDataValue = 10;
+    oneof value {
+        double doubleValue = 5;
+        string stringValue = 6;
+        PositionValue positionValue = 7;
+        LengthValue lengthValue = 8;
+        VesselDataValue vesselDataValue = 9;
+    }
 }
 
-message Position {
-    double latitude = 1;
-    double longitude = 2;
-    double altitude = 3;
+message PositionValue {
+    optional double latitude = 1;
+    optional double longitude = 2;
+    optional double altitude = 3;
 }
 
-message Length {
-    double overall = 1;
-    double hull = 2;
-    double waterline = 3;
+message LengthValue {
+    optional double overall = 1;
+    optional double hull = 2;
+    optional double waterline = 3;
 }
 
-message VesselData {
-    uint32 mmsi = 1;
-    string name = 2;
+message VesselDataValue {
+    optional uint32 mmsi = 1;
+    optional string name = 2;
 }

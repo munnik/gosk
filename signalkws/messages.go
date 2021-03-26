@@ -1,6 +1,8 @@
 package signalkws
 
-import "time"
+import (
+	"time"
+)
 
 type helloMessage struct {
 	Name      string    `json:"name"`

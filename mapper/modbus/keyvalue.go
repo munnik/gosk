@@ -22,6 +22,7 @@ func KeyValueFromModbus(m *nanomsg.RawData, cfg config.ModbusConfig) ([]signalk.
 	var functionCode uint16
 	var startRegister uint16
 	var registerCount uint16
+	var value nanomsg.MappedDataCreator
 
 	functionCode = binary.BigEndian.Uint16(m.Payload[0:2])
 	startRegister = binary.BigEndian.Uint16(m.Payload[2:4])
@@ -56,12 +57,21 @@ func KeyValueFromModbus(m *nanomsg.RawData, cfg config.ModbusConfig) ([]signalk.
 				continue
 			}
 
+			value, err = nanomsg.NewMappedDataCreator(output)
+			if err != nil {
+				logger.GetLogger().Warn(
+					"Could create a value from the result of the expression",
+					zap.String("Error", err.Error()),
+				)
+				continue
+			}
+
 			result = append(
 				result,
 				signalk.Value{
 					Context: cfg.Context,
 					Path:    registerMapping.SignalKPath,
-					Value:   output,
+					Value:   value,
 				},
 			)
 		}

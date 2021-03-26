@@ -2,7 +2,7 @@ package database
 
 import (
 	"context"
-	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v4"
 	"go.uber.org/zap"
@@ -76,41 +76,59 @@ func StoreKeyValue(socket mangos.Socket) {
 			)
 			continue
 		}
-		if m.Datatype == nanomsg.DOUBLE {
-			if _, err = conn.Exec(context.Background(), query, m.Timestamp.AsTime(), m.Header.HeaderSegments, m.Context, m.Path, fmt.Sprintf("%f", m.DoubleValue)); err != nil {
-				logger.GetLogger().Warn(
-					"Error on inserting the received data in the database",
-					zap.String("Error", err.Error()),
-				)
+
+		switch v := m.Value.(type) {
+		case *nanomsg.MappedData_StringValue, *nanomsg.MappedData_DoubleValue:
+			insert(conn, query, m, m.Path, v)
+		case *nanomsg.MappedData_PositionValue:
+			if v.PositionValue.Altitude != nil {
+				insert(conn, query, m, strings.TrimLeft(m.Path+".altitude", "."), v.PositionValue.Altitude)
 			}
-		} else if m.Datatype == nanomsg.STRING {
-			if _, err = conn.Exec(context.Background(), query, m.Timestamp.AsTime(), m.Header.HeaderSegments, m.Context, m.Path, m.StringValue); err != nil {
-				logger.GetLogger().Warn(
-					"Error on inserting the received data in the database",
-					zap.String("Error", err.Error()),
-				)
+			if v.PositionValue.Latitude != nil {
+				insert(conn, query, m, strings.TrimLeft(m.Path+".latitude", "."), v.PositionValue.Latitude)
 			}
-		} else if m.Datatype == nanomsg.POSITION {
-			if _, err = conn.Exec(context.Background(), query, m.Timestamp.AsTime(), m.Header.HeaderSegments, m.Context, m.Path, m.PositionValue.String()); err != nil {
-				logger.GetLogger().Warn(
-					"Error on inserting the received data in the database",
-					zap.String("Error", err.Error()),
-				)
+			if v.PositionValue.Longitude != nil {
+				insert(conn, query, m, strings.TrimLeft(m.Path+".longitude", "."), v.PositionValue.Longitude)
 			}
-		} else if m.Datatype == nanomsg.LENGTH {
-			if _, err = conn.Exec(context.Background(), query, m.Timestamp.AsTime(), m.Header.HeaderSegments, m.Context, m.Path, m.LengthValue.String()); err != nil {
-				logger.GetLogger().Warn(
-					"Error on inserting the received data in the database",
-					zap.String("Error", err.Error()),
-				)
+		case *nanomsg.MappedData_LengthValue:
+			if v.LengthValue.Hull != nil {
+				insert(conn, query, m, strings.TrimLeft(m.Path+".hull", "."), v.LengthValue.Hull)
 			}
-		} else if m.Datatype == nanomsg.VESSELDATA {
-			if _, err = conn.Exec(context.Background(), query, m.Timestamp.AsTime(), m.Header.HeaderSegments, m.Context, m.Path, m.VesselDataValue.String()); err != nil {
-				logger.GetLogger().Warn(
-					"Error on inserting the received data in the database",
-					zap.String("Error", err.Error()),
-				)
+			if v.LengthValue.Overall != nil {
+				insert(conn, query, m, strings.TrimLeft(m.Path+".overall", "."), v.LengthValue.Overall)
+			}
+			if v.LengthValue.Waterline != nil {
+				insert(conn, query, m, strings.TrimLeft(m.Path+".waterline", "."), v.LengthValue.Waterline)
+			}
+		case *nanomsg.MappedData_VesselDataValue:
+			if v.VesselDataValue.Mmsi != nil {
+				insert(conn, query, m, strings.TrimLeft(m.Path+".mmsi", "."), v.VesselDataValue.Mmsi)
+			}
+			if v.VesselDataValue.Name != nil {
+				insert(conn, query, m, strings.TrimLeft(m.Path+".name", "."), v.VesselDataValue.Name)
 			}
 		}
 	}
+}
+
+func insert(conn *pgx.Conn, query string, m *nanomsg.MappedData, path string, value interface{}) {
+	execQuery := func(stringValue string) {
+		if _, err := conn.Exec(context.Background(), query, m.Timestamp.AsTime(), m.Header.HeaderSegments, m.Context, path, stringValue); err != nil {
+			logger.GetLogger().Warn(
+				"Error on inserting the received data in the database",
+				zap.String("Error", err.Error()),
+			)
+		}
+	}
+
+	stringValue, err := nanomsg.ToString(value)
+	if err != nil {
+		logger.GetLogger().Warn(
+			"Can't insert unsupported type in database",
+			zap.String("Error", err.Error()),
+		)
+		return
+	}
+
+	execQuery(stringValue)
 }

@@ -1,3 +1,5 @@
+create extension if not exists timescaledb cascade;
+
 drop table if exists raw_data;
 
 create table raw_data (

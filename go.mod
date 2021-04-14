@@ -8,8 +8,7 @@ require (
 	github.com/adrianmo/go-nmea v1.3.0
 	github.com/antonmedv/expr v1.8.9
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
-	github.com/goccy/go-json v0.4.8 // indirect
-	github.com/golang/protobuf v1.5.1
+	github.com/goccy/go-json v0.4.8
 	github.com/gorilla/websocket v1.4.2
 	github.com/jackc/pgproto3/v2 v2.0.7 // indirect
 	github.com/jackc/pgx/v4 v4.11.0

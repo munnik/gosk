@@ -1,4 +1,6 @@
 .vscode/
+.vim/
 __debug_bin
 data/
 logs/
+gosk

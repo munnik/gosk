@@ -74,12 +74,12 @@ func KeyValueFromNMEA0183(m *nanomsg.Message) ([]signalk.Value, error) {
 		}
 	}
 	if v, ok := sentence.(Position2D); ok {
-		if lon, lat, err := v.GetPosition2D(); err == nil {
+		if lat, lon, err := v.GetPosition2D(); err == nil {
 			result = append(result, signalk.Value{Context: context, Path: []string{"navigation", "position"}, Value: signalk.Position{Longitude: lon, Latitude: lat}})
 		}
 	}
 	if v, ok := sentence.(Position3D); ok {
-		if lon, lat, alt, err := v.GetPosition3D(); err == nil {
+		if lat, lon, alt, err := v.GetPosition3D(); err == nil {
 			result = append(result, signalk.Value{Context: context, Path: []string{"navigation", "position"}, Value: signalk.Position{Longitude: lon, Latitude: lat, Altitude: alt}})
 		}
 	}

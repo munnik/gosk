@@ -2,7 +2,6 @@ package signalk
 
 import (
 	"fmt"
-	"log"
 	"strings"
 )
 
@@ -12,8 +11,6 @@ var (
 		"design.length":       "Length",
 	}
 )
-
-// remember to run `easyjson -all -lower_camel_case signalk/main.go` when changing a struct
 
 // Delta as specified in https://signalk.org/specification/1.4.0/doc/data_model.html
 type Delta struct {
@@ -123,22 +120,22 @@ func FromJSONToStruct(value string, path string) (interface{}, error) {
 	if !ok {
 		return nil, fmt.Errorf("Lookup of the path %s failed", path)
 	}
-	switch typeOfValue {
-	case "Position":
-		var position Position
-		err := position.UnmarshalJSON([]byte(value))
-		if err != nil {
-			log.Fatal(err)
-		}
-		return position, nil
-	case "Length":
-		var length Length
-		err := length.UnmarshalJSON([]byte(value))
-		if err != nil {
-			log.Fatal(err)
-		}
-		return length, nil
-	}
+	// switch typeOfValue {
+	// case "Position":
+	// 	var position Position
+	// 	err := position.UnmarshalJSON([]byte(value))
+	// 	if err != nil {
+	// 		log.Fatal(err)
+	// 	}
+	// 	return position, nil
+	// case "Length":
+	// 	var length Length
+	// 	err := length.UnmarshalJSON([]byte(value))
+	// 	if err != nil {
+	// 		log.Fatal(err)
+	// 	}
+	// 	return length, nil
+	// }
 	return nil, fmt.Errorf("Not defined how to unmarshal %s", typeOfValue)
 }
 

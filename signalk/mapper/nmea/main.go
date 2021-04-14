@@ -1,7 +1,6 @@
 package nmea
 
 import (
-	"errors"
 	"fmt"
 
 	goAIS "github.com/BertoldVdb/go-ais"
@@ -10,54 +9,107 @@ import (
 	goNMEA "github.com/adrianmo/go-nmea"
 )
 
-// Sentence interface for all NMEA sentence
-type Sentence interface {
-	goNMEA.Sentence
-}
-
 type (
-	// DBS for corresponding NMEA sentences
-	DBS goNMEA.DBS
-	// DBT for corresponding NMEA sentences
-	DBT goNMEA.DBT
-	// DPT for corresponding NMEA sentences
-	DPT goNMEA.DPT
-	// GGA for corresponding NMEA sentences
-	GGA goNMEA.GGA
-	// GLL for corresponding NMEA sentences
-	GLL goNMEA.GLL
-	// GNS for corresponding NMEA sentences
-	GNS goNMEA.GNS
-	// GSA for corresponding NMEA sentences
-	GSA goNMEA.GSA
-	// GSV for corresponding NMEA sentences
-	GSV goNMEA.GSV
-	// HDT for corresponding NMEA sentences
-	HDT goNMEA.HDT
-	// MTK for corresponding NMEA sentences
-	MTK goNMEA.MTK
-	// PGRME for corresponding NMEA sentences
-	PGRME goNMEA.PGRME
-	// RMC for corresponding NMEA sentences
-	RMC goNMEA.RMC
-	// RTE for corresponding NMEA sentences
-	RTE goNMEA.RTE
-	// THS for corresponding NMEA sentences
-	THS goNMEA.THS
-	// VDMVDO for corresponding NMEA sentences
 	VDMVDO struct {
 		goNMEA.BaseSentence
 		goAIS.Packet
 	}
-	// VHW for corresponding NMEA sentences
-	VHW goNMEA.VHW
-	// VTG for corresponding NMEA sentences
-	VTG goNMEA.VTG
-	// WPL for corresponding NMEA sentences
-	WPL goNMEA.WPL
-	// ZDA for corresponding NMEA sentences
-	ZDA goNMEA.ZDA
 )
+
+// Float64 can contain nil values
+type Float64 struct {
+	value float64
+	isNil bool
+}
+
+// Int64 can contain nil values
+type Int64 struct {
+	value int64
+	isNil bool
+}
+
+// A ValueOption can be passed to the constructors to create a struct with the value set
+type ValueOption func(target interface{})
+
+// MagneticCourseOverGround retrieves the magnetic course over ground from the sentence
+type MagneticCourseOverGround interface {
+	GetmagneticCourseOverGround() (float64, error)
+}
+
+// MagneticHeading retrieves the magnetic heading from the sentence
+type MagneticHeading interface {
+	GetMagneticHeading() (float64, error)
+}
+
+// MagneticVariation retrieves the magnetic variation from the sentence
+type MagneticVariation interface {
+	GetMagneticVariation() (float64, error)
+}
+
+// RateOfTurn retrieves the rate of turn from the sentence
+type RateOfTurn interface {
+	GetRateOfTurn() (float64, error)
+}
+
+// TrueCourseOverGround retrieves the true course over ground from the sentence
+type TrueCourseOverGround interface {
+	GetTrueCourseOverGround() (float64, error)
+}
+
+// TrueHeading retrieves the true heading from the sentence
+type TrueHeading interface {
+	GetTrueHeading() (float64, error)
+}
+
+// FixQuality retrieves the fix quality from the sentence
+type FixQuality interface {
+	GetFixQuality() (string, error)
+}
+
+// FixType retrieves the fix type from the sentence
+type FixType interface {
+	GetFixType() (string, error)
+}
+
+// NumberOfSatelites retrieves the number of satelites from the sentence
+type NumberOfSatelites interface {
+	GetNumberOfSatelites() (int64, error)
+}
+
+// Position2D retrieves the 2D position from the sentence
+type Position2D interface {
+	GetPosition2D() (float64, float64, error)
+}
+
+// Position3D retrieves the 3D position from the sentence
+type Position3D interface {
+	GetPosition3D() (float64, float64, float64, error)
+}
+
+// SpeedOverGround retrieves the speed over ground from the sentence
+type SpeedOverGround interface {
+	GetSpeedOverGround() (float64, error)
+}
+
+// SpeedThroughWater retrieves the speed through water from the sentence
+type SpeedThroughWater interface {
+	GetSpeedThroughWater() (float64, error)
+}
+
+// DepthBelowSurface retrieves the depth below surface from the sentence
+type DepthBelowSurface interface {
+	GetDepthBelowSurface() (float64, error)
+}
+
+// DepthBelowSurface retrieves the depth below surface from the sentence
+type DepthBelowKeel interface {
+	GetDepthBelowKeel() (float64, error)
+}
+
+// DepthBelowTransducer retrieves the depth below the transducer from the sentence
+type DepthBelowTransducer interface {
+	GetDepthBelowTransducer() (float64, error)
+}
 
 var nmeaCodec *aisnmea.NMEACodec
 var aisCodec *goAIS.Codec
@@ -69,102 +121,103 @@ func init() {
 }
 
 // Parse is a wrapper around the original Parse function, it returns types defined in this package that implement the interfaces in this package
-func Parse(raw string) (Sentence, error) {
+func Parse(raw string) (goNMEA.Sentence, error) {
 	sentence, err := goNMEA.Parse(raw)
 	if err != nil {
 		return nil, err
 	}
 	switch sentence.DataType() {
-	case goNMEA.TypeDBS:
-		return DBS(sentence.(goNMEA.DBS)), nil
-	case goNMEA.TypeDBT:
-		return DBT(sentence.(goNMEA.DBT)), nil
-	case goNMEA.TypeDPT:
-		return DPT(sentence.(goNMEA.DPT)), nil
-	case goNMEA.TypeGGA:
-		return GGA(sentence.(goNMEA.GGA)), nil
-	case goNMEA.TypeGLL:
-		return GLL(sentence.(goNMEA.GLL)), nil
-	case goNMEA.TypeGNS:
-		return GNS(sentence.(goNMEA.GNS)), nil
-	case goNMEA.TypeGSA:
-		return GSA(sentence.(goNMEA.GSA)), nil
-	case goNMEA.TypeGSV:
-		return GSV(sentence.(goNMEA.GSV)), nil
-	case goNMEA.TypeHDT:
-		return HDT(sentence.(goNMEA.HDT)), nil
-	case goNMEA.TypeMTK:
-		return MTK(sentence.(goNMEA.MTK)), nil
-	case goNMEA.TypePGRME:
-		return PGRME(sentence.(goNMEA.PGRME)), nil
-	case goNMEA.TypeRMC:
-		return RMC(sentence.(goNMEA.RMC)), nil
-	case goNMEA.TypeRTE:
-		return RTE(sentence.(goNMEA.RTE)), nil
-	case goNMEA.TypeTHS:
-		return THS(sentence.(goNMEA.THS)), nil
-	case goNMEA.TypeVDM:
+	case goNMEA.TypeVDM, goNMEA.TypeVDO:
 		return ParseVDMVDO(sentence), nil
-	case goNMEA.TypeVDO:
-		return ParseVDMVDO(sentence), nil
-	case goNMEA.TypeVHW:
-		return VHW(sentence.(goNMEA.VHW)), nil
-	case goNMEA.TypeVTG:
-		return VTG(sentence.(goNMEA.VTG)), nil
-	case goNMEA.TypeWPL:
-		return WPL(sentence.(goNMEA.WPL)), nil
-	case goNMEA.TypeZDA:
-		return ZDA(sentence.(goNMEA.ZDA)), nil
 	}
 
-	return nil, fmt.Errorf("Don't know how to handle %s", sentence.DataType())
+	return sentence, nil
 }
 
-// ParseVDMVDO parses the raw sentence
-func ParseVDMVDO(sentence goNMEA.Sentence) VDMVDO {
-	result, err := nmeaCodec.ParseSentence(sentence.String())
-	if result == nil || err != nil {
-		return VDMVDO{
-			goNMEA.BaseSentence{},
-			goAIS.Header{},
+// Call this function to set the value on construction, e.g. NewFloat64(WithValue(4.2))
+func WithValue(v interface{}) ValueOption {
+	return func(target interface{}) {
+		switch typedV := v.(type) {
+		case float32:
+			if typedTarget, ok := target.(*Float64); ok {
+				typedTarget.value = float64(typedV)
+				typedTarget.isNil = false
+			}
+		case float64:
+			if typedTarget, ok := target.(*Float64); ok {
+				typedTarget.value = float64(typedV)
+				typedTarget.isNil = false
+			}
+		case byte:
+			if typedTarget, ok := target.(*Int64); ok {
+				typedTarget.value = int64(typedV)
+				typedTarget.isNil = false
+			}
+		case int:
+			if typedTarget, ok := target.(*Int64); ok {
+				typedTarget.value = int64(typedV)
+				typedTarget.isNil = false
+			}
+		case int16:
+			if typedTarget, ok := target.(*Int64); ok {
+				typedTarget.value = int64(typedV)
+				typedTarget.isNil = false
+			}
+		case uint16:
+			if typedTarget, ok := target.(*Int64); ok {
+				typedTarget.value = int64(typedV)
+				typedTarget.isNil = false
+			}
+		case int32:
+			if typedTarget, ok := target.(*Int64); ok {
+				typedTarget.value = int64(typedV)
+				typedTarget.isNil = false
+			}
+		case uint32:
+			if typedTarget, ok := target.(*Int64); ok {
+				typedTarget.value = int64(typedV)
+				typedTarget.isNil = false
+			}
+		case int64:
+			if typedTarget, ok := target.(*Int64); ok {
+				typedTarget.value = int64(typedV)
+				typedTarget.isNil = false
+			}
+		case uint64:
+			if typedTarget, ok := target.(*Int64); ok {
+				typedTarget.value = int64(typedV)
+				typedTarget.isNil = false
+			}
 		}
 	}
-	return VDMVDO{
-		goNMEA.BaseSentence{
-			Talker: sentence.TalkerID(),
-			Type:   result.MessageType,
-			Raw:    sentence.String(),
-		},
-		result.Packet,
-	}
 }
 
-func extractNumber(binaryData []byte, offset int, length int) (uint64, error) {
-	var result uint64 = 0
-
-	for _, value := range binaryData[offset : offset+length] {
-		result <<= 1
-		result |= uint64(value)
+func NewFloat64(options ...ValueOption) Float64 {
+	result := Float64{isNil: true}
+	for _, option := range options {
+		option(&result)
 	}
-
-	return result, nil
+	return result
 }
 
-func extractString(binaryData []byte, offset int, length int) (string, error) {
-	if (length)%6 != 0 {
-		return "", errors.New("Length must be divisible by 6")
+func (v Float64) GetValue() (float64, error) {
+	if v.isNil {
+		return 0, fmt.Errorf("the value is nil")
 	}
-	sixBitCharacters := make([]byte, length/6)
-	var position int
-	for index, value := range binaryData[offset : offset+length] {
-		position = index / 6
-		sixBitCharacters[position] <<= 1
-		sixBitCharacters[position] |= value
+	return v.value, nil
+}
+
+func NewInt64(options ...ValueOption) Int64 {
+	result := Int64{isNil: true}
+	for _, option := range options {
+		option(&result)
 	}
-	for index, value := range sixBitCharacters {
-		if value < 32 {
-			sixBitCharacters[index] = value + 64
-		}
+	return result
+}
+
+func (v Int64) GetValue() (int64, error) {
+	if v.isNil {
+		return 0, fmt.Errorf("the value is nil")
 	}
-	return string(sixBitCharacters), nil
+	return v.value, nil
 }

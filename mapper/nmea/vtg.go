@@ -22,22 +22,22 @@ func init() {
 			BaseSentence: s,
 		}
 		if p.Fields[0] != "" {
-			result.TrueTrack = NewFloat64(WithValue(p.Float64(0, "true track")))
+			result.TrueTrack = NewFloat64WithValue(p.Float64(0, "true track"))
 		} else {
 			result.TrueTrack = NewFloat64()
 		}
 		if p.Fields[2] != "" {
-			result.MagneticTrack = NewFloat64(WithValue(p.Float64(2, "magnetic track")))
+			result.MagneticTrack = NewFloat64WithValue(p.Float64(2, "magnetic track"))
 		} else {
 			result.MagneticTrack = NewFloat64()
 		}
 		if p.Fields[4] != "" {
-			result.GroundSpeedKnots = NewFloat64(WithValue(p.Float64(2, "magnetic track")))
+			result.GroundSpeedKnots = NewFloat64WithValue(p.Float64(2, "magnetic track"))
 		} else {
 			result.GroundSpeedKnots = NewFloat64()
 		}
 		if p.Fields[6] != "" {
-			result.GroundSpeedKPH = NewFloat64(WithValue(p.Float64(6, "ground speed (km/h)")))
+			result.GroundSpeedKPH = NewFloat64WithValue(p.Float64(6, "ground speed (km/h)"))
 		} else {
 			result.GroundSpeedKPH = NewFloat64()
 		}

@@ -17,11 +17,11 @@ var _ = Describe("RMC", func() {
 			parsed = RMC{
 				Time:      goNMEA.Time{},
 				Validity:  goNMEA.ValidRMC,
-				Latitude:  NewFloat64(WithValue(Latitude)),
-				Longitude: NewFloat64(WithValue(Longitude)),
-				Speed:     NewFloat64(WithValue(SpeedOverGroundKnots)),
-				Course:    NewFloat64(WithValue(TrueDirectionDegrees)),
-				Variation: NewFloat64(WithValue(MagneticVariationDegrees)),
+				Latitude:  NewFloat64WithValue(Latitude),
+				Longitude: NewFloat64WithValue(Longitude),
+				Speed:     NewFloat64WithValue(SpeedOverGroundKnots),
+				Course:    NewFloat64WithValue(TrueDirectionDegrees),
+				Variation: NewFloat64WithValue(MagneticVariationDegrees),
 				Date:      goNMEA.Date{},
 			}
 		})

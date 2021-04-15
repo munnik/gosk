@@ -14,9 +14,9 @@ var _ = Describe("DBS", func() {
 	Describe("Getting data from a $__DBS sentence", func() {
 		BeforeEach(func() {
 			parsed = DBS{
-				DepthFeet:    NewFloat64(WithValue(DepthBelowSurfaceFeet)),
-				DepthMeters:  NewFloat64(WithValue(DepthBelowSurfaceMeters)),
-				DepthFathoms: NewFloat64(WithValue(DepthBelowSurfaceFathoms)),
+				DepthFeet:    NewFloat64WithValue(DepthBelowSurfaceFeet),
+				DepthMeters:  NewFloat64WithValue(DepthBelowSurfaceMeters),
+				DepthFathoms: NewFloat64WithValue(DepthBelowSurfaceFathoms),
 			}
 		})
 		Context("When having a parsed sentence", func() {

@@ -14,7 +14,7 @@ var _ = Describe("HDT", func() {
 	Describe("Getting data from a $__HDT sentence", func() {
 		BeforeEach(func() {
 			parsed = HDT{
-				Heading: NewFloat64(WithValue(TrueDirectionDegrees)),
+				Heading: NewFloat64WithValue(TrueDirectionDegrees),
 				True:    true,
 			}
 		})

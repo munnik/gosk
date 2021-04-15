@@ -36,57 +36,57 @@ func init() {
 			BaseSentence: s,
 		}
 		if p.Fields[0] != "" {
-			result.BarometricPressureInInchesOfMercury = NewFloat64(WithValue(p.Float64(0, "BarometricPressureInInchesOfMercury")))
+			result.BarometricPressureInInchesOfMercury = NewFloat64WithValue(p.Float64(0, "BarometricPressureInInchesOfMercury"))
 		} else {
 			result.BarometricPressureInInchesOfMercury = NewFloat64()
 		}
 		if p.Fields[2] != "" {
-			result.BarometricPressureInBar = NewFloat64(WithValue(p.Float64(2, "BarometricPressureInBar")))
+			result.BarometricPressureInBar = NewFloat64WithValue(p.Float64(2, "BarometricPressureInBar"))
 		} else {
 			result.BarometricPressureInBar = NewFloat64()
 		}
 		if p.Fields[4] != "" {
-			result.AirTemperature = NewFloat64(WithValue(p.Float64(4, "AirTemperature")))
+			result.AirTemperature = NewFloat64WithValue(p.Float64(4, "AirTemperature"))
 		} else {
 			result.AirTemperature = NewFloat64()
 		}
 		if p.Fields[6] != "" {
-			result.WaterTemperature = NewFloat64(WithValue(p.Float64(6, "WaterTemperature")))
+			result.WaterTemperature = NewFloat64WithValue(p.Float64(6, "WaterTemperature"))
 		} else {
 			result.WaterTemperature = NewFloat64()
 		}
 		if p.Fields[8] != "" {
-			result.RelativeHumidity = NewFloat64(WithValue(p.Float64(8, "RelativeHumidity")))
+			result.RelativeHumidity = NewFloat64WithValue(p.Float64(8, "RelativeHumidity"))
 		} else {
 			result.RelativeHumidity = NewFloat64()
 		}
 		if p.Fields[9] != "" {
-			result.AbsoluteHumidity = NewFloat64(WithValue(p.Float64(9, "AbsoluteHumidity")))
+			result.AbsoluteHumidity = NewFloat64WithValue(p.Float64(9, "AbsoluteHumidity"))
 		} else {
 			result.AbsoluteHumidity = NewFloat64()
 		}
 		if p.Fields[10] != "" {
-			result.DewPoint = NewFloat64(WithValue(p.Float64(10, "DewPoint")))
+			result.DewPoint = NewFloat64WithValue(p.Float64(10, "DewPoint"))
 		} else {
 			result.DewPoint = NewFloat64()
 		}
 		if p.Fields[12] != "" {
-			result.WindDirectionTrue = NewFloat64(WithValue(p.Float64(12, "WindDirectionTrue")))
+			result.WindDirectionTrue = NewFloat64WithValue(p.Float64(12, "WindDirectionTrue"))
 		} else {
 			result.WindDirectionTrue = NewFloat64()
 		}
 		if p.Fields[14] != "" {
-			result.WindDirectionMagnetic = NewFloat64(WithValue(p.Float64(14, "WindDirectionMagnetic")))
+			result.WindDirectionMagnetic = NewFloat64WithValue(p.Float64(14, "WindDirectionMagnetic"))
 		} else {
 			result.WindDirectionMagnetic = NewFloat64()
 		}
 		if p.Fields[16] != "" {
-			result.WindSpeedInKnots = NewFloat64(WithValue(p.Float64(16, "WindSpeedInKnots")))
+			result.WindSpeedInKnots = NewFloat64WithValue(p.Float64(16, "WindSpeedInKnots"))
 		} else {
 			result.WindSpeedInKnots = NewFloat64()
 		}
 		if p.Fields[18] != "" {
-			result.WindSpeedInMetersPerSecond = NewFloat64(WithValue(p.Float64(16, "WindSpeedInMetersPerSecond")))
+			result.WindSpeedInMetersPerSecond = NewFloat64WithValue(p.Float64(16, "WindSpeedInMetersPerSecond"))
 		} else {
 			result.WindSpeedInMetersPerSecond = NewFloat64()
 		}

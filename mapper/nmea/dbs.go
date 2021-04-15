@@ -21,17 +21,17 @@ func init() {
 			BaseSentence: s,
 		}
 		if p.Fields[0] != "" {
-			result.DepthFeet = NewFloat64(WithValue(p.Float64(0, "depth_feet")))
+			result.DepthFeet = NewFloat64WithValue(p.Float64(0, "depth_feet"))
 		} else {
 			result.DepthFeet = NewFloat64()
 		}
 		if p.Fields[2] != "" {
-			result.DepthMeters = NewFloat64(WithValue(p.Float64(2, "depth_meters")))
+			result.DepthMeters = NewFloat64WithValue(p.Float64(2, "depth_meters"))
 		} else {
 			result.DepthMeters = NewFloat64()
 		}
 		if p.Fields[4] != "" {
-			result.DepthFathoms = NewFloat64(WithValue(p.Float64(4, "depth_fathoms")))
+			result.DepthFathoms = NewFloat64WithValue(p.Float64(4, "depth_fathoms"))
 		} else {
 			result.DepthFathoms = NewFloat64()
 		}

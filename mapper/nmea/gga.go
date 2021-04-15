@@ -31,32 +31,32 @@ func init() {
 			DGPSId:       p.String(13, "dgps id"),
 		}
 		if p.Fields[1] != "" && p.Fields[2] != "" {
-			result.Latitude = NewFloat64(WithValue(p.LatLong(1, 2, "latitude")))
+			result.Latitude = NewFloat64WithValue(p.LatLong(1, 2, "latitude"))
 		} else {
 			result.Latitude = NewFloat64()
 		}
 		if p.Fields[3] != "" && p.Fields[4] != "" {
-			result.Longitude = NewFloat64(WithValue(p.LatLong(4, 5, "longitude")))
+			result.Longitude = NewFloat64WithValue(p.LatLong(4, 5, "longitude"))
 		} else {
 			result.Longitude = NewFloat64()
 		}
 		if p.Fields[6] != "" {
-			result.NumSatellites = NewInt64(WithValue(p.Int64(6, "number of satellites")))
+			result.NumSatellites = NewInt64WithValue(p.Int64(6, "number of satellites"))
 		} else {
 			result.NumSatellites = NewInt64()
 		}
 		if p.Fields[7] != "" {
-			result.HDOP = NewFloat64(WithValue(p.Float64(7, "hdop")))
+			result.HDOP = NewFloat64WithValue(p.Float64(7, "hdop"))
 		} else {
 			result.HDOP = NewFloat64()
 		}
 		if p.Fields[8] != "" {
-			result.Altitude = NewFloat64(WithValue(p.Float64(8, "altitude")))
+			result.Altitude = NewFloat64WithValue(p.Float64(8, "altitude"))
 		} else {
 			result.Altitude = NewFloat64()
 		}
 		if p.Fields[10] != "" {
-			result.Separation = NewFloat64(WithValue(p.Float64(10, "separation")))
+			result.Separation = NewFloat64WithValue(p.Float64(10, "separation"))
 		} else {
 			result.Separation = NewFloat64()
 		}

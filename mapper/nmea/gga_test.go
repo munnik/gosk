@@ -16,12 +16,12 @@ var _ = Describe("GGA", func() {
 		BeforeEach(func() {
 			parsed = GGA{
 				Time:          goNMEA.Time{},
-				Latitude:      NewFloat64(WithValue(Latitude)),
-				Longitude:     NewFloat64(WithValue(Longitude)),
+				Latitude:      NewFloat64WithValue(Latitude),
+				Longitude:     NewFloat64WithValue(Longitude),
 				FixQuality:    goNMEA.DGPS,
-				NumSatellites: NewInt64(WithValue(Satellites)),
+				NumSatellites: NewInt64WithValue(Satellites),
 				HDOP:          NewFloat64(),
-				Altitude:      NewFloat64(WithValue(Altitude)),
+				Altitude:      NewFloat64WithValue(Altitude),
 				Separation:    NewFloat64(),
 				DGPSAge:       "",
 				DGPSId:        "",

@@ -42,12 +42,12 @@ func init() {
 			Status:        p.EnumString(4, "Status", ValidMWV),
 		}
 		if p.Fields[0] != "" {
-			result.Angle = NewFloat64(WithValue(p.Float64(0, "Angle")))
+			result.Angle = NewFloat64WithValue(p.Float64(0, "Angle"))
 		} else {
 			result.Angle = NewFloat64()
 		}
 		if p.Fields[2] != "" {
-			result.WindSpeed = NewFloat64(WithValue(p.Float64(2, "WindSpeed")))
+			result.WindSpeed = NewFloat64WithValue(p.Float64(2, "WindSpeed"))
 		} else {
 			result.WindSpeed = NewFloat64()
 		}

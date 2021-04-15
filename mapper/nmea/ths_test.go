@@ -15,7 +15,7 @@ var _ = Describe("THS", func() {
 	Describe("Getting data from a $__THS sentence", func() {
 		BeforeEach(func() {
 			parsed = THS{
-				Heading: NewFloat64(WithValue(TrueDirectionDegrees)),
+				Heading: NewFloat64WithValue(TrueDirectionDegrees),
 				Status:  goNMEA.SimulatorTHS,
 			}
 		})

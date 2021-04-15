@@ -161,7 +161,7 @@ func KeyValueFromNMEA0183(m *nanomsg.RawData, cfg config.NMEA0183Config) ([]sign
 	}
 
 	if len(result) == 0 {
-		return result, fmt.Errorf("Data cannot be mapped: %s", sentence.String())
+		return result, fmt.Errorf("data cannot be mapped: %s", sentence.String())
 	}
 	return result, nil
 }

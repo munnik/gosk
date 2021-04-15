@@ -28,9 +28,6 @@ type Int64 struct {
 	isSet bool
 }
 
-// A ValueOption can be passed to the constructors to create a struct with the value set
-type ValueOption func(target interface{})
-
 // MagneticCourseOverGround retrieves the magnetic course over ground from the sentence
 type MagneticCourseOverGround interface {
 	GetmagneticCourseOverGround() (float64, error)
@@ -174,70 +171,15 @@ func Parse(raw string) (goNMEA.Sentence, error) {
 	return sentence, nil
 }
 
-// Call this function to set the value on construction, e.g. NewFloat64(WithValue(4.2))
-func WithValue(v interface{}) ValueOption {
-	return func(target interface{}) {
-		switch typedV := v.(type) {
-		case float32:
-			if typedTarget, ok := target.(*Float64); ok {
-				typedTarget.value = float64(typedV)
-				typedTarget.isSet = true
-			}
-		case float64:
-			if typedTarget, ok := target.(*Float64); ok {
-				typedTarget.value = float64(typedV)
-				typedTarget.isSet = true
-			}
-		case byte:
-			if typedTarget, ok := target.(*Int64); ok {
-				typedTarget.value = int64(typedV)
-				typedTarget.isSet = true
-			}
-		case int:
-			if typedTarget, ok := target.(*Int64); ok {
-				typedTarget.value = int64(typedV)
-				typedTarget.isSet = true
-			}
-		case int16:
-			if typedTarget, ok := target.(*Int64); ok {
-				typedTarget.value = int64(typedV)
-				typedTarget.isSet = true
-			}
-		case uint16:
-			if typedTarget, ok := target.(*Int64); ok {
-				typedTarget.value = int64(typedV)
-				typedTarget.isSet = true
-			}
-		case int32:
-			if typedTarget, ok := target.(*Int64); ok {
-				typedTarget.value = int64(typedV)
-				typedTarget.isSet = true
-			}
-		case uint32:
-			if typedTarget, ok := target.(*Int64); ok {
-				typedTarget.value = int64(typedV)
-				typedTarget.isSet = true
-			}
-		case int64:
-			if typedTarget, ok := target.(*Int64); ok {
-				typedTarget.value = int64(typedV)
-				typedTarget.isSet = true
-			}
-		case uint64:
-			if typedTarget, ok := target.(*Int64); ok {
-				typedTarget.value = int64(typedV)
-				typedTarget.isSet = true
-			}
-		}
-	}
+func NewFloat64() Float64 {
+	return Float64{}
 }
 
-func NewFloat64(options ...ValueOption) Float64 {
-	result := Float64{}
-	for _, option := range options {
-		option(&result)
+func NewFloat64WithValue(v float64) Float64 {
+	return Float64{
+		value: v,
+		isSet: true,
 	}
-	return result
 }
 
 func (v Float64) GetValue() (float64, error) {
@@ -247,12 +189,15 @@ func (v Float64) GetValue() (float64, error) {
 	return 0, fmt.Errorf("the value is nil")
 }
 
-func NewInt64(options ...ValueOption) Int64 {
-	result := Int64{}
-	for _, option := range options {
-		option(&result)
+func NewInt64() Int64 {
+	return Int64{}
+}
+
+func NewInt64WithValue(v int64) Int64 {
+	return Int64{
+		value: v,
+		isSet: true,
 	}
-	return result
 }
 
 func (v Int64) GetValue() (int64, error) {

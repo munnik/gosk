@@ -16,12 +16,12 @@ var _ = Describe("GNS", func() {
 		BeforeEach(func() {
 			parsed = GNS{
 				Time:       goNMEA.Time{},
-				Latitude:   NewFloat64(WithValue(Latitude)),
-				Longitude:  NewFloat64(WithValue(Longitude)),
+				Latitude:   NewFloat64WithValue(Latitude),
+				Longitude:  NewFloat64WithValue(Longitude),
 				Mode:       []string{goNMEA.SimulatorGNS},
 				SVs:        NewInt64(),
 				HDOP:       NewFloat64(),
-				Altitude:   NewFloat64(WithValue(Altitude)),
+				Altitude:   NewFloat64WithValue(Altitude),
 				Separation: NewFloat64(),
 				Age:        NewFloat64(),
 				Station:    NewInt64(),

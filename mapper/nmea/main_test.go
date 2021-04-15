@@ -114,7 +114,7 @@ var _ = Describe("Main", func() {
 			})
 			Context("With a value", func() {
 				Specify("a value should be returned", func() {
-					nilF := nmea.NewFloat64(nmea.WithValue(4.2))
+					nilF := nmea.NewFloat64WithValue(4.2)
 					f, err := nilF.GetValue()
 					Expect(f).To(Equal(float64(4.2)))
 					Expect(err).NotTo(HaveOccurred())
@@ -132,7 +132,7 @@ var _ = Describe("Main", func() {
 			})
 			Context("With a value", func() {
 				Specify("a value should be returned", func() {
-					nilInt := nmea.NewInt64(nmea.WithValue(-75))
+					nilInt := nmea.NewInt64WithValue(-75)
 					i, err := nilInt.GetValue()
 					Expect(i).To(Equal(int64(-75)))
 					Expect(err).NotTo(HaveOccurred())

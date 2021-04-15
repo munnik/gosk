@@ -29,30 +29,30 @@ func init() {
 			Date:         p.Date(8, "date"),
 		}
 		if p.Fields[2] != "" && p.Fields[3] != "" {
-			result.Latitude = NewFloat64(WithValue(p.LatLong(2, 3, "latitude")))
+			result.Latitude = NewFloat64WithValue(p.LatLong(2, 3, "latitude"))
 		} else {
 			result.Latitude = NewFloat64()
 		}
 		if p.Fields[4] != "" && p.Fields[5] != "" {
-			result.Longitude = NewFloat64(WithValue(p.LatLong(4, 5, "longitude")))
+			result.Longitude = NewFloat64WithValue(p.LatLong(4, 5, "longitude"))
 		} else {
 			result.Longitude = NewFloat64()
 		}
 		if p.Fields[6] != "" {
-			result.Speed = NewFloat64(WithValue(p.Float64(6, "speed")))
+			result.Speed = NewFloat64WithValue(p.Float64(6, "speed"))
 		} else {
 			result.Speed = NewFloat64()
 		}
 		if p.Fields[7] != "" {
-			result.Course = NewFloat64(WithValue(p.Float64(7, "course")))
+			result.Course = NewFloat64WithValue(p.Float64(7, "course"))
 		} else {
 			result.Course = NewFloat64()
 		}
 		if p.Fields[9] != "" {
 			if p.EnumString(10, "direction", goNMEA.West, goNMEA.East) == goNMEA.West {
-				result.Variation = NewFloat64(WithValue(0 - p.Float64(9, "variation")))
+				result.Variation = NewFloat64WithValue(0 - p.Float64(9, "variation"))
 			} else {
-				result.Variation = NewFloat64(WithValue(p.Float64(9, "variation")))
+				result.Variation = NewFloat64WithValue(p.Float64(9, "variation"))
 			}
 		} else {
 			result.Variation = NewFloat64()

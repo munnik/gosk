@@ -23,12 +23,12 @@ func init() {
 			Validity:     p.EnumString(5, "validity", goNMEA.ValidGLL, goNMEA.InvalidGLL),
 		}
 		if p.Fields[0] != "" && p.Fields[1] != "" {
-			result.Latitude = NewFloat64(WithValue(p.LatLong(0, 1, "latitude")))
+			result.Latitude = NewFloat64WithValue(p.LatLong(0, 1, "latitude"))
 		} else {
 			result.Latitude = NewFloat64()
 		}
 		if p.Fields[2] != "" && p.Fields[3] != "" {
-			result.Longitude = NewFloat64(WithValue(p.LatLong(2, 3, "longitude")))
+			result.Longitude = NewFloat64WithValue(p.LatLong(2, 3, "longitude"))
 		} else {
 			result.Longitude = NewFloat64()
 		}

@@ -14,9 +14,9 @@ var _ = Describe("DBT", func() {
 	Describe("Getting data from a $__DBT sentence", func() {
 		BeforeEach(func() {
 			parsed = DBT{
-				DepthFeet:    NewFloat64(WithValue(DepthBelowSurfaceFeet - DepthTransducerFeet)),
-				DepthMeters:  NewFloat64(WithValue(DepthBelowSurfaceMeters - DepthTransducerMeters)),
-				DepthFathoms: NewFloat64(WithValue(DepthBelowSurfaceFathoms - DepthTransducerFanthoms)),
+				DepthFeet:    NewFloat64WithValue(DepthBelowSurfaceFeet - DepthTransducerFeet),
+				DepthMeters:  NewFloat64WithValue(DepthBelowSurfaceMeters - DepthTransducerMeters),
+				DepthFathoms: NewFloat64WithValue(DepthBelowSurfaceFathoms - DepthTransducerFanthoms),
 			}
 		})
 		Context("When having a parsed sentence", func() {

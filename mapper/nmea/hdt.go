@@ -21,7 +21,7 @@ func init() {
 			True:         p.EnumString(1, "true", "T") == "T",
 		}
 		if p.Fields[0] != "" && result.True {
-			result.Heading = NewFloat64(WithValue(p.Float64(0, "heading")))
+			result.Heading = NewFloat64WithValue(p.Float64(0, "heading"))
 		} else {
 			result.Heading = NewFloat64()
 		}

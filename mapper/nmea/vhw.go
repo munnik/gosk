@@ -22,22 +22,22 @@ func init() {
 			BaseSentence: s,
 		}
 		if p.Fields[0] != "" {
-			result.TrueHeading = NewFloat64(WithValue(p.Float64(0, "true heading")))
+			result.TrueHeading = NewFloat64WithValue(p.Float64(0, "true heading"))
 		} else {
 			result.TrueHeading = NewFloat64()
 		}
 		if p.Fields[2] != "" {
-			result.MagneticHeading = NewFloat64(WithValue(p.Float64(2, "magnetic heading")))
+			result.MagneticHeading = NewFloat64WithValue(p.Float64(2, "magnetic heading"))
 		} else {
 			result.MagneticHeading = NewFloat64()
 		}
 		if p.Fields[4] != "" {
-			result.SpeedThroughWaterKnots = NewFloat64(WithValue(p.Float64(4, "speed through water in knots")))
+			result.SpeedThroughWaterKnots = NewFloat64WithValue(p.Float64(4, "speed through water in knots"))
 		} else {
 			result.SpeedThroughWaterKnots = NewFloat64()
 		}
 		if p.Fields[6] != "" {
-			result.SpeedThroughWaterKPH = NewFloat64(WithValue(p.Float64(6, "speed through water in kilometers per hour")))
+			result.SpeedThroughWaterKPH = NewFloat64WithValue(p.Float64(6, "speed through water in kilometers per hour"))
 		} else {
 			result.SpeedThroughWaterKPH = NewFloat64()
 		}

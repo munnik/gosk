@@ -29,17 +29,17 @@ func init() {
 		}
 
 		if p.Fields[14] != "" {
-			result.PDOP = NewFloat64(WithValue(p.Float64(14, "pdop")))
+			result.PDOP = NewFloat64WithValue(p.Float64(14, "pdop"))
 		} else {
 			result.PDOP = NewFloat64()
 		}
 		if p.Fields[15] != "" {
-			result.HDOP = NewFloat64(WithValue(p.Float64(15, "hdop")))
+			result.HDOP = NewFloat64WithValue(p.Float64(15, "hdop"))
 		} else {
 			result.HDOP = NewFloat64()
 		}
 		if p.Fields[16] != "" {
-			result.VDOP = NewFloat64(WithValue(p.Float64(16, "vdop")))
+			result.VDOP = NewFloat64WithValue(p.Float64(16, "vdop"))
 		} else {
 			result.VDOP = NewFloat64()
 		}

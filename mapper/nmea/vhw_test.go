@@ -14,10 +14,10 @@ var _ = Describe("VHW", func() {
 	Describe("Getting data from a $__VHW sentence", func() {
 		BeforeEach(func() {
 			parsed = VHW{
-				TrueHeading:            NewFloat64(WithValue(TrueDirectionDegrees)),
-				MagneticHeading:        NewFloat64(WithValue(MagneticDirectionDegrees)),
-				SpeedThroughWaterKPH:   NewFloat64(WithValue(SpeedThroughWaterKPH)),
-				SpeedThroughWaterKnots: NewFloat64(WithValue(SpeedThroughWaterKnots)),
+				TrueHeading:            NewFloat64WithValue(TrueDirectionDegrees),
+				MagneticHeading:        NewFloat64WithValue(MagneticDirectionDegrees),
+				SpeedThroughWaterKPH:   NewFloat64WithValue(SpeedThroughWaterKPH),
+				SpeedThroughWaterKnots: NewFloat64WithValue(SpeedThroughWaterKnots),
 			}
 		})
 		Context("When having a parsed sentence", func() {

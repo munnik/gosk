@@ -14,12 +14,12 @@ var _ = Describe("DPT", func() {
 	Describe("Getting data from a $__DPT sentence", func() {
 		BeforeEach(func() {
 			parsed = DPT{
-				Depth: NewFloat64(WithValue(DepthBelowSurfaceMeters - DepthTransducerMeters)),
+				Depth: NewFloat64WithValue(DepthBelowSurfaceMeters - DepthTransducerMeters),
 			}
 		})
 		Context("When having a parsed sentence and a positive offset", func() {
 			JustBeforeEach(func() {
-				parsed.Offset = NewFloat64(WithValue(DepthTransducerMeters))
+				parsed.Offset = NewFloat64WithValue(DepthTransducerMeters)
 			})
 			It("should give a valid depth below transducer", func() {
 				Expect(parsed.GetDepthBelowTransducer()).To(Float64Equal(DepthBelowSurfaceMeters-DepthTransducerMeters, 0.00001))
@@ -34,7 +34,7 @@ var _ = Describe("DPT", func() {
 		})
 		Context("When having a parsed sentence and a negative offset", func() {
 			JustBeforeEach(func() {
-				parsed.Offset = NewFloat64(WithValue(DepthTransducerMeters - DepthKeelMeters))
+				parsed.Offset = NewFloat64WithValue(DepthTransducerMeters - DepthKeelMeters)
 			})
 			It("should give a valid depth below transducer", func() {
 				Expect(parsed.GetDepthBelowTransducer()).To(Float64Equal(DepthBelowSurfaceMeters-DepthTransducerMeters, 0.00001))
@@ -66,7 +66,7 @@ var _ = Describe("DPT", func() {
 		Context("When having a parsed sentence and no depth", func() {
 			JustBeforeEach(func() {
 				parsed.Depth = NewFloat64()
-				parsed.Offset = NewFloat64(WithValue(DepthTransducerMeters))
+				parsed.Offset = NewFloat64WithValue(DepthTransducerMeters)
 			})
 			Specify("an error is returned", func() {
 				_, err := parsed.GetDepthBelowTransducer()

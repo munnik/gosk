@@ -29,17 +29,17 @@ func init() {
 			BaseSentence: s,
 		}
 		if p.Fields[0] != "" {
-			result.TotalMessages = NewInt64(WithValue(p.Int64(0, "total number of messages")))
+			result.TotalMessages = NewInt64WithValue(p.Int64(0, "total number of messages"))
 		} else {
 			result.TotalMessages = NewInt64()
 		}
 		if p.Fields[1] != "" {
-			result.MessageNumber = NewInt64(WithValue(p.Int64(1, "message number")))
+			result.MessageNumber = NewInt64WithValue(p.Int64(1, "message number"))
 		} else {
 			result.MessageNumber = NewInt64()
 		}
 		if p.Fields[2] != "" {
-			result.NumberSVsInView = NewInt64(WithValue(p.Int64(2, "number of SVs in view")))
+			result.NumberSVsInView = NewInt64WithValue(p.Int64(2, "number of SVs in view"))
 		} else {
 			result.NumberSVsInView = NewInt64()
 		}
@@ -48,10 +48,10 @@ func init() {
 				break
 			}
 			result.Info = append(result.Info, GSVInfo{
-				SVPRNNumber: NewInt64(WithValue(p.Int64(3+i*4, "SV prn number"))),
-				Elevation:   NewInt64(WithValue(p.Int64(4+i*4, "elevation"))),
-				Azimuth:     NewInt64(WithValue(p.Int64(5+i*4, "azimuth"))),
-				SNR:         NewInt64(WithValue(p.Int64(6+i*4, "SNR"))),
+				SVPRNNumber: NewInt64WithValue(p.Int64(3+i*4, "SV prn number")),
+				Elevation:   NewInt64WithValue(p.Int64(4+i*4, "elevation")),
+				Azimuth:     NewInt64WithValue(p.Int64(5+i*4, "azimuth")),
+				SNR:         NewInt64WithValue(p.Int64(6+i*4, "SNR")),
 			})
 		}
 		return result, p.Err()

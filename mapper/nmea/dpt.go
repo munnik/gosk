@@ -20,17 +20,17 @@ func init() {
 			BaseSentence: s,
 		}
 		if p.Fields[0] != "" {
-			result.Depth = NewFloat64(WithValue(p.Float64(0, "depth")))
+			result.Depth = NewFloat64WithValue(p.Float64(0, "depth"))
 		} else {
 			result.Depth = NewFloat64()
 		}
 		if p.Fields[2] != "" {
-			result.Offset = NewFloat64(WithValue(p.Float64(1, "offset")))
+			result.Offset = NewFloat64WithValue(p.Float64(1, "offset"))
 		} else {
 			result.Offset = NewFloat64()
 		}
 		if p.Fields[4] != "" {
-			result.RangeScale = NewFloat64(WithValue(p.Float64(2, "range scale")))
+			result.RangeScale = NewFloat64WithValue(p.Float64(2, "range scale"))
 		} else {
 			result.RangeScale = NewFloat64()
 		}

@@ -16,8 +16,8 @@ var _ = Describe("GLL", func() {
 		BeforeEach(func() {
 			parsed = GLL{
 				Time:      goNMEA.Time{},
-				Latitude:  NewFloat64(WithValue(Latitude)),
-				Longitude: NewFloat64(WithValue(Longitude)),
+				Latitude:  NewFloat64WithValue(Latitude),
+				Longitude: NewFloat64WithValue(Longitude),
 				Validity:  goNMEA.ValidGLL,
 			}
 		})

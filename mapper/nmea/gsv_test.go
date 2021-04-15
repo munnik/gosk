@@ -14,7 +14,7 @@ var _ = Describe("GSV", func() {
 	Describe("Getting data from a $__GSV sentence", func() {
 		BeforeEach(func() {
 			parsed = GSV{
-				NumberSVsInView: NewInt64(WithValue(Satellites)),
+				NumberSVsInView: NewInt64WithValue(Satellites),
 			}
 		})
 		Context("When having a parsed sentence", func() {

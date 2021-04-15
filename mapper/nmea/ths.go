@@ -21,7 +21,7 @@ func init() {
 			Status:       p.EnumString(1, "status", goNMEA.AutonomousTHS, goNMEA.EstimatedTHS, goNMEA.ManualTHS, goNMEA.SimulatorTHS, goNMEA.InvalidTHS),
 		}
 		if p.Fields[0] != "" && result.Status != goNMEA.InvalidTHS {
-			result.Heading = NewFloat64(WithValue(p.Float64(0, "heading")))
+			result.Heading = NewFloat64WithValue(p.Float64(0, "heading"))
 		} else {
 			result.Heading = NewFloat64()
 		}

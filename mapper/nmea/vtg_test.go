@@ -14,10 +14,10 @@ var _ = Describe("VTG", func() {
 	Describe("Getting data from a $__VTG sentence", func() {
 		BeforeEach(func() {
 			parsed = VTG{
-				TrueTrack:        NewFloat64(WithValue(TrueDirectionDegrees)),
-				MagneticTrack:    NewFloat64(WithValue(MagneticDirectionDegrees)),
-				GroundSpeedKPH:   NewFloat64(WithValue(SpeedOverGroundKPH)),
-				GroundSpeedKnots: NewFloat64(WithValue(SpeedOverGroundKnots)),
+				TrueTrack:        NewFloat64WithValue(TrueDirectionDegrees),
+				MagneticTrack:    NewFloat64WithValue(MagneticDirectionDegrees),
+				GroundSpeedKPH:   NewFloat64WithValue(SpeedOverGroundKPH),
+				GroundSpeedKnots: NewFloat64WithValue(SpeedOverGroundKnots),
 			}
 		})
 		Context("When having a parsed sentence", func() {

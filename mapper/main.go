@@ -4,7 +4,7 @@ import (
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/mapper/modbus"
-	"github.com/munnik/gosk/mapper/nmea0183"
+	"github.com/munnik/gosk/mapper/nmea"
 	"github.com/munnik/gosk/mapper/signalk"
 	"github.com/munnik/gosk/nanomsg"
 	"go.nanomsg.org/mangos/v3"
@@ -26,7 +26,7 @@ func KeyValueFromData(m *nanomsg.RawData, cfg interface{}) ([]signalk.Value, err
 	switch string(m.Header.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL]) {
 	case config.NMEA0183Type:
 		if _, ok := cfg.(config.NMEA0183Config); ok && cfg.(config.NMEA0183Config).Name == m.Header.HeaderSegments[nanomsg.HEADERSEGMENTSOURCE] {
-			return nmea0183.KeyValueFromNMEA0183(m, cfg.(config.NMEA0183Config))
+			return nmea.KeyValueFromNMEA0183(m, cfg.(config.NMEA0183Config))
 		}
 	case config.ModbusType:
 		if _, ok := cfg.(config.ModbusConfig); ok && cfg.(config.ModbusConfig).Name == m.Header.HeaderSegments[nanomsg.HEADERSEGMENTSOURCE] {

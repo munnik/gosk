@@ -20,7 +20,6 @@ type MDA struct {
 	AirTemperature                      Float64
 	WaterTemperature                    Float64
 	RelativeHumidity                    Float64
-	AbsoluteHumidity                    Float64
 	DewPoint                            Float64
 	WindDirectionTrue                   Float64
 	WindDirectionMagnetic               Float64
@@ -59,11 +58,6 @@ func init() {
 			result.RelativeHumidity = NewFloat64WithValue(p.Float64(8, "RelativeHumidity"))
 		} else {
 			result.RelativeHumidity = NewFloat64()
-		}
-		if p.Fields[9] != "" {
-			result.AbsoluteHumidity = NewFloat64WithValue(p.Float64(9, "AbsoluteHumidity"))
-		} else {
-			result.AbsoluteHumidity = NewFloat64()
 		}
 		if p.Fields[10] != "" {
 			result.DewPoint = NewFloat64WithValue(p.Float64(10, "DewPoint"))
@@ -124,6 +118,14 @@ func (s MDA) GetWindSpeed() (float64, error) {
 // GetOutsideTemperature retrieves the outside air temperature from the sentence
 func (s MDA) GetOutsideTemperature() (float64, error) {
 	if v, err := s.AirTemperature.GetValue(); err == nil {
+		return unit.FromCelsius(v).Kelvin(), nil
+	}
+	return 0, fmt.Errorf("value is unavailable")
+}
+
+// GetOutsideTemperature retrieves the outside air temperature from the sentence
+func (s MDA) GetWaterTemperature() (float64, error) {
+	if v, err := s.WaterTemperature.GetValue(); err == nil {
 		return unit.FromCelsius(v).Kelvin(), nil
 	}
 	return 0, fmt.Errorf("value is unavailable")

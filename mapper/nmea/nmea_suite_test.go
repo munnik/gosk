@@ -17,6 +17,9 @@ const (
 	TrueDirectionRadians = float64(4.094542425178697)
 	TrueDirectionDegrees = float64(234.6)
 
+	RelativeDirectionRadians = float64(-0.65973445725)
+	RelativeDirectionDegrees = float64(-37.8)
+
 	MagneticVariationRadians = float64(0.04014257)
 	MagneticVariationDegrees = float64(2.3)
 
@@ -45,6 +48,22 @@ const (
 	DepthKeelMeters   = float64(1.95)
 	DepthKeelFeet     = float64(6.397638)
 	DepthKeelFanthoms = float64(1.0662730)
+
+	PressurePascal          = 101600
+	PressureBar             = 1.016
+	PressureInchesOfMercury = 30.0026
+
+	AirTemperatureKelvin  = 290.65
+	AirTemperatureCelcius = 17.5
+
+	WaterTemperatureKelvin  = 282.05
+	WaterTemperatureCelcius = 8.9
+
+	DewPointKelvin  = 280.35
+	DewPointCelcius = 7.2
+
+	RelativeHumidityPercentage = 55.6
+	RelativeHumidityRatio      = 0.556
 )
 
 func TestNmea(t *testing.T) {

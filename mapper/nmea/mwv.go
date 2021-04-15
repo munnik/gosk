@@ -16,7 +16,7 @@ const (
 
 	ValidMWV = "A"
 
-	WindSpeedUnitKMH   = "K"
+	WindSpeedUnitKPH   = "K"
 	WindSpeedUnitKnots = "N"
 	WindSpeedUnitMPS   = "M"
 )
@@ -81,7 +81,7 @@ func (s MWV) GetWindSpeed() (float64, error) {
 		switch s.WindSpeedUnit {
 		case WindSpeedUnitMPS:
 			return v, nil
-		case WindSpeedUnitKMH:
+		case WindSpeedUnitKPH:
 			return (unit.Speed(v) * unit.KilometersPerHour).MetersPerSecond(), nil
 		case WindSpeedUnitKnots:
 			return (unit.Speed(v) * unit.Knot).MetersPerSecond(), nil

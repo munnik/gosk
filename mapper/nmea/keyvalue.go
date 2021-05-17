@@ -160,6 +160,16 @@ func KeyValueFromNMEA0183(m *nanomsg.RawData, cfg config.NMEA0183Config) ([]sign
 			result = append(result, signalk.Value{Context: context, Path: []string{"environment", "water", "temperature"}, Value: nanomsg.Double(waterTemperature)})
 		}
 	}
+	if v, ok := sentence.(nmea0183.Heave); ok {
+		if heave, err := v.GetHeave(); err == nil {
+			result = append(result, signalk.Value{Context: context, Path: []string{"environment", "heave"}, Value: nanomsg.Double(heave)})
+		}
+	}
+	if v, ok := sentence.(nmea0183.DateTime); ok {
+		if dt, err := v.GetDateTime(); err == nil {
+			result = append(result, signalk.Value{Context: context, Path: []string{"navigation", "datetime"}, Value: nanomsg.String(dt)})
+		}
+	}
 
 	if len(result) == 0 {
 		return result, fmt.Errorf("data cannot be mapped: %s", sentence.String())

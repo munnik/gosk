@@ -2,6 +2,10 @@
 **/.vimspector.json
 **/.vscode
 **/.vim
-gosk
 data/
 logs/
+dist/
+gosk
+.goreleaser.yml
+gosk.coverprofile
+lcov.info

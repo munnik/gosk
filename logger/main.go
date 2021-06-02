@@ -1,13 +1,29 @@
 package logger
 
-import "go.uber.org/zap"
+import (
+	"os"
+
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+)
 
 var logger *zap.Logger
 
 // GetLogger returns the logger of the application
 func GetLogger() *zap.Logger {
 	if logger == nil {
-		logger, _ = zap.NewProduction()
+		writerSyncer := getLogWriter()
+		encoder := getEncoder()
+		core := zapcore.NewCore(encoder, writerSyncer, zapcore.DebugLevel)
+		logger = zap.New(core)
 	}
 	return logger
+}
+
+func getEncoder() zapcore.Encoder {
+	return zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig())
+}
+func getLogWriter() zapcore.WriteSyncer {
+	file, _ := os.Create("./gosk.log")
+	return zapcore.AddSync(file)
 }

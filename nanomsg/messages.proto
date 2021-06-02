@@ -43,6 +43,6 @@ message LengthValue {
 }
 
 message VesselDataValue {
-    optional uint32 mmsi = 1;
+    optional string mmsi = 1;
     optional string name = 2;
 }

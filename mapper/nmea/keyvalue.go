@@ -17,6 +17,17 @@ func KeyValueFromNMEA0183(m *nanomsg.RawData, cfg config.NMEA0183Config) ([]sign
 		return result, err
 	}
 
+	// if it is a multifragment message return without error if it is not the last fragment
+	if aisSentence, ok := sentence.(nmea.VDMVDO); ok {
+		if numFragments, err := aisSentence.NumFragments.GetValue(); err == nil {
+			if fragmentNUmber, err := aisSentence.FragmentNumber.GetValue(); err == nil {
+				if numFragments > fragmentNUmber {
+					return result, nil
+				}
+			}
+		}
+	}
+
 	context := cfg.Context
 	if v, ok := sentence.(nmea.MMSI); ok {
 		if mmsi, err := v.GetMMSI(); err == nil {

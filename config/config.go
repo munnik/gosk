@@ -25,12 +25,14 @@ type ModbusRegister struct {
 	CompiledExpression *vm.Program
 }
 
+type ModbusRegisterMap map[uint16]*ModbusRegister
+
 type ModbusConfig struct {
-	Name             string                     `mapstructure:"Name"`
-	Context          string                     `mapstructure:"Context"`
-	URI              string                     `mapstructure:"URI"`
-	RegisterMappings map[uint16]*ModbusRegister `mapstructure:"Mappings"`
-	PollingInterval  time.Duration              `mapstructure:"PollingInterval"`
+	Name             string            `mapstructure:"Name"`
+	Context          string            `mapstructure:"Context"`
+	URI              string            `mapstructure:"URI"`
+	RegisterMappings ModbusRegisterMap `mapstructure:"Mappings"`
+	PollingInterval  time.Duration     `mapstructure:"PollingInterval"`
 }
 
 type NMEA0183Config struct {

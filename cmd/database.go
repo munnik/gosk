@@ -17,8 +17,11 @@ limitations under the License.
 package cmd
 
 import (
+	"context"
+
 	"go.uber.org/zap"
 
+	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/munnik/gosk/database"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/nanomsg"
@@ -44,6 +47,7 @@ var (
 		Run:   keyValueDatabase,
 	}
 	databaseSubscribeURI string
+	pool                 *pgxpool.Pool
 )
 
 func init() {
@@ -54,6 +58,15 @@ func init() {
 	rawDatabaseCmd.MarkFlagRequired("subscribeURI")
 	keyValueDatabaseCmd.Flags().StringVarP(&databaseSubscribeURI, "subscribeURI", "s", "", "Nanomsg URI, the URI is used to listen for subscribed data.")
 	keyValueDatabaseCmd.MarkFlagRequired("subscribeURI")
+
+	var err error
+	pool, err = pgxpool.Connect(context.Background(), "postgresql://gosk:gosk@localhost:5432")
+	if err != nil {
+		logger.GetLogger().Fatal(
+			"Could not connect to the database",
+			zap.String("Error", err.Error()),
+		)
+	}
 }
 
 func rawDatabase(cmd *cobra.Command, args []string) {
@@ -65,7 +78,19 @@ func rawDatabase(cmd *cobra.Command, args []string) {
 			zap.String("Error", err.Error()),
 		)
 	}
-	database.StoreRaw(subscriber)
+	bytesChannel := make(chan []byte)
+	defer close(bytesChannel)
+	go database.StoreRaw(bytesChannel, pool)
+	for {
+		bytes, err := subscriber.Recv()
+		if err != nil {
+			logger.GetLogger().Warn(
+				"Could not receive bytes",
+				zap.String("Error", err.Error()),
+			)
+		}
+		bytesChannel <- bytes
+	}
 }
 
 func keyValueDatabase(cmd *cobra.Command, args []string) {
@@ -77,5 +102,17 @@ func keyValueDatabase(cmd *cobra.Command, args []string) {
 			zap.String("Error", err.Error()),
 		)
 	}
-	database.StoreKeyValue(subscriber)
+	bytesChannel := make(chan []byte)
+	defer close(bytesChannel)
+	go database.StoreKeyValue(bytesChannel, pool)
+	for {
+		bytes, err := subscriber.Recv()
+		if err != nil {
+			logger.GetLogger().Warn(
+				"Could not receive bytes",
+				zap.String("Error", err.Error()),
+			)
+		}
+		bytesChannel <- bytes
+	}
 }

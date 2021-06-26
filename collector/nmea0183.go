@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"time"
 
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
@@ -103,42 +104,85 @@ func (c *NMEA0183NetworkCollector) receive(stream chan<- []byte) error {
 	)
 	if c.Config.Listen {
 		if c.URL.Scheme == "tcp" {
-			listener, err := net.Listen("tcp", fmt.Sprintf("%s:%s", c.URL.Hostname(), c.URL.Port()))
-			if err != nil {
-				return err
-			}
-			defer listener.Close()
 			for {
-				conn, err := listener.Accept()
+				listener, err := net.Listen("tcp", fmt.Sprintf("%s:%s", c.URL.Hostname(), c.URL.Port()))
 				if err != nil {
-					return err
+					logger.GetLogger().Warn(
+						"Unable to start listening, sleeping for 5 seconds",
+						zap.String("Host", c.URL.Hostname()),
+						zap.String("Port", c.URL.Port()),
+						zap.String("Error", err.Error()),
+					)
+					time.Sleep(5 * time.Second)
+					continue
 				}
-				defer conn.Close()
-				go handleConnection(conn, stream)
+				for {
+					conn, err := listener.Accept()
+					if err != nil {
+						logger.GetLogger().Warn(
+							"Unable to accept connection",
+							zap.String("Host", c.URL.Hostname()),
+							zap.String("Port", c.URL.Port()),
+							zap.String("Error", err.Error()),
+							zap.Any("Listener", listener),
+						)
+						continue
+					}
+					go handleConnection(conn, stream)
+				}
 			}
 		} else if c.URL.Scheme == "udp" {
-			conn, err := net.ListenPacket("udp", fmt.Sprintf("%s:%s", c.URL.Hostname(), c.URL.Port()))
-			if err != nil {
-				return err
-			}
-			defer conn.Close()
-			buffer := make([]byte, 65507)
 			for {
-				size, _, err := conn.ReadFrom(buffer)
+				conn, err := net.ListenPacket("udp", fmt.Sprintf("%s:%s", c.URL.Hostname(), c.URL.Port()))
 				if err != nil {
-					return err
+					logger.GetLogger().Warn(
+						"Unable to start listening, sleeping for 5 seconds",
+						zap.String("Host", c.URL.Hostname()),
+						zap.String("Port", c.URL.Port()),
+						zap.String("Error", err.Error()),
+					)
+					time.Sleep(5 * time.Second)
+					continue
 				}
-				stream <- buffer[:size]
+				buffer := make([]byte, 65507)
+				for {
+					size, _, err := conn.ReadFrom(buffer)
+					if err != nil {
+						logger.GetLogger().Warn(
+							"Unable to read from connection",
+							zap.String("Host", c.URL.Hostname()),
+							zap.String("Port", c.URL.Port()),
+							zap.String("Error", err.Error()),
+							zap.Any("Connection", conn),
+						)
+						continue
+					}
+					stream <- buffer[:size]
+				}
 			}
 		}
 	} else {
 		if c.URL.Scheme == "udp" || c.URL.Scheme == "tcp" {
-			conn, err := net.Dial(c.URL.Scheme, fmt.Sprintf("%s:%s", c.URL.Hostname(), c.URL.Port()))
-			if err != nil {
-				return err
+			for {
+				conn, err := net.Dial(c.URL.Scheme, fmt.Sprintf("%s:%s", c.URL.Hostname(), c.URL.Port()))
+				if err != nil {
+					logger.GetLogger().Warn(
+						"Unable to make connection, sleeping for 5 seconds",
+						zap.String("Host", c.URL.Hostname()),
+						zap.String("Port", c.URL.Port()),
+						zap.String("Error", err.Error()),
+					)
+					time.Sleep(5 * time.Second)
+					continue
+				}
+				logger.GetLogger().Info(
+					"Connection established, starting to read",
+					zap.String("Host", c.URL.Hostname()),
+					zap.String("Port", c.URL.Port()),
+					zap.Any("Connection", conn),
+				)
+				handleConnection(conn, stream)
 			}
-			defer conn.Close()
-			handleConnection(conn, stream)
 		}
 	}
 	return nil

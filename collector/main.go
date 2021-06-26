@@ -55,14 +55,19 @@ func processStream(stream <-chan []byte, messageType string, socket mangos.Socke
 }
 
 func handleConnection(conn net.Conn, payloadStream chan<- []byte) {
+	defer conn.Close()
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
 		buffer := scanner.Bytes()
 		payloadStream <- buffer
 	}
+	logger.GetLogger().Warn(
+		"Could not read from connection",
+		zap.Any("Connection", conn),
+	)
 }
 
-func uint16sToBytes(in []uint16) []byte {
+func uint16ArrayToByteArray(in []uint16) []byte {
 	result := make([]byte, 2*len(in))
 
 	for i, v := range in {

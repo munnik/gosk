@@ -1,8 +1,9 @@
 package logger
 
 import (
-	"os"
+	"log/syslog"
 
+	"github.com/tchap/zapext/v2/zapsyslog"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -12,18 +13,15 @@ var logger *zap.Logger
 // GetLogger returns the logger of the application
 func GetLogger() *zap.Logger {
 	if logger == nil {
-		writerSyncer := getLogWriter()
-		encoder := getEncoder()
-		core := zapcore.NewCore(encoder, writerSyncer, zapcore.DebugLevel)
+		writer, _ := syslog.New(syslog.LOG_ERR|syslog.LOG_LOCAL0, "")
+		encoder := zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig())
+		core := zapsyslog.NewCore(zapcore.InfoLevel, encoder, writer)
 		logger = zap.New(core)
 	}
 	return logger
 }
 
-func getEncoder() zapcore.Encoder {
-	return zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig())
-}
-func getLogWriter() zapcore.WriteSyncer {
-	file, _ := os.Create("./gosk.log")
-	return zapcore.AddSync(file)
+// SetLogger overwrites the default logger, used for testing
+func SetLogger(newLogger *zap.Logger) {
+	logger = newLogger
 }

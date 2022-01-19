@@ -52,44 +52,119 @@ A publisher can provide the mapped data to other applications in different data 
 
 ### 1.2. Communication between micro services
 
-For communication between the different micro services [NNG](https://nng.nanomsg.org/) is used. The messages are serialized using [protocol buffers](https://developers.google.com/protocol-buffers/).
+For communication between the different micro services [NNG](https://nng.nanomsg.org/) is used. The messages are serialized using JSON encoding.
 
-#### 1.2.1. Header
+#### 1.2.1 Raw JSON messages
 
-The header consist of one or more header segments, header segments are strings. The header should give enough information to parse the message body and can be used for subscription.
+The JSON message containts 3 fields:
 
-#### 1.2.2. Timestamp
+1. time, number of nanoseconds elapsed since 00:00:00 UTC on 1 January 1970 (Epoch Time);
+2. collector, identifier for the source of the data. Together with protocol_info this should contain all the required information for a mapper to map the data;
+3. extra_info, extra information for the mapper to help map the data. This field is optional;
+4. value, the actual value in base64 encoded format.
 
-The timestamp is the number of nanoseconds elapsed since January 1, 1970 UTC.
+A message for a NMEA0183 $GPGLL string:
+```json
+{
+  "time": 1579839222196901000,
+  "collector": "Wheelhouse/GPS",
+  "value": "JEdQR0xMLDM3MjMuMjQ3NSxOLDEyMTU4LjM0MTYsVywxNjEyMjkuNDg3LEEsQSo0MQ=="
+}
+```
 
-#### 1.2.3. Body
+A message for five modbus registers:
+```json
+{
+  "time": 1579839222196901000,
+  "collector": "EngineRoom/MainEngineStarboard",
+  "extra_info": {
+    "registers": [
+      {
+        "fc": 4,
+        "address": 51300,
+        "length": 1
+      },
+      {
+        "fc": 4,
+        "address": 51460,
+        "length": 1
+      },
+      {
+        "fc": 4,
+        "address": 51426,
+        "length": 1
+      },
+      {
+        "fc": 4,
+        "address": 51360,
+        "length": 1
+      },
+      {
+        "fc": 4,
+        "address": 51606,
+        "length": 1
+      },
+    ]
+  },
+  "value": "OTAzMzY3NDU5NzEyMTExNzQ0MzU="
+}
+```
 
-The message body contains the data, the header describes the type of message.
+#### 1.2.2 Mapped JSON messages
+
+See https://signalk.org/specification/1.5.0/doc/data_model.html#delta-format
+
+Example:
+```json
+{
+  "context": "vessels.urn:mrn:imo:mmsi:234567890",
+  "updates": [
+    {
+      "source": {
+        "label": "N2000-01",
+        "type": "NMEA2000",
+        "src": "017",
+        "pgn": 127488
+      },
+      "timestamp": "2010-01-07T07:18:44Z",
+      "values": [
+        {
+          "path": "propulsion.0.revolutions",
+          "value": 16.341667
+        },
+        {
+          "path": "propulsion.0.boostPressure",
+          "value": 45500
+        }
+      ]
+    }
+  ]
+}
+```
 
 ### 1.3. Storage
 
-PostgreSQL 12 and TimescaleDB are used as a time series database. Two tables are created. One table stores the raw data as received from the different collectors. The other table stores the mapped data as received from the different mappers.
+PostgreSQL and TimescaleDB are used as a time series database. Two tables are created. One table stores the raw data as received from the different collectors. The other table stores the mapped data as received from the different mappers.
 
 #### 1.3.1. Raw data
 
 ```sql
-CREATE TABLE public.raw_data
-(
-    _time timestamp without time zone NOT NULL,
-    _key character varying[] COLLATE pg_catalog."default" NOT NULL,
-    _value bytea NOT NULL
-)
+CREATE TABLE "raw_data" (
+    "time" TIMESTAMPTZ NOT NULL,
+    "collector" TEXT NOT NULL,
+    "extra_info" TEXT NOT NULL,
+    "value" TEXT NOT NULL -- base64 encoded binary data
+);
 ```
 
 #### 1.3.2. Mapped data
 
 ```sql
-CREATE TABLE public.key_value_data
-(
-    _time timestamp without time zone NOT NULL,
-    _key character varying[] COLLATE pg_catalog."default" NOT NULL,
-    _context character varying COLLATE pg_catalog."default",
-    _path character varying COLLATE pg_catalog."default" NOT NULL,
-    _value character varying COLLATE pg_catalog."default" NOT NULL
-)
+CREATE TABLE "key_value_data" (
+    "time" TIMESTAMPTZ NOT NULL,
+    "context" TEXT NULL,
+    "source" JSON NOT NULL,
+    "path" TEXT NOT NULL,
+    "value" JSON NOT NULL
+);
 ```

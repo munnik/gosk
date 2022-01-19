@@ -84,6 +84,34 @@ var _ = Describe("Main", func() {
 			})
 		})
 	})
+	Describe("Store key value", func() {
+		Context("A valid raw message with a double value", func() {
+			It("Executes the correct SQL statement", func() {
+				bytesChannel := make(chan []byte)
+				var wg sync.WaitGroup
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					StoreKeyValue(bytesChannel, mock)
+				}()
+
+				t := time.Now().UTC()
+				h := []string{"this", "is", "a", "test"}
+				c := ""
+				p := ""
+				v := 3.2
+				mock.ExpectExec("INSERT INTO raw_data").WithArgs(t, h, c, p, v).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+				bytesChannel <- makeKeyValueMessage(t, h, c, p, v)
+
+				close(bytesChannel)
+				wg.Wait()
+
+				if err := mock.ExpectationsWereMet(); err != nil {
+					Fail(err.Error())
+				}
+			})
+		})
+	})
 })
 
 func makeRawMessage(time time.Time, headers []string, payload []byte) []byte {
@@ -93,6 +121,19 @@ func makeRawMessage(time time.Time, headers []string, payload []byte) []byte {
 		},
 		Timestamp: timestamppb.New(time),
 		Payload:   payload,
+	}
+	toSend, _ := proto.Marshal(m)
+	return toSend
+}
+
+func makeKeyValueMessage(time time.Time, headers []string, context string, path string, value interface{}) []byte {
+	m := &nanomsg.MappedData{
+		Header: &nanomsg.Header{
+			HeaderSegments: headers,
+		},
+		Timestamp: timestamppb.New(time),
+		Context:   context,
+		Path:      path,
 	}
 	toSend, _ := proto.Marshal(m)
 	return toSend

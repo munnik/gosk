@@ -122,8 +122,7 @@ func (c *ModbusNetworkCollector) receive(stream chan<- []byte) error {
 						)
 						continue
 					}
-					result = append([]uint16{registerMapping.FunctionCode, startRegister, registerMapping.Size}, result...)
-					stream <- uint16sToBytes(result)
+					stream <- uint16ArrayToByteArray(result)
 				}
 			case <-quitChannel:
 				ticker.Stop()

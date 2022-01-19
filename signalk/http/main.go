@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx"
 	"github.com/martinlindhe/unit"
 	"github.com/munnik/gosk/signalk"
 )

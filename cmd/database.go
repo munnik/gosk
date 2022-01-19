@@ -88,6 +88,7 @@ func rawDatabase(cmd *cobra.Command, args []string) {
 				"Could not receive bytes",
 				zap.String("Error", err.Error()),
 			)
+			continue
 		}
 		bytesChannel <- bytes
 	}

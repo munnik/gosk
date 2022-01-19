@@ -2,14 +2,15 @@ package collector
 
 import (
 	"bufio"
+	"encoding/base64"
+	"encoding/json"
 	"net"
+	"time"
 
 	"github.com/munnik/gosk/logger"
-	"github.com/munnik/gosk/nanomsg"
+	"github.com/munnik/gosk/message"
 	"go.nanomsg.org/mangos/v3"
 	"go.uber.org/zap"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // Collector interface
@@ -17,20 +18,20 @@ type Collector interface {
 	Collect(mangos.Socket)
 }
 
-func processStream(stream <-chan []byte, messageType string, socket mangos.Socket, name string) {
+func processStream(stream <-chan []byte, collector string, socket mangos.Socket) {
+	var m message.Raw
 	for payload := range stream {
 		logger.GetLogger().Debug(
 			"Received a message from the stream",
 			zap.ByteString("Message", payload),
 		)
-		m := &nanomsg.RawData{
-			Header: &nanomsg.Header{
-				HeaderSegments: []string{"collector", messageType, name},
-			},
-			Timestamp: timestamppb.Now(),
-			Payload:   payload,
+
+		m = message.Raw{
+			Timestamp: time.Now(),
+			Collector: collector,
+			Value:     base64.StdEncoding.EncodeToString(payload),
 		}
-		toSend, err := proto.Marshal(m)
+		toSend, err := json.Marshal(m)
 		if err != nil {
 			logger.GetLogger().Warn(
 				"Unable to marshall the message to ProtoBuffer",

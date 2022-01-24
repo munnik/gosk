@@ -83,6 +83,10 @@ func collect(cmd *cobra.Command, args []string) {
 			modbusConfig := config.NewModbusConfig(cfgFile)
 			collector.NewModbusNetworkCollector(uri, modbusConfig).Collect(nanomsg.NewPub(collectPublishURI))
 		}
+		if uri.Scheme == "rtu" {
+			modbusConfig := config.NewModbusConfig(cfgFile)
+			collector.NewModbusFileCollector(uri, modbusConfig).Collect(nanomsg.NewPub(collectPublishURI))
+		}
 	default:
 		logger.GetLogger().Fatal(
 			"Not a supported protocol",

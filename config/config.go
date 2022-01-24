@@ -29,6 +29,8 @@ type ModbusConfig struct {
 	Name             string                     `mapstructure:"Name"`
 	Context          string                     `mapstructure:"Context"`
 	URI              string                     `mapstructure:"URI"`
+	SlaveID          uint16                     `mapstructure:"SlaveID"`
+	Baudrate         int                        `mapstructure:"Baudrate"`
 	RegisterMappings map[uint16]*ModbusRegister `mapstructure:"Mappings"`
 	PollingInterval  time.Duration              `mapstructure:"PollingInterval"`
 }

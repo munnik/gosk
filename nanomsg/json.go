@@ -48,7 +48,7 @@ func (v MappedData_LengthValue) MarshalJSON() ([]byte, error) {
 
 func (v MappedData_VesselDataValue) MarshalJSON() ([]byte, error) {
 	var vesselData struct {
-		Mmsi uint32 `json:"mmsi,omitempty"`
+		Mmsi string `json:"mmsi,omitempty"`
 		Name string `json:"name,omitempty"`
 	}
 	if v.VesselDataValue.Mmsi != nil {

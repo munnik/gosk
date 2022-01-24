@@ -55,13 +55,18 @@ func (c *NMEA0183FileCollector) receive(stream chan<- []byte) error {
 		if err != nil {
 			return err
 		}
-		buffer := make([]byte, 1024)
-		for {
-			n, err := s.Read(buffer)
-			if err != nil {
-				return err
-			}
-			stream <- buffer[:n]
+		scanner := bufio.NewScanner(s)
+		for scanner.Scan() {
+			x := scanner.Text() + "\n"
+			logger.GetLogger().Warn(
+				"Scanner got data",
+				zap.String("String", x),
+				zap.ByteString("Bytes", []byte(x)),
+			)
+			stream <- []byte(x)
+		}
+		if err := scanner.Err(); err != nil {
+			return err
 		}
 	} else {
 		file, err := os.Open(c.Path)

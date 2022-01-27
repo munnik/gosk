@@ -67,6 +67,8 @@ func doMap(cmd *cobra.Command, args []string) {
 		cfg = config.NewNMEA0183Config(cfgFile)
 	case config.ModbusType:
 		cfg = config.NewModbusConfig(cfgFile)
+	case config.SygoType:
+		cfg = config.NewSygoConfig(cfgFile)
 	}
 	mapper.Map(subscriber, nanomsg.NewPub(mapPublishURI), cfg)
 }

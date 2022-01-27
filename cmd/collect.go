@@ -87,6 +87,19 @@ func collect(cmd *cobra.Command, args []string) {
 			modbusConfig := config.NewModbusConfig(cfgFile)
 			collector.NewModbusFileCollector(uri, modbusConfig).Collect(nanomsg.NewPub(collectPublishURI))
 		}
+	case config.SygoType:
+		cfg := config.NewSygoConfig(cfgFile)
+		uri, err := url.Parse(cfg.URI)
+		if err != nil {
+			logger.GetLogger().Fatal(
+				"Could not parse the URI",
+				zap.String("URI", cfg.URI),
+				zap.String("Error", err.Error()),
+			)
+		}
+		if uri.Scheme == "file" {
+			collector.NewSygoFileCollector(uri, cfg).Collect(nanomsg.NewPub(collectPublishURI))
+		}
 	default:
 		logger.GetLogger().Fatal(
 			"Not a supported protocol",

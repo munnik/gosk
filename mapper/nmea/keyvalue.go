@@ -167,6 +167,19 @@ func KeyValueFromNMEA0183(m *nanomsg.RawData, cfg config.NMEA0183Config) ([]sign
 			result = append(result, signalk.Value{Context: context, Path: []string{"environment", "water", "temperature"}, Value: nanomsg.Double(waterTemperature)})
 		}
 	}
+	if v, ok := sentence.(nmea.RudderAngle); ok {
+		rudderAngleStarboard, errStarboard := v.GetRudderAngleStarboard()
+		rudderAnglePortSide, errPortside := v.GetRudderAngleStarboard()
+		if rudderAngle, err := v.GetRudderAngle(); err == nil {
+			result = append(result, signalk.Value{Context: context, Path: []string{"steering", "rudderAngle"}, Value: nanomsg.Double(rudderAngle)})
+		} else if errStarboard == nil && errPortside == nil {
+			result = append(result, signalk.Value{Context: context, Path: []string{"steering", "rudderAngle"}, Value: nanomsg.Double((rudderAngleStarboard + rudderAnglePortSide) / 2)})
+		} else if errStarboard == nil {
+			result = append(result, signalk.Value{Context: context, Path: []string{"steering", "rudderAngle"}, Value: nanomsg.Double(rudderAngleStarboard)})
+		} else if errPortside == nil {
+			result = append(result, signalk.Value{Context: context, Path: []string{"steering", "rudderAngle"}, Value: nanomsg.Double(rudderAnglePortSide)})
+		}
+	}
 
 	if len(result) == 0 {
 		return result, fmt.Errorf("data cannot be mapped: %s", sentence.String())

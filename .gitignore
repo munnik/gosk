@@ -5,3 +5,5 @@
 gosk
 data/
 logs/
+dist/*
+!dist/config.yaml

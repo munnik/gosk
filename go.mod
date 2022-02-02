@@ -15,7 +15,7 @@ require (
 	github.com/martinlindhe/unit v0.0.0-20210313160520-19b60e03648d
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/mitchellh/mapstructure v1.4.1 // indirect
-	github.com/munnik/go-nmea v1.4.4
+	github.com/munnik/go-nmea v1.4.6
 	github.com/onsi/ginkgo v1.16.1
 	github.com/onsi/gomega v1.11.0
 	github.com/pelletier/go-toml v1.9.0 // indirect

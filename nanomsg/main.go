@@ -48,9 +48,9 @@ func ToString(value interface{}) (string, error) {
 	case *uint64:
 		return fmt.Sprintf("%d", *typedValue), nil
 	case *float32:
-		return fmt.Sprintf("%f", *typedValue), nil
+		return fmt.Sprintf("%v", *typedValue), nil
 	case *float64:
-		return fmt.Sprintf("%f", *typedValue), nil
+		return fmt.Sprintf("%v", *typedValue), nil
 	case *bool:
 		return fmt.Sprintf("%t", *typedValue), nil
 	case *MappedData_DoubleValue:

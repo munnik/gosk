@@ -5,13 +5,20 @@ import (
 
 	"github.com/munnik/go-nmea"
 	"github.com/munnik/gosk/config"
+	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/mapper/signalk"
 	"github.com/munnik/gosk/nanomsg"
+	"go.uber.org/zap"
 )
 
 // KeyValueFromNMEA0183 tries to create a Signal K Delta from a NMEA sentence
 func KeyValueFromNMEA0183(m *nanomsg.RawData, cfg config.NMEA0183Config) ([]signalk.Value, error) {
 	result := make([]signalk.Value, 0)
+	logger.GetLogger().Warn(
+		"Mapper got data",
+		zap.String("String", string(m.Payload)),
+		zap.ByteString("Bytes", m.Payload),
+	)
 	sentence, err := nmea.Parse(string(m.Payload))
 	if err != nil {
 		return result, err
@@ -179,6 +186,17 @@ func KeyValueFromNMEA0183(m *nanomsg.RawData, cfg config.NMEA0183Config) ([]sign
 	if v, ok := sentence.(nmea.DateTime); ok {
 		if dt, err := v.GetDateTime(); err == nil {
 			result = append(result, signalk.Value{Context: context, Path: []string{"navigation", "datetime"}, Value: nanomsg.String(dt)})
+	if v, ok := sentence.(nmea.RudderAngle); ok {
+		rudderAngleStarboard, errStarboard := v.GetRudderAngleStarboard()
+		rudderAnglePortSide, errPortside := v.GetRudderAngleStarboard()
+		if rudderAngle, err := v.GetRudderAngle(); err == nil {
+			result = append(result, signalk.Value{Context: context, Path: []string{"steering", "rudderAngle"}, Value: nanomsg.Double(rudderAngle)})
+		} else if errStarboard == nil && errPortside == nil {
+			result = append(result, signalk.Value{Context: context, Path: []string{"steering", "rudderAngle"}, Value: nanomsg.Double((rudderAngleStarboard + rudderAnglePortSide) / 2)})
+		} else if errStarboard == nil {
+			result = append(result, signalk.Value{Context: context, Path: []string{"steering", "rudderAngle"}, Value: nanomsg.Double(rudderAngleStarboard)})
+		} else if errPortside == nil {
+			result = append(result, signalk.Value{Context: context, Path: []string{"steering", "rudderAngle"}, Value: nanomsg.Double(rudderAnglePortSide)})
 		}
 	}
 

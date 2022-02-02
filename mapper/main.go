@@ -6,6 +6,7 @@ import (
 	"github.com/munnik/gosk/mapper/modbus"
 	"github.com/munnik/gosk/mapper/nmea"
 	"github.com/munnik/gosk/mapper/signalk"
+	"github.com/munnik/gosk/mapper/sygo"
 	"github.com/munnik/gosk/nanomsg"
 	"go.nanomsg.org/mangos/v3"
 	"go.uber.org/zap"
@@ -23,14 +24,24 @@ func (e *WrongMapperError) Error() string {
 
 // KeyValueFromData tries to create a SignalK delta from the provided data
 func KeyValueFromData(m *nanomsg.RawData, cfg interface{}) ([]signalk.Value, error) {
+	logger.GetLogger().Warn(
+		"Received raw data with protocol",
+		zap.String("Protocol", m.Header.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL]),
+		zap.String("Source", m.Header.HeaderSegments[nanomsg.HEADERSEGMENTSOURCE]),
+		zap.ByteString("Bytes", m.Payload),
+	)
 	switch string(m.Header.HeaderSegments[nanomsg.HEADERSEGMENTPROTOCOL]) {
 	case config.NMEA0183Type:
-		if _, ok := cfg.(config.NMEA0183Config); ok && cfg.(config.NMEA0183Config).Name == m.Header.HeaderSegments[nanomsg.HEADERSEGMENTSOURCE] {
-			return nmea.KeyValueFromNMEA0183(m, cfg.(config.NMEA0183Config))
+		if c, ok := cfg.(config.NMEA0183Config); ok && cfg.(config.NMEA0183Config).Name == m.Header.HeaderSegments[nanomsg.HEADERSEGMENTSOURCE] {
+			return nmea.KeyValueFromNMEA0183(m, c)
 		}
 	case config.ModbusType:
-		if _, ok := cfg.(config.ModbusConfig); ok && cfg.(config.ModbusConfig).Name == m.Header.HeaderSegments[nanomsg.HEADERSEGMENTSOURCE] {
-			return modbus.KeyValueFromModbus(m, cfg.(config.ModbusConfig))
+		if c, ok := cfg.(config.ModbusConfig); ok && cfg.(config.ModbusConfig).Name == m.Header.HeaderSegments[nanomsg.HEADERSEGMENTSOURCE] {
+			return modbus.KeyValueFromModbus(m, c)
+		}
+	case config.SygoType:
+		if c, ok := cfg.(config.SygoConfig); ok && cfg.(config.SygoConfig).Name == m.Header.HeaderSegments[nanomsg.HEADERSEGMENTSOURCE] {
+			return sygo.KeyValueFromSygo(m, c)
 		}
 	}
 	return nil, &WrongMapperError{}

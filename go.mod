@@ -3,6 +3,8 @@ module github.com/munnik/gosk
 go 1.17
 
 require (
+	github.com/Microsoft/go-winio v0.5.1 // indirect
+	github.com/adrianmo/go-nmea v1.6.0 // indirect
 	github.com/antonmedv/expr v1.9.0
 	github.com/fgrosse/zaptest v1.1.0
 	github.com/goccy/go-json v0.8.1
@@ -12,7 +14,7 @@ require (
 	github.com/jackc/pgx/v4 v4.14.1
 	github.com/martinlindhe/unit v0.0.0-20210313160520-19b60e03648d
 	github.com/mitchellh/go-homedir v1.1.0
-	github.com/munnik/go-nmea v1.4.4
+	github.com/munnik/go-nmea v1.4.6
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.17.0
 	github.com/pashagolub/pgxmock v1.4.3
@@ -28,8 +30,6 @@ require (
 
 require (
 	github.com/BertoldVdb/go-ais v0.1.0 // indirect
-	github.com/Microsoft/go-winio v0.5.1 // indirect
-	github.com/adrianmo/go-nmea v1.4.1 // indirect
 	github.com/fsnotify/fsnotify v1.5.1 // indirect
 	github.com/goburrow/serial v0.1.0 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect

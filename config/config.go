@@ -15,6 +15,8 @@ const (
 	NMEA0183Type = "NMEA0183"
 	// ModbusType is used to identify the data as Modbus data
 	ModbusType = "MODBUS"
+	// SygoType is used to identify the data as Sygo data
+	SygoType = "SYGO"
 )
 
 type ModbusRegister struct {
@@ -28,11 +30,13 @@ type ModbusRegister struct {
 type ModbusRegisterMap map[uint16]*ModbusRegister
 
 type ModbusConfig struct {
-	Name             string            `mapstructure:"Name"`
-	Context          string            `mapstructure:"Context"`
-	URI              string            `mapstructure:"URI"`
-	RegisterMappings ModbusRegisterMap `mapstructure:"Mappings"`
-	PollingInterval  time.Duration     `mapstructure:"PollingInterval"`
+	Name             string                     `mapstructure:"Name"`
+	Context          string                     `mapstructure:"Context"`
+	URI              string                     `mapstructure:"URI"`
+	SlaveID          uint16                     `mapstructure:"SlaveID"`
+	Baudrate         int                        `mapstructure:"Baudrate"`
+	RegisterMappings map[uint16]*ModbusRegister `mapstructure:"Mappings"`
+	PollingInterval  time.Duration              `mapstructure:"PollingInterval"`
 }
 
 type NMEA0183Config struct {
@@ -42,6 +46,8 @@ type NMEA0183Config struct {
 	Listen   bool   `mapstructure:"Listen"`
 	Baudrate int    `mapstructure:"Baudrate"`
 }
+
+type SygoConfig NMEA0183Config
 
 func NewModbusConfig(configFilePath string) ModbusConfig {
 	var result ModbusConfig
@@ -82,6 +88,24 @@ func NewModbusConfig(configFilePath string) ModbusConfig {
 
 func NewNMEA0183Config(configFilePath string) NMEA0183Config {
 	var result NMEA0183Config
+
+	viper.SetConfigFile(configFilePath)
+	viper.ReadInConfig()
+
+	err := viper.Unmarshal(&result)
+	if err != nil {
+		logger.GetLogger().Fatal(
+			"Unable to read the configuration",
+			zap.String("Config file", configFilePath),
+			zap.String("Error", err.Error()),
+		)
+	}
+
+	return result
+}
+
+func NewSygoConfig(configFilePath string) SygoConfig {
+	var result SygoConfig
 
 	viper.SetConfigFile(configFilePath)
 	viper.ReadInConfig()

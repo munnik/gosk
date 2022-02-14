@@ -29,7 +29,7 @@ var (
 	mapCmd = &cobra.Command{
 		Use:   "map",
 		Short: "Map raw data to meaningfull data",
-		Long:  `Map raw data to meaningfull data using the SignalK`,
+		Long:  `Map raw data to meaningfull data based on the SignalK specification`,
 		Run:   doMap,
 	}
 	mapSubscribeURI string
@@ -45,15 +45,6 @@ func init() {
 }
 
 func doMap(cmd *cobra.Command, args []string) {
-	subscriber, err := nanomsg.NewSub(mapSubscribeURI, []byte{})
-	if err != nil {
-		logger.GetLogger().Fatal(
-			"Could not subscribe",
-			zap.String("URI", mapSubscribeURI),
-			zap.String("Error", err.Error()),
-		)
-	}
-	var cfg interface{}
 	protocol, err := getProtocol(cfgFile)
 	if err != nil {
 		logger.GetLogger().Fatal(
@@ -62,13 +53,40 @@ func doMap(cmd *cobra.Command, args []string) {
 			zap.String("Error", err.Error()),
 		)
 	}
+
+	subscriber, err := nanomsg.NewSub(mapSubscribeURI, []byte{})
+	if err != nil {
+		logger.GetLogger().Fatal(
+			"Could not subscribe",
+			zap.String("URI", mapSubscribeURI),
+			zap.String("Error", err.Error()),
+		)
+	}
+	publisher := nanomsg.NewPub(mapPublishURI)
+
+	c := config.NewMapperConfig(cfgFile)
+	var m mapper.Mapper
 	switch protocol {
 	case config.NMEA0183Type:
-		cfg = config.NewNMEA0183Config(cfgFile)
-	case config.ModbusType:
-		cfg = config.NewModbusConfig(cfgFile)
+		m, err = mapper.NewNmea0183Mapper(c)
 	case config.SygoType:
-		cfg = config.NewSygoConfig(cfgFile)
+		m, err = mapper.NewSygoMapper(c)
+	case config.ModbusType:
+		rmc := config.NewRegisterMappingsConfig(cfgFile)
+		m, err = mapper.NewModbusMapper(c, rmc)
+	default:
+		logger.GetLogger().Fatal(
+			"Not a supported protocol",
+			zap.String("Protocol", protocol),
+		)
+		return
 	}
-	mapper.Map(subscriber, nanomsg.NewPub(mapPublishURI), cfg)
+	if err != nil {
+		logger.GetLogger().Fatal(
+			"Error while creating the collector",
+			zap.String("Config file", cfgFile),
+			zap.String("Error", err.Error()),
+		)
+	}
+	m.Map(subscriber, publisher)
 }

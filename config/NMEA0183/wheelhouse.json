@@ -1,7 +1,0 @@
-{
-    "Name":"Wheelhouse",
-    "Context": "vessels.urn:mrn:imo:mmsi:244770688",
-    "URI": "tcp://192.168.1.151:10110",
-    "Listen": false,
-    "Baudrate": 0
-}

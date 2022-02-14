@@ -26,7 +26,7 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
-	homedir "github.com/mitchellh/go-homedir"
+	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"
 )
 

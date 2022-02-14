@@ -56,85 +56,73 @@ For communication between the different micro services [NNG](https://nng.nanomsg
 
 #### 1.2.1 Raw JSON messages
 
-The JSON message containts 3 fields:
+The JSON message contains the following fields:
 
-1. time, number of nanoseconds elapsed since 00:00:00 UTC on 1 January 1970 (Epoch Time);
-2. collector, identifier for the source of the data. Together with protocol_info this should contain all the required information for a mapper to map the data;
-3. extra_info, extra information for the mapper to help map the data. This field is optional;
-4. value, the actual value in base64 encoded format.
+1. collector, identifier for the source of the data;
+1. timestamp, the time when the data was receive in UTC and RFC3339Nano format;
+1. uuid, used to link raw and mapped data together;
+1. value, the actual value in base64 encoded format. This value contains all information needed for the mapper to map the data.
 
-A message for a NMEA0183 $GPGLL string:
+##### An example message for a NMEA0183 string:
+
 ```json
 {
-  "time": 1579839222196901000,
-  "collector": "Wheelhouse/GPS",
+  "collector": "GPS",
+  "timestamp": "2022-02-09T16:12:29.481162381Z",
+  "uuid": "49175a7e-c4cb-455c-ae99-05eca8f7997d",
   "value": "JEdQR0xMLDM3MjMuMjQ3NSxOLDEyMTU4LjM0MTYsVywxNjEyMjkuNDg3LEEsQSo0MQ=="
 }
 ```
 
-A message for five modbus registers:
+The `value` is a base 64 encoded string of the NMEA018 sentence `$GPGLL,3723.2475,N,12158.3416,W,161229.487,A,A*41`.
+
+##### An example message for two modbus registers:
+
 ```json
 {
-  "time": 1579839222196901000,
-  "collector": "EngineRoom/MainEngineStarboard",
-  "extra_info": {
-    "registers": [
-      {
-        "fc": 4,
-        "address": 51300,
-        "length": 1
-      },
-      {
-        "fc": 4,
-        "address": 51460,
-        "length": 1
-      },
-      {
-        "fc": 4,
-        "address": 51426,
-        "length": 1
-      },
-      {
-        "fc": 4,
-        "address": 51360,
-        "length": 1
-      },
-      {
-        "fc": 4,
-        "address": 51606,
-        "length": 1
-      },
-    ]
-  },
-  "value": "OTAzMzY3NDU5NzEyMTExNzQ0MzU="
+  "collector": "CAT 3512",
+  "timestamp": "2022-02-09T12:03:57.431272983Z",
+  "uuid": "c67ae38f-64c6-427d-a91d-282a25623cc2",
+  "value": "AQAEyOwAAgABjnA="
 }
 ```
 
+The `value` is a base64 encoded string of the following bytes
+
+- `0x01` The slave id
+- `0x00 0x04` The function code
+- `0xc8 0xec` The address of the first register
+- `0x00 0x02` The number of registers
+- `0x00 0x01` The value of the first register
+- `0x8e 0x70` The value of the second register
+
 #### 1.2.2 Mapped JSON messages
 
-See https://signalk.org/specification/1.5.0/doc/data_model.html#delta-format
+The basis is the [Signal K Delta format](https://signalk.org/specification/1.5.0/doc/data_model.html#delta-format) with some extras. The `label`, `type` and `src` properties in the `source` section are used as follows. `label` is filled with `name` property of the collector config, `type` is filled with protocol that is used and `src` is filled with the `uri` property of the collector config. Each individual `value` section has an extra property `uuid` that is filled with the `uuid` of the corresponding raw data.
 
-Example:
+##### Example:
+
 ```json
 {
   "context": "vessels.urn:mrn:imo:mmsi:234567890",
   "updates": [
     {
       "source": {
-        "label": "N2000-01",
-        "type": "NMEA2000",
-        "src": "017",
-        "pgn": 127488
+        "label": "CAT 3512",
+        "type": "MODBUS",
+        "src": "tcp://127.0.0.1:5020"
       },
       "timestamp": "2010-01-07T07:18:44Z",
       "values": [
         {
           "path": "propulsion.0.revolutions",
-          "value": 16.341667
+          "value": 16.341667,
+          "uuid": "05a2ce62-6c52-4ce9-bb4f-07bb47cfa348"
         },
         {
           "path": "propulsion.0.boostPressure",
-          "value": 45500
+          "value": 45500,
+          "uuid": "05a2ce62-6c52-4ce9-bb4f-07bb47cfa348"
         }
       ]
     }

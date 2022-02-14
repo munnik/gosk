@@ -17,14 +17,11 @@ limitations under the License.
 package cmd
 
 import (
-	"context"
-
 	"go.uber.org/zap"
 
-	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/munnik/gosk/database"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/nanomsg"
+	"github.com/munnik/gosk/writer"
 	"github.com/spf13/cobra"
 )
 
@@ -40,33 +37,28 @@ var (
 		Long:  `Store raw messages in the timeseries database`,
 		Run:   rawDatabase,
 	}
-	keyValueDatabaseCmd = &cobra.Command{
-		Use:   "keyvalue",
-		Short: "Store key-value messages in the timeseries database",
-		Long:  `Store key-value messages in the timeseries database`,
-		Run:   keyValueDatabase,
+	mappedDatabaseCmd = &cobra.Command{
+		Use:   "mapped",
+		Short: "Store mapped messages in the timeseries database",
+		Long:  `Store mapped messages in the timeseries database`,
+		Run:   mappedDatabase,
 	}
 	databaseSubscribeURI string
-	pool                 *pgxpool.Pool
+	databaseURI          string
 )
 
 func init() {
 	rootCmd.AddCommand(databaseCmd)
 	databaseCmd.AddCommand(rawDatabaseCmd)
-	databaseCmd.AddCommand(keyValueDatabaseCmd)
+	databaseCmd.AddCommand(mappedDatabaseCmd)
 	rawDatabaseCmd.Flags().StringVarP(&databaseSubscribeURI, "subscribeURI", "s", "", "Nanomsg URI, the URI is used to listen for subscribed data.")
 	rawDatabaseCmd.MarkFlagRequired("subscribeURI")
-	keyValueDatabaseCmd.Flags().StringVarP(&databaseSubscribeURI, "subscribeURI", "s", "", "Nanomsg URI, the URI is used to listen for subscribed data.")
-	keyValueDatabaseCmd.MarkFlagRequired("subscribeURI")
-
-	var err error
-	pool, err = pgxpool.Connect(context.Background(), "postgresql://gosk:gosk@localhost:5432")
-	if err != nil {
-		logger.GetLogger().Fatal(
-			"Could not connect to the database",
-			zap.String("Error", err.Error()),
-		)
-	}
+	rawDatabaseCmd.Flags().StringVarP(&databaseURI, "databaseURI", "d", "", "The URI used to connect to the database")
+	rawDatabaseCmd.MarkFlagRequired("databaseURI")
+	mappedDatabaseCmd.Flags().StringVarP(&databaseSubscribeURI, "subscribeURI", "s", "", "Nanomsg URI, the URI is used to listen for subscribed data.")
+	mappedDatabaseCmd.MarkFlagRequired("subscribeURI")
+	mappedDatabaseCmd.Flags().StringVarP(&databaseURI, "databaseURI", "d", "", "The URI used to connect to the database")
+	mappedDatabaseCmd.MarkFlagRequired("databaseURI")
 }
 
 func rawDatabase(cmd *cobra.Command, args []string) {
@@ -78,23 +70,11 @@ func rawDatabase(cmd *cobra.Command, args []string) {
 			zap.String("Error", err.Error()),
 		)
 	}
-	bytesChannel := make(chan []byte)
-	defer close(bytesChannel)
-	go database.StoreRaw(bytesChannel, pool)
-	for {
-		bytes, err := subscriber.Recv()
-		if err != nil {
-			logger.GetLogger().Warn(
-				"Could not receive bytes",
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
-		bytesChannel <- bytes
-	}
+	w := writer.NewPostgresqlWriter().WithUrl(databaseURI)
+	w.WriteRaw(subscriber)
 }
 
-func keyValueDatabase(cmd *cobra.Command, args []string) {
+func mappedDatabase(cmd *cobra.Command, args []string) {
 	subscriber, err := nanomsg.NewSub(databaseSubscribeURI, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
@@ -103,17 +83,6 @@ func keyValueDatabase(cmd *cobra.Command, args []string) {
 			zap.String("Error", err.Error()),
 		)
 	}
-	bytesChannel := make(chan []byte)
-	defer close(bytesChannel)
-	go database.StoreKeyValue(bytesChannel, pool)
-	for {
-		bytes, err := subscriber.Recv()
-		if err != nil {
-			logger.GetLogger().Warn(
-				"Could not receive bytes",
-				zap.String("Error", err.Error()),
-			)
-		}
-		bytesChannel <- bytes
-	}
+	w := writer.NewPostgresqlWriter().WithUrl(databaseURI)
+	w.WriteMapped(subscriber)
 }

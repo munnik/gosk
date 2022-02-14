@@ -19,7 +19,7 @@ package cmd
 import (
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/nanomsg"
-	"github.com/munnik/gosk/signalkws"
+	"github.com/munnik/gosk/writer"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 )
@@ -31,24 +31,31 @@ var (
 		Long:  `Starts a websocket that publishes SignalK deltas`,
 		Run:   serveSignalKWs,
 	}
-	signalKWsSubscribeURI string
+	websocketSubscribeURI string
+	websocketURI          string
+	self                  string
 )
 
 func init() {
 	rootCmd.AddCommand(signalKWsCmd)
-	signalKWsCmd.Flags().StringVarP(&signalKWsSubscribeURI, "subscribeURI", "s", "", "Nanomsg URI, the URI is used to listen for subscribed data.")
+	signalKWsCmd.Flags().StringVarP(&websocketSubscribeURI, "subscribeURI", "s", "", "Nanomsg URI, the URI is used to listen for subscribed data.")
 	signalKWsCmd.MarkFlagRequired("subscribeURI")
+	signalKWsCmd.Flags().StringVarP(&websocketURI, "websocketURI", "w", "", "The URi to start the websocket on")
+	signalKWsCmd.MarkFlagRequired("websocketURI")
+	signalKWsCmd.Flags().StringVarP(&self, "self", "i", "", "The context self.")
+	signalKWsCmd.MarkFlagRequired("self")
 }
 
 func serveSignalKWs(cmd *cobra.Command, args []string) {
-	subscriber, err := nanomsg.NewSub(signalKWsSubscribeURI, []byte{})
+	subscriber, err := nanomsg.NewSub(websocketSubscribeURI, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the URI",
-			zap.String("URI", signalKWsSubscribeURI),
+			zap.String("URI", websocketSubscribeURI),
 			zap.String("Error", err.Error()),
 		)
 	}
 
-	signalkws.Start(subscriber)
+	w := writer.NewWebsocketWriter().WitSelf(self).WithUrl(websocketURI)
+	w.WriteMapped(subscriber)
 }

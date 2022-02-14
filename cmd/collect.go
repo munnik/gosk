@@ -17,7 +17,7 @@ limitations under the License.
 package cmd
 
 import (
-	"net/url"
+	"fmt"
 
 	"github.com/munnik/gosk/collector"
 	"github.com/munnik/gosk/config"
@@ -31,8 +31,8 @@ var (
 	collectCmd = &cobra.Command{
 		Use:   "collect",
 		Short: "Collect data using a specific protocol",
-		Long:  `Collect data using a specific protocol`,
-		Run:   collect,
+		Long:  fmt.Sprintf(`Collect data using a specific protocol, current supported protocols are %v, %v and %v`, config.NMEA0183Type, config.ModbusType, config.SygoType),
+		Run:   doCollect,
 	}
 	collectPublishURI string
 )
@@ -43,7 +43,7 @@ func init() {
 	collectCmd.MarkFlagRequired("publishURI")
 }
 
-func collect(cmd *cobra.Command, args []string) {
+func doCollect(cmd *cobra.Command, args []string) {
 	protocol, err := getProtocol(cfgFile)
 	if err != nil {
 		logger.GetLogger().Fatal(
@@ -52,58 +52,29 @@ func collect(cmd *cobra.Command, args []string) {
 			zap.String("Error", err.Error()),
 		)
 	}
+	c := config.NewCollectorConfig(cfgFile)
+	var reader collector.Collector
 	switch protocol {
 	case config.NMEA0183Type:
-		cfg := config.NewNMEA0183Config(cfgFile)
-		uri, err := url.Parse(cfg.URI)
-		if err != nil {
-			logger.GetLogger().Fatal(
-				"Could not parse the URI",
-				zap.String("URI", cfg.URI),
-				zap.String("Error", err.Error()),
-			)
-		}
-		if uri.Scheme == "tcp" || uri.Scheme == "udp" {
-			collector.NewNMEA0183NetworkCollector(uri, cfg).Collect(nanomsg.NewPub(collectPublishURI))
-		}
-		if uri.Scheme == "file" {
-			collector.NewNMEA0183FileCollector(uri, cfg).Collect(nanomsg.NewPub(collectPublishURI))
-		}
-	case config.ModbusType:
-		cfg := config.NewModbusConfig(cfgFile)
-		uri, err := url.Parse(cfg.URI)
-		if err != nil {
-			logger.GetLogger().Fatal(
-				"Could not parse the URI",
-				zap.String("URI", cfg.URI),
-				zap.String("Error", err.Error()),
-			)
-		}
-		if uri.Scheme == "tcp" {
-			modbusConfig := config.NewModbusConfig(cfgFile)
-			collector.NewModbusNetworkCollector(uri, modbusConfig).Collect(nanomsg.NewPub(collectPublishURI))
-		}
-		if uri.Scheme == "rtu" {
-			modbusConfig := config.NewModbusConfig(cfgFile)
-			collector.NewModbusFileCollector(uri, modbusConfig).Collect(nanomsg.NewPub(collectPublishURI))
-		}
+		reader, err = collector.NewLineReader(c)
 	case config.SygoType:
-		cfg := config.NewSygoConfig(cfgFile)
-		uri, err := url.Parse(cfg.URI)
-		if err != nil {
-			logger.GetLogger().Fatal(
-				"Could not parse the URI",
-				zap.String("URI", cfg.URI),
-				zap.String("Error", err.Error()),
-			)
-		}
-		if uri.Scheme == "file" {
-			collector.NewSygoFileCollector(uri, cfg).Collect(nanomsg.NewPub(collectPublishURI))
-		}
+		reader, err = collector.NewLineReader(c)
+	case config.ModbusType:
+		rgc := config.NewRegisterGroupsConfig(cfgFile)
+		reader, err = collector.NewModbusReader(c, rgc)
 	default:
 		logger.GetLogger().Fatal(
 			"Not a supported protocol",
 			zap.String("Protocol", protocol),
 		)
+		return
 	}
+	if err != nil {
+		logger.GetLogger().Fatal(
+			"Error while creating the collector",
+			zap.String("Config file", cfgFile),
+			zap.String("Error", err.Error()),
+		)
+	}
+	reader.Collect(nanomsg.NewPub(collectPublishURI))
 }

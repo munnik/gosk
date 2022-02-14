@@ -43,7 +43,7 @@ func (p *Proxy) SubscribeTo(url string, wg *sync.WaitGroup) {
 			default:
 				if msg, err := socket.Recv(); err != nil {
 					logger.GetLogger().Warn(
-						"Error occured when receiving a message",
+						"Error occurred when receiving a message",
 					)
 				} else {
 					p.publisher.Send(msg)

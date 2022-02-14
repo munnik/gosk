@@ -1,0 +1,10 @@
+{
+  "Collector": {
+    "Name": "Sygo",
+    "URI": "file:///dev/ttyUSB0",
+    "Baudrate": 9600
+  },
+  "Mapper": {
+    "Context": "vessels.urn:mrn:imo:mmsi:244770688"
+  }
+}

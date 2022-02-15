@@ -34,9 +34,10 @@ type CollectorConfig struct {
 	StopBits     int      `mapstructure:"stopBits"`
 	Parity       int      `mapstructure:"_"`
 	ParityString string   `mapstructure:"parity"`
+	Protocol     string
 }
 
-func NewCollectorConfig(configFilePath string) CollectorConfig {
+func NewCollectorConfig(configFilePath string) *CollectorConfig {
 	result := CollectorConfig{
 		Listen:       false,
 		BaudRate:     4800,
@@ -59,7 +60,12 @@ func NewCollectorConfig(configFilePath string) CollectorConfig {
 	result.URI, _ = url.Parse(result.URIString)
 	result.Parity = strings.Index(ParityMap, result.ParityString)
 
-	return result
+	return &result
+}
+
+func (c *CollectorConfig) WithProtocol(p string) *CollectorConfig {
+	c.Protocol = p
+	return c
 }
 
 type RegisterGroupConfig struct {
@@ -87,7 +93,7 @@ func NewRegisterGroupsConfig(configFilePath string) []RegisterGroupConfig {
 }
 
 type MapperConfig struct {
-	Context string
+	Context string `mapstructure:"context"`
 }
 
 func NewMapperConfig(configFilePath string) MapperConfig {

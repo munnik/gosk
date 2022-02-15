@@ -1,0 +1,11 @@
+---
+collector:
+  name: "Simulator" # name is used in the key of the collected data
+  uri: "tcp://127.0.0.1:13400" # uri of the connection, tcp:// and udp:// are supported for network connections, use file:///dev/ttyUSB0 for a serial device connection
+  listen: false # when uri is a network connection this determine to dial or listen for a connection [optional default is false]
+  baudRate: 4800 # when uri is a serial device this determines the baud rate for setting up the connection [optional default is 4800]
+  dataBits: 8 # when uri is a serial device this determines the number of data bits (5, 6, 7 or 8) for setting up the connection [optional default is 8]
+  stopBits: 1 # when uri is a serial device this determines the number of stop bits (1 or 2) for setting up the connection [optional default is 1]
+  parity: "E" # when uri is a serial device this determines the parity (N - None, O - Odd, E - Even) for setting up the connection [optional default is "E"]
+mapper:
+  context: "vessels.urn:mrn:imo:mmsi:244770688" # if the data itself doesn't provide a context then this context is used

@@ -214,5 +214,5 @@ func (m *Nmea0183Mapper) doMap(r *message.Raw) (*message.Mapped, error) {
 	if len(u.Values) == 0 {
 		return result, fmt.Errorf("data cannot be mapped: %s", sentence.String())
 	}
-	return result, nil
+	return result.AddUpdate(u), nil
 }

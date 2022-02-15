@@ -52,7 +52,7 @@ func doCollect(cmd *cobra.Command, args []string) {
 			zap.String("Error", err.Error()),
 		)
 	}
-	c := config.NewCollectorConfig(cfgFile)
+	c := config.NewCollectorConfig(cfgFile).WithProtocol(protocol)
 	var reader collector.Collector
 	switch protocol {
 	case config.NMEA0183Type:

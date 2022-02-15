@@ -14,7 +14,7 @@ type Collector interface {
 	Collect(publisher mangos.Socket)
 }
 
-func process(stream <-chan []byte, collector string, publisher mangos.Socket) {
+func process(stream <-chan []byte, collector string, protocol string, publisher mangos.Socket) {
 	var m *message.Raw
 	for value := range stream {
 		logger.GetLogger().Debug(
@@ -22,7 +22,7 @@ func process(stream <-chan []byte, collector string, publisher mangos.Socket) {
 			zap.ByteString("Message", value),
 		)
 
-		m = message.NewRaw().WithCollector(collector).WithValue(value)
+		m = message.NewRaw().WithCollector(collector).WithValue(value).WithType(protocol)
 		toSend, err := json.Marshal(m)
 		if err != nil {
 			logger.GetLogger().Warn(

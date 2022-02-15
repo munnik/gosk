@@ -51,7 +51,7 @@ func (w *PostgresqlWriter) WriteRaw(subscriber mangos.Socket) {
 	}
 	defer conn.Close(context.Background())
 
-	var raw *message.Raw
+	raw := &message.Raw{}
 	query := `INSERT INTO raw_data ("time", "collector", "value", "uuid", "type") VALUES ($1, $2, $3, $4, $5)`
 
 	for {
@@ -100,7 +100,7 @@ func (w *PostgresqlWriter) WriteMapped(subscriber mangos.Socket) {
 	}
 	defer conn.Close(context.Background())
 
-	var mapped *message.Mapped
+	mapped := &message.Mapped{}
 	query := `INSERT INTO mapped_data ("time", "collector", "type", "context", "path", "value", "uuid") VALUES ($1, $2, $3, $4, $5, $6, $7)`
 
 	for {

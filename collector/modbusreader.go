@@ -22,11 +22,11 @@ const (
 )
 
 type ModbusReader struct {
-	config               config.CollectorConfig
+	config               *config.CollectorConfig
 	registerGroupsConfig []config.RegisterGroupConfig
 }
 
-func NewModbusReader(c config.CollectorConfig, rgs []config.RegisterGroupConfig) (*ModbusReader, error) {
+func NewModbusReader(c *config.CollectorConfig, rgs []config.RegisterGroupConfig) (*ModbusReader, error) {
 	for _, rg := range rgs {
 		if rg.NumberOfRegisters > MaximumNumberOfRegisters {
 			return nil, fmt.Errorf("maximum number %v of registers exceeded for register group %v", MaximumNumberOfRegisters, rg)
@@ -38,7 +38,7 @@ func NewModbusReader(c config.CollectorConfig, rgs []config.RegisterGroupConfig)
 func (m *ModbusReader) Collect(publisher mangos.Socket) {
 	stream := make(chan []byte, 1)
 	go m.receive(stream)
-	process(stream, m.config.Name, publisher)
+	process(stream, m.config.Name, m.config.Protocol, publisher)
 }
 
 func (m *ModbusReader) receive(stream chan<- []byte) error {

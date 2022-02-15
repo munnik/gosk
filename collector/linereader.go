@@ -17,17 +17,17 @@ import (
 
 // LineReader reads lines from the connection and sends it on the mangos socket
 type LineReader struct {
-	config config.CollectorConfig
+	config *config.CollectorConfig
 }
 
-func NewLineReader(c config.CollectorConfig) (*LineReader, error) {
+func NewLineReader(c *config.CollectorConfig) (*LineReader, error) {
 	return &LineReader{config: c}, nil
 }
 
 func (l *LineReader) Collect(publisher mangos.Socket) {
 	stream := make(chan []byte, 1)
 	go l.receive(stream)
-	process(stream, l.config.Name, publisher)
+	process(stream, l.config.Name, l.config.Protocol, publisher)
 }
 
 func (l *LineReader) receive(stream chan<- []byte) error {

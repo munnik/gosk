@@ -19,7 +19,7 @@ type realMapper interface {
 }
 
 func process(subscriber mangos.Socket, publisher mangos.Socket, mapper realMapper) {
-	var raw *message.Raw
+	raw := &message.Raw{}
 	var mapped *message.Mapped
 	var toSend []byte
 	for {

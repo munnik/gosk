@@ -55,15 +55,23 @@ func (m *ModbusMapper) doMap(r *message.Raw) (*message.Mapped, error) {
 		}
 
 		// the raw message contains data that can be mapped with this register mapping
-		if rm.CompiledExpression == nil {
-			// a log message was already generated during compilation
-			continue
-		}
-
-		// the compiled program exists, let's run it
 		var env = map[string]interface{}{
 			"registers": []uint16{},
 		}
+		if rm.CompiledExpression == nil {
+			// TODO: each iteration the CompiledExpression is nil
+			var err error
+			if rm.CompiledExpression, err = expr.Compile(rm.Expression, expr.Env(env)); err != nil {
+				logger.GetLogger().Warn(
+					"Could not compile the mapping expression",
+					zap.String("Expression", rm.Expression),
+					zap.String("Error", err.Error()),
+				)
+				continue
+			}
+		}
+
+		// the compiled program exists, let's run it
 		env["registers"] = registerData[rm.Address-address : rm.Address-address+rm.NumberOfRegisters]
 		output, err := expr.Run(rm.CompiledExpression, env)
 		if err != nil {
@@ -81,5 +89,5 @@ func (m *ModbusMapper) doMap(r *message.Raw) (*message.Mapped, error) {
 	if len(u.Values) == 0 {
 		return result, fmt.Errorf("data cannot be mapped: %v", r.Value)
 	}
-	return result, nil
+	return result.AddUpdate(u), nil
 }

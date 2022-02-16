@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/antonmedv/expr"
 	"github.com/antonmedv/expr/vm"
 	"github.com/munnik/gosk/logger"
 	"github.com/spf13/viper"
@@ -48,7 +47,7 @@ func NewCollectorConfig(configFilePath string) *CollectorConfig {
 	viper.SetConfigFile(configFilePath)
 	viper.ReadInConfig()
 
-	err := viper.UnmarshalKey("collector", &result)
+	err := viper.Unmarshal(&result)
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Unable to read the configuration",
@@ -81,7 +80,7 @@ func NewRegisterGroupsConfig(configFilePath string) []RegisterGroupConfig {
 	viper.SetConfigFile(configFilePath)
 	viper.ReadInConfig()
 
-	err := viper.UnmarshalKey("collector.registerGroups", &result)
+	err := viper.UnmarshalKey("registerGroups", &result)
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Unable to read the configuration",
@@ -101,7 +100,7 @@ func NewMapperConfig(configFilePath string) MapperConfig {
 	viper.SetConfigFile(configFilePath)
 	viper.ReadInConfig()
 
-	err := viper.UnmarshalKey("mapper", &result)
+	err := viper.Unmarshal(&result)
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Unable to read the configuration",
@@ -128,7 +127,7 @@ func NewRegisterMappingsConfig(configFilePath string) []RegisterMappingConfig {
 	viper.SetConfigFile(configFilePath)
 	viper.ReadInConfig()
 
-	err := viper.UnmarshalKey("mapper.registerMappings", &result)
+	err := viper.UnmarshalKey("registerMappings", &result)
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Unable to read the configuration",
@@ -137,9 +136,6 @@ func NewRegisterMappingsConfig(configFilePath string) []RegisterMappingConfig {
 		)
 	}
 
-	var env = map[string]interface{}{
-		"registers": []uint16{},
-	}
 	for _, rm := range result {
 		if rm.Path == "" {
 			logger.GetLogger().Warn(
@@ -153,16 +149,32 @@ func NewRegisterMappingsConfig(configFilePath string) []RegisterMappingConfig {
 				"Expression was not set",
 				zap.String("Register mapping", fmt.Sprintf("%+v", rm)),
 			)
-			continue
-		}
-		if rm.CompiledExpression, err = expr.Compile(rm.Expression, expr.Env(env)); err != nil {
-			rm.CompiledExpression = nil
-			logger.GetLogger().Warn(
-				"Could not compile the mapping expression",
-				zap.String("Expression", rm.Expression),
-				zap.String("Error", err.Error()),
-			)
 		}
 	}
 	return result
+}
+
+type MqttConfig struct {
+	URI      string `mapstructure:"uri"`
+	ClientId string `mapstructure:"client_id"`
+	Username string `mapstructure:"username"`
+	Password string `mapstructure:"password"`
+	Context  string `mapstructure:"context"`
+}
+
+func NewMqttConfig(configFilePath string) *MqttConfig {
+	result := MqttConfig{}
+	viper.SetConfigFile(configFilePath)
+	viper.ReadInConfig()
+
+	err := viper.Unmarshal(&result)
+	if err != nil {
+		logger.GetLogger().Fatal(
+			"Unable to read the configuration",
+			zap.String("Config file", configFilePath),
+			zap.String("Error", err.Error()),
+		)
+	}
+
+	return &result
 }

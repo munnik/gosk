@@ -1,0 +1,15 @@
+---
+context: "vessels.urn:mrn:imo:mmsi:244770688" # if the data itself doesn't provide a context then this context is used
+registerMappings:
+  - slave: 1 # slave id
+    functionCode: 4
+    address: 51440 # address of the first register to map
+    numberOfRegisters: 2
+    expression: "(registers[0] * 65536 + registers[1]) / 1000.0 + 273.15"
+    path: "propulsion.mainEngine.intakeManifoldTemperature"
+  - slave: 1 # slave id
+    functionCode: 4
+    address: 51442 # address of the first register to map
+    numberOfRegisters: 2
+    expression: "(registers[0] * 65536 + registers[1]) / 1000.0 + 273.15"
+    path: "propulsion.mainEngine.exhaustTemperature"

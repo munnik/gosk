@@ -101,7 +101,7 @@ func (w *PostgresqlWriter) WriteMapped(subscriber mangos.Socket) {
 	defer conn.Close(context.Background())
 
 	mapped := &message.Mapped{}
-	query := `INSERT INTO mapped_data ("time", "collector", "type", "context", "path", "value", "uuid") VALUES ($1, $2, $3, $4, $5, $6, $7)`
+	query := `INSERT INTO mapped_data ("time", "collector", "type", "context", "path", "value", "uuid", "origin") VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
 
 	for {
 		received, err := subscriber.Recv()
@@ -122,7 +122,7 @@ func (w *PostgresqlWriter) WriteMapped(subscriber mangos.Socket) {
 		}
 		for _, update := range mapped.Updates {
 			for _, value := range update.Values {
-				if _, err := conn.Exec(context.Background(), query, update.Timestamp, update.Source.Label, update.Source.Type, mapped.Context, value.Path, value.Value, value.Uuid); err != nil {
+				if _, err := conn.Exec(context.Background(), query, update.Timestamp, update.Source.Label, update.Source.Type, mapped.Context, value.Path, value.Value, value.Uuid, mapped.Origin); err != nil {
 					logger.GetLogger().Warn(
 						"Error on inserting the received data in the database",
 						zap.String("Error", err.Error()),

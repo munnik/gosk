@@ -2,7 +2,6 @@ package writer
 
 import (
 	"encoding/json"
-	"fmt"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -109,8 +108,6 @@ func (w *MqttWriter) sendMqtt() error {
 				zap.String("Error", token.Error().Error()),
 				zap.ByteString("Bytes", bytes),
 			)
-		} else {
-			fmt.Printf("Published %v to %v", compressed, context)
 		}
 	}(w.config.Context, bytes)
 

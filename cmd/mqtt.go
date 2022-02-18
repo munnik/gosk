@@ -22,6 +22,7 @@ import (
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/nanomsg"
+	"github.com/munnik/gosk/reader"
 	"github.com/munnik/gosk/writer"
 	"github.com/spf13/cobra"
 )
@@ -45,6 +46,7 @@ var (
 		Run:   readMqtt,
 	}
 	mqttSubscribeURI string
+	mqttPublishURI   string
 )
 
 func init() {
@@ -53,8 +55,8 @@ func init() {
 	mqttCmd.AddCommand(mqttReadCmd)
 	mqttWriteCmd.Flags().StringVarP(&mqttSubscribeURI, "subscribeURI", "s", "", "Nanomsg URI, the URI is used to listen for subscribed data.")
 	mqttWriteCmd.MarkFlagRequired("subscribeURI")
-	mqttReadCmd.Flags().StringVarP(&mqttSubscribeURI, "subscribeURI", "s", "", "Nanomsg URI, the URI is used to listen for subscribed data.")
-	mqttReadCmd.MarkFlagRequired("subscribeURI")
+	mqttReadCmd.Flags().StringVarP(&mqttPublishURI, "publishURI", "u", "", "Nanomsg URI, the URI is used to publish the collected data on. It listens for connections.")
+	mqttReadCmd.MarkFlagRequired("publishURI")
 }
 
 func writeMqtt(cmd *cobra.Command, args []string) {
@@ -72,5 +74,7 @@ func writeMqtt(cmd *cobra.Command, args []string) {
 }
 
 func readMqtt(cmd *cobra.Command, args []string) {
-	// not implemented
+	c := config.NewMqttConfig(cfgFile)
+	r := reader.NewMqttReader(c)
+	r.ReadMapped(nanomsg.NewPub(mqttPublishURI))
 }

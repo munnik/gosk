@@ -1,11 +1,15 @@
 package writer
 
 import (
+	"encoding/json"
+	"fmt"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/klauspost/compress/zstd"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
+	"github.com/munnik/gosk/message"
 	"go.nanomsg.org/mangos/v3"
 	"go.uber.org/zap"
 )
@@ -16,12 +20,19 @@ const (
 )
 
 type MqttWriter struct {
-	config *config.MqttConfig
+	config     *config.MqttConfig
+	mqttClient mqtt.Client
+	buffer     message.Buffer
+	timer      time.Timer
+	encoder    *zstd.Encoder
 }
 
 func NewMqttWriter(c *config.MqttConfig) *MqttWriter {
+	var encoder, _ = zstd.NewWriter(nil)
 	return &MqttWriter{
-		config: c,
+		config:  c,
+		buffer:  *message.NewBuffer(),
+		encoder: encoder,
 	}
 }
 
@@ -38,8 +49,8 @@ func (w *MqttWriter) createClientOptions() *mqtt.ClientOptions {
 }
 
 func (w *MqttWriter) WriteMapped(subscriber mangos.Socket) {
-	client := mqtt.NewClient(w.createClientOptions())
-	if token := client.Connect(); token.Wait() && token.Error() != nil {
+	w.mqttClient = mqtt.NewClient(w.createClientOptions())
+	if token := w.mqttClient.Connect(); token.Wait() && token.Error() != nil {
 		logger.GetLogger().Fatal(
 			"Could not connect to the MQTT broker",
 			zap.String("Error", token.Error().Error()),
@@ -47,24 +58,61 @@ func (w *MqttWriter) WriteMapped(subscriber mangos.Socket) {
 		)
 		return
 	}
-	defer client.Disconnect(disconnectWait)
+	defer w.mqttClient.Disconnect(disconnectWait)
+
+	go func(w *MqttWriter) {
+		for {
+			m := message.Mapped{}
+			received, err := subscriber.Recv()
+			if err != nil {
+				logger.GetLogger().Warn(
+					"Could not receive a message from the publisher",
+					zap.String("Error", err.Error()),
+				)
+				continue
+			}
+			if err := json.Unmarshal(received, &m); err != nil {
+				logger.GetLogger().Warn(
+					"Could not unmarshal a message from the publisher",
+					zap.String("Error", err.Error()),
+				)
+				continue
+			}
+			w.buffer.Lock().Append(m).Unlock()
+		}
+	}(w)
 
 	for {
-		received, err := subscriber.Recv()
-		if err != nil {
-			logger.GetLogger().Warn(
-				"Could not receive a message from the publisher",
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
-		go func(m []byte) {
-			if token := client.Publish(w.config.Context, 1, true, m); token.Wait() && token.Error() != nil {
-				logger.GetLogger().Warn(
-					"Could not send a message to the mqtt broker",
-					zap.String("Error", token.Error().Error()),
-				)
-			}
-		}(received)
+		w.timer = *time.NewTimer(time.Duration(w.config.Interval) * time.Second)
+		<-w.timer.C
+		w.sendMqtt()
 	}
+}
+
+func (w *MqttWriter) sendMqtt() error {
+	w.buffer.Lock()
+	defer w.buffer.Unlock()
+	if len(w.buffer.Deltas) == 0 {
+		return nil
+	}
+	bytes, err := json.Marshal(w.buffer)
+	if err != nil {
+		return err
+	}
+	w.buffer.Empty()
+
+	go func(context string, bytes []byte) {
+		compressed := w.encoder.EncodeAll(bytes, make([]byte, 0, len(bytes)))
+		if token := w.mqttClient.Publish(context, 1, true, compressed); token.Wait() && token.Error() != nil {
+			logger.GetLogger().Warn(
+				"Could not publish a message via MQTT",
+				zap.String("Error", token.Error().Error()),
+				zap.ByteString("Bytes", bytes),
+			)
+		} else {
+			fmt.Printf("Published %v to %v", compressed, context)
+		}
+	}(w.config.Context, bytes)
+
+	return nil
 }

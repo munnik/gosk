@@ -160,6 +160,7 @@ type MqttConfig struct {
 	Username string `mapstructure:"username"`
 	Password string `mapstructure:"password"`
 	Context  string `mapstructure:"context"`
+	Interval int    `mapstructure:"interval"`
 }
 
 func NewMqttConfig(configFilePath string) *MqttConfig {

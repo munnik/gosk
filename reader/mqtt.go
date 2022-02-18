@@ -2,7 +2,6 @@ package reader
 
 import (
 	"encoding/json"
-	"fmt"
 	"sync"
 	"time"
 
@@ -76,7 +75,6 @@ func (r *MqttReader) ReadMapped(publisher mangos.Socket) {
 
 func (r *MqttReader) messageReceived(c mqtt.Client, m mqtt.Message) {
 	received, err := r.decoder.DecodeAll(m.Payload(), nil)
-	fmt.Printf("Compression ratio is %v\n", float64(len(m.Payload()))/float64(len(received)))
 	if err != nil {
 		logger.GetLogger().Warn(
 			"Could not decompress payload",

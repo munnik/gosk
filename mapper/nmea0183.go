@@ -23,7 +23,7 @@ func (m *Nmea0183Mapper) Map(subscriber mangos.Socket, publisher mangos.Socket) 
 }
 
 func (m *Nmea0183Mapper) doMap(r *message.Raw) (*message.Mapped, error) {
-	result := message.NewMapped().WithContext(m.config.Context)
+	result := message.NewMapped().WithContext(m.config.Context).WithOrigin(m.config.Context)
 	sentence, err := nmea.Parse(string(r.Value))
 	if err != nil {
 		return nil, err

@@ -24,7 +24,7 @@ func (m *SygoMapper) Map(subscriber mangos.Socket, publisher mangos.Socket) {
 }
 
 func (m *SygoMapper) doMap(r *message.Raw) (*message.Mapped, error) {
-	result := message.NewMapped().WithContext(m.config.Context)
+	result := message.NewMapped().WithContext(m.config.Context).WithOrigin(m.config.Context)
 	s := message.NewSource().WithLabel(r.Collector).WithType(m.protocol)
 	u := message.NewUpdate().WithSource(s).WithTimestamp(r.Timestamp)
 

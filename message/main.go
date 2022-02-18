@@ -80,7 +80,8 @@ func (r *Raw) UnmarshalJSON(data []byte) error {
 }
 
 type Mapped struct {
-	Context string   `json:"context"`
+	Context string   `json:"context"` // indicates what the data is about
+	Origin  string   `json:"origin"`  // indicates the creator of the data
 	Updates []Update `json:"updates"`
 }
 
@@ -92,6 +93,11 @@ func NewMapped() *Mapped {
 
 func (m *Mapped) WithContext(c string) *Mapped {
 	m.Context = c
+	return m
+}
+
+func (m *Mapped) WithOrigin(o string) *Mapped {
+	m.Origin = o
 	return m
 }
 

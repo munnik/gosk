@@ -4,12 +4,14 @@ go 1.17
 
 require (
 	github.com/antonmedv/expr v1.9.0
+	github.com/eclipse/paho.mqtt.golang v1.3.5
 	github.com/fgrosse/zaptest v1.1.0
 	github.com/goburrow/serial v0.1.0
 	github.com/golang-migrate/migrate/v4 v4.15.1
 	github.com/google/uuid v1.3.0
-	github.com/gorilla/websocket v1.4.2
+	github.com/gorilla/websocket v1.5.0
 	github.com/jackc/pgx/v4 v4.15.0
+	github.com/klauspost/compress v1.14.3
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/mitchellh/mapstructure v1.4.3
 	github.com/munnik/go-nmea v1.4.7
@@ -25,9 +27,8 @@ require (
 
 require (
 	github.com/BertoldVdb/go-ais v0.1.0 // indirect
-	github.com/Microsoft/go-winio v0.5.1 // indirect
+	github.com/Microsoft/go-winio v0.5.2 // indirect
 	github.com/adrianmo/go-nmea v1.6.0 // indirect
-	github.com/eclipse/paho.mqtt.golang v1.3.5 // indirect
 	github.com/fsnotify/fsnotify v1.5.1 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
@@ -41,7 +42,6 @@ require (
 	github.com/jackc/pgproto3/v2 v2.2.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20200714003250-2b9c44734f2b // indirect
 	github.com/jackc/pgtype v1.10.0 // indirect
-	github.com/klauspost/compress v1.14.3 // indirect
 	github.com/lib/pq v1.10.4 // indirect
 	github.com/magiconair/properties v1.8.5 // indirect
 	github.com/martinlindhe/unit v0.0.0-20210313160520-19b60e03648d // indirect
@@ -56,7 +56,7 @@ require (
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.7.0 // indirect
 	golang.org/x/crypto v0.0.0-20220214200702-86341886e292 // indirect
-	golang.org/x/net v0.0.0-20211205041911-012df41ee64c // indirect
+	golang.org/x/net v0.0.0-20220127200216-cd36cc0744dd // indirect
 	golang.org/x/sys v0.0.0-20220209214540-3681064d5158 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	gopkg.in/ini.v1 v1.66.4 // indirect

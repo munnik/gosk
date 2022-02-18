@@ -172,11 +172,14 @@ var _ = Describe("Mapped", func() {
 		})
 		Context("with multiple updates", func() {
 			BeforeEach(func() {
+				alt := 0.0
+				lat := 37.81479
+				lon := -122.44880152
 				s1 := NewSource().WithLabel("CAT 3512").WithType(config.ModbusType)
 				s2 := NewSource().WithLabel("AIS").WithType(config.NMEA0183Type)
 				v1 := NewValue().WithPath("propulsion.0.revolutions").WithValue(16.341667).WithUuid(uuid.MustParse("84679362-f963-405f-aa37-a6a8ed961417"))
 				v2 := NewValue().WithPath("propulsion.0.boostPressure").WithValue(45500.0).WithUuid(uuid.MustParse("84679362-f963-405f-aa37-a6a8ed961417"))
-				v3 := NewValue().WithPath("navigation.position").WithValue(Position{Altitude: 0.0, Latitude: 37.81479, Longitude: -122.44880152}).WithUuid(uuid.MustParse("84679362-f963-405f-aa37-a6a8ed961417"))
+				v3 := NewValue().WithPath("navigation.position").WithValue(Position{Altitude: &alt, Latitude: &lat, Longitude: &lon}).WithUuid(uuid.MustParse("84679362-f963-405f-aa37-a6a8ed961417"))
 				v4 := NewValue().WithPath("navigation.state").WithValue("motoring").WithUuid(uuid.MustParse("84679362-f963-405f-aa37-a6a8ed961417"))
 				u1 := NewUpdate().WithSource(s1).AddValue(v1).AddValue(v2)
 				u1.Timestamp = time.Date(2022, time.Month(2), 9, 12, 3, 57, 431272983, time.UTC)

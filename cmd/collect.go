@@ -31,7 +31,7 @@ var (
 	collectCmd = &cobra.Command{
 		Use:   "collect",
 		Short: "Collect data using a specific protocol",
-		Long:  fmt.Sprintf(`Collect data using a specific protocol, current supported protocols are %v, %v and %v`, config.NMEA0183Type, config.ModbusType, config.SygoType),
+		Long:  fmt.Sprintf(`Collect data using a specific protocol, current supported protocols are %v, %v and %v`, config.NMEA0183Type, config.ModbusType, config.CsvType),
 		Run:   doCollect,
 	}
 	collectPublishURI string
@@ -55,13 +55,13 @@ func doCollect(cmd *cobra.Command, args []string) {
 	c := config.NewCollectorConfig(cfgFile).WithProtocol(protocol)
 	var reader collector.Collector
 	switch protocol {
-	case config.NMEA0183Type:
-		reader, err = collector.NewLineReader(c)
-	case config.SygoType:
+	case config.CsvType:
 		reader, err = collector.NewLineReader(c)
 	case config.ModbusType:
 		rgc := config.NewRegisterGroupsConfig(cfgFile)
 		reader, err = collector.NewModbusReader(c, rgc)
+	case config.NMEA0183Type:
+		reader, err = collector.NewLineReader(c)
 	default:
 		logger.GetLogger().Fatal(
 			"Not a supported protocol",

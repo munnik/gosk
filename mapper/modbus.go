@@ -13,13 +13,13 @@ import (
 )
 
 type ModbusMapper struct {
-	config                 config.MapperConfig
-	protocol               string
-	registerMappingsConfig []config.RegisterMappingConfig
+	config                config.MapperConfig
+	protocol              string
+	registerMappingConfig []config.RegisterMappingConfig
 }
 
-func NewModbusMapper(c config.MapperConfig, rms []config.RegisterMappingConfig) (*ModbusMapper, error) {
-	return &ModbusMapper{config: c, protocol: config.ModbusType, registerMappingsConfig: rms}, nil
+func NewModbusMapper(c config.MapperConfig, rmc []config.RegisterMappingConfig) (*ModbusMapper, error) {
+	return &ModbusMapper{config: c, protocol: config.ModbusType, registerMappingConfig: rmc}, nil
 }
 
 func (m *ModbusMapper) Map(subscriber mangos.Socket, publisher mangos.Socket) {
@@ -46,11 +46,11 @@ func (m *ModbusMapper) doMap(r *message.Raw) (*message.Mapped, error) {
 		registerData[i] = binary.BigEndian.Uint16(r.Value[7+i*2 : 9+i*2])
 	}
 
-	for _, rm := range m.registerMappingsConfig {
-		if rm.Slave != slave || rm.FunctionCode != functionCode {
+	for _, rmc := range m.registerMappingConfig {
+		if rmc.Slave != slave || rmc.FunctionCode != functionCode {
 			continue
 		}
-		if rm.Address < address || rm.Address+rm.NumberOfRegisters > address+numberOfRegisters {
+		if rmc.Address < address || rmc.Address+rmc.NumberOfRegisters > address+numberOfRegisters {
 			continue
 		}
 
@@ -58,13 +58,13 @@ func (m *ModbusMapper) doMap(r *message.Raw) (*message.Mapped, error) {
 		var env = map[string]interface{}{
 			"registers": []uint16{},
 		}
-		if rm.CompiledExpression == nil {
+		if rmc.CompiledExpression == nil {
 			// TODO: each iteration the CompiledExpression is nil
 			var err error
-			if rm.CompiledExpression, err = expr.Compile(rm.Expression, expr.Env(env)); err != nil {
+			if rmc.CompiledExpression, err = expr.Compile(rmc.Expression, expr.Env(env)); err != nil {
 				logger.GetLogger().Warn(
 					"Could not compile the mapping expression",
-					zap.String("Expression", rm.Expression),
+					zap.String("Expression", rmc.Expression),
 					zap.String("Error", err.Error()),
 				)
 				continue
@@ -72,18 +72,18 @@ func (m *ModbusMapper) doMap(r *message.Raw) (*message.Mapped, error) {
 		}
 
 		// the compiled program exists, let's run it
-		env["registers"] = registerData[rm.Address-address : rm.Address-address+rm.NumberOfRegisters]
-		output, err := expr.Run(rm.CompiledExpression, env)
+		env["registers"] = registerData[rmc.Address-address : rmc.Address-address+rmc.NumberOfRegisters]
+		output, err := expr.Run(rmc.CompiledExpression, env)
 		if err != nil {
 			logger.GetLogger().Warn(
 				"Could not run the mapping expression",
-				zap.String("Expression", rm.Expression),
+				zap.String("Expression", rmc.Expression),
 				zap.String("Environment", fmt.Sprintf("%+v", env)),
 				zap.String("Error", err.Error()),
 			)
 			continue
 		}
-		u.AddValue(message.NewValue().WithUuid(r.Uuid).WithPath(rm.Path).WithValue(output))
+		u.AddValue(message.NewValue().WithUuid(r.Uuid).WithPath(rmc.Path).WithValue(output))
 	}
 
 	if len(u.Values) == 0 {

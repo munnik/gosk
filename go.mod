@@ -3,6 +3,7 @@ module github.com/munnik/gosk
 go 1.17
 
 require (
+	github.com/allegro/bigcache/v3 v3.0.2
 	github.com/antonmedv/expr v1.9.0
 	github.com/eclipse/paho.mqtt.golang v1.3.5
 	github.com/fgrosse/zaptest v1.1.0
@@ -12,7 +13,6 @@ require (
 	github.com/gorilla/websocket v1.5.0
 	github.com/jackc/pgx/v4 v4.15.0
 	github.com/klauspost/compress v1.14.3
-	github.com/mitchellh/go-homedir v1.1.0
 	github.com/mitchellh/mapstructure v1.4.3
 	github.com/munnik/go-nmea v1.4.7
 	github.com/onsi/ginkgo/v2 v2.1.2
@@ -29,7 +29,6 @@ require (
 	github.com/BertoldVdb/go-ais v0.1.0 // indirect
 	github.com/Microsoft/go-winio v0.5.2 // indirect
 	github.com/adrianmo/go-nmea v1.6.0 // indirect
-	github.com/allegro/bigcache/v3 v3.0.2 // indirect
 	github.com/fsnotify/fsnotify v1.5.1 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
@@ -37,7 +36,6 @@ require (
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
 	github.com/jackc/pgconn v1.11.0 // indirect
-	github.com/jackc/pgerrcode v0.0.0-20201024163028-a0d42d470451 // indirect
 	github.com/jackc/pgio v1.0.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgproto3/v2 v2.2.0 // indirect

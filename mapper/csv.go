@@ -43,13 +43,13 @@ func (m *CSVMapper) doMap(r *message.Raw) (*message.Mapped, error) {
 		stringValues := strings.Split(stringValue, ",")
 		floatValues := make([]float64, len(stringValues))
 		for i, v := range stringValues {
-			if fv, err := strconv.ParseFloat(v, 64); err == nil {
+			if fv, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
 				floatValues[i] = fv
 			}
 		}
 		intValues := make([]int64, len(stringValues))
 		for i, v := range stringValues {
-			if iv, err := strconv.ParseInt(v, 10, 64); err == nil {
+			if iv, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil {
 				intValues[i] = iv
 			}
 		}
@@ -89,5 +89,7 @@ func (m *CSVMapper) doMap(r *message.Raw) (*message.Mapped, error) {
 	if len(u.Values) == 0 {
 		return result, fmt.Errorf("data cannot be mapped: %v", r.Value)
 	}
+
+	result.AddUpdate(u)
 	return result, nil
 }

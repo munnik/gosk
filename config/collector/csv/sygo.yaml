@@ -1,7 +1,0 @@
----
-name: "Sygo simulator" # name is used in the key of the collected data
-url: "/dev/ttyUSB2" # uri of the connection, tcp:// and udp:// are supported for network connections, use file:///dev/ttyUSB0 for a serial device connection
-baudRate: 19200 # when uri is a serial device this determines the baud rate for setting up the connection [optional default is 4800]
-dataBits: 8 # when uri is a serial device this determines the number of data bits (5, 6, 7 or 8) for setting up the connection [optional default is 8]
-stopBits: 1 # when uri is a serial device this determines the number of stop bits (1 or 2) for setting up the connection [optional default is 1]
-parity: "E" # when uri is a serial device this determines the parity (N - None, O - Odd, E - Even) for setting up the connection [optional default is "E"]

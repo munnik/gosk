@@ -11,5 +11,5 @@ gosk*.log
 **/*.coverprofile
 **/lcov.info
 dist/*
-!dist/config.yaml
-config/collector/nmea0183/zmg.yaml
+config/**/*.yaml
+!config/**/sample.yaml

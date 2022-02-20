@@ -20,7 +20,6 @@ require (
 	github.com/simonvetter/modbus v1.4.0
 	github.com/spf13/cobra v1.3.0
 	github.com/spf13/viper v1.10.1
-	github.com/tchap/zapext/v2 v2.1.1
 	go.nanomsg.org/mangos/v3 v3.3.0
 	go.uber.org/zap v1.21.0
 )
@@ -46,7 +45,6 @@ require (
 	github.com/martinlindhe/unit v0.0.0-20210313160520-19b60e03648d // indirect
 	github.com/onsi/ginkgo v1.16.5 // indirect
 	github.com/pelletier/go-toml v1.9.4 // indirect
-	github.com/pkg/errors v0.9.1 // indirect
 	github.com/spf13/afero v1.8.1 // indirect
 	github.com/spf13/cast v1.4.1 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect

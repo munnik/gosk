@@ -39,6 +39,7 @@ func NewModbusReader(c *config.CollectorConfig, rgs []config.RegisterGroupConfig
 
 func (r *ModbusReader) Collect(publisher mangos.Socket) {
 	stream := make(chan []byte, 1)
+	defer close(stream)
 	go func() {
 		for {
 			if err := r.receive(stream); err != nil {
@@ -54,8 +55,6 @@ func (r *ModbusReader) Collect(publisher mangos.Socket) {
 }
 
 func (m *ModbusReader) receive(stream chan<- []byte) error {
-	defer close(stream)
-
 	client, err := m.createClient()
 	if err != nil {
 		return err

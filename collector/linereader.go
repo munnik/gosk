@@ -26,6 +26,7 @@ func NewLineReader(c *config.CollectorConfig) (*LineReader, error) {
 
 func (r *LineReader) Collect(publisher mangos.Socket) {
 	stream := make(chan []byte, 1)
+	defer close(stream)
 	go func() {
 		for {
 			if err := r.receive(stream); err != nil {
@@ -41,8 +42,6 @@ func (r *LineReader) Collect(publisher mangos.Socket) {
 }
 
 func (l *LineReader) receive(stream chan<- []byte) error {
-	defer close(stream)
-
 	reader, err := l.createReader()
 	if err != nil {
 		return err

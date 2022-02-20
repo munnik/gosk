@@ -71,6 +71,12 @@ func (w *PostgresqlWriter) WriteRaw(subscriber mangos.Socket) {
 			logger.GetLogger().Warn(
 				"Error on inserting the received data in the database",
 				zap.String("Error", err.Error()),
+				zap.String("Query", query),
+				zap.Time("Timestamp", raw.Timestamp),
+				zap.String("Collector", raw.Collector),
+				zap.ByteString("Value", raw.Value),
+				zap.String("UUID", raw.Uuid.String()),
+				zap.String("Type", raw.Type),
 			)
 		}
 	}
@@ -122,6 +128,15 @@ func (w *PostgresqlWriter) WriteMapped(subscriber mangos.Socket) {
 					logger.GetLogger().Warn(
 						"Error on inserting the received data in the database",
 						zap.String("Error", err.Error()),
+						zap.String("Query", query),
+						zap.Time("Timestamp", update.Timestamp),
+						zap.String("Label", update.Source.Label),
+						zap.String("Type", update.Source.Type),
+						zap.String("Context", mapped.Context),
+						zap.String("Path", value.Path),
+						zap.Any("Value", value.Value),
+						zap.String("UUID", value.Uuid.String()),
+						zap.String("Origin", mapped.Origin),
 					)
 				}
 			}

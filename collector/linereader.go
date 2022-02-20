@@ -24,10 +24,20 @@ func NewLineReader(c *config.CollectorConfig) (*LineReader, error) {
 	return &LineReader{config: c}, nil
 }
 
-func (l *LineReader) Collect(publisher mangos.Socket) {
+func (r *LineReader) Collect(publisher mangos.Socket) {
 	stream := make(chan []byte, 1)
-	go l.receive(stream)
-	process(stream, l.config.Name, l.config.Protocol, publisher)
+	go func() {
+		for {
+			if err := r.receive(stream); err != nil {
+				logger.GetLogger().Warn(
+					"Error while receiving data for the stream",
+					zap.String("URL", r.config.URL.String()),
+					zap.String("Error", err.Error()),
+				)
+			}
+		}
+	}()
+	process(stream, r.config.Name, r.config.Protocol, publisher)
 }
 
 func (l *LineReader) receive(stream chan<- []byte) error {

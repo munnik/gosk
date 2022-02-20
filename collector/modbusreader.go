@@ -7,8 +7,10 @@ import (
 	"time"
 
 	"github.com/munnik/gosk/config"
+	"github.com/munnik/gosk/logger"
 	"github.com/simonvetter/modbus"
 	"go.nanomsg.org/mangos/v3"
+	"go.uber.org/zap"
 )
 
 // MaximumNumberOfRegisters is maximum number of registers that can be read in one request, a modbus message is limit to 256 bytes
@@ -35,10 +37,20 @@ func NewModbusReader(c *config.CollectorConfig, rgs []config.RegisterGroupConfig
 	return &ModbusReader{config: c, registerGroupsConfig: rgs}, nil
 }
 
-func (m *ModbusReader) Collect(publisher mangos.Socket) {
+func (r *ModbusReader) Collect(publisher mangos.Socket) {
 	stream := make(chan []byte, 1)
-	go m.receive(stream)
-	process(stream, m.config.Name, m.config.Protocol, publisher)
+	go func() {
+		for {
+			if err := r.receive(stream); err != nil {
+				logger.GetLogger().Warn(
+					"Error while receiving data for the stream",
+					zap.String("URL", r.config.URL.String()),
+					zap.String("Error", err.Error()),
+				)
+			}
+		}
+	}()
+	process(stream, r.config.Name, r.config.Protocol, publisher)
 }
 
 func (m *ModbusReader) receive(stream chan<- []byte) error {

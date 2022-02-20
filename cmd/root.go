@@ -66,7 +66,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "path to config file")
 }
 
-// initConfig reads in config file and ENV variables if set.
+// initConfig reads in config file
 func initConfig() {
 	if cfgFile != "" {
 		// Use config file from the flag.

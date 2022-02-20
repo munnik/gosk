@@ -26,5 +26,5 @@ nfpms:
       - "apk"
     dependencies:
       - "postgresql"
-      - "timescaledb"
+      - "postgresql-timescaledb-tsl"
     bindir: "/usr/bin"

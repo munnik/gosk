@@ -17,8 +17,8 @@ const (
 	NMEA0183Type = "nmea0183"
 	// ModbusType is used to identify the data as Modbus data
 	ModbusType = "modbus"
-	// CsvType is used to identify the data as comma seperated values data
-	CsvType = "csv"
+	// CSVType is used to identify the data as comma seperated values data
+	CSVType = "csv"
 
 	ParityMap string = "NOE" // None, Odd, Even
 )

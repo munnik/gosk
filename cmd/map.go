@@ -65,9 +65,9 @@ func doMap(cmd *cobra.Command, args []string) {
 	c := config.NewMapperConfig(cfgFile)
 	var m mapper.Mapper
 	switch protocol {
-	case config.CsvType:
+	case config.CSVType:
 		cmc := config.NewCsvMappingConfig(cfgFile)
-		m, err = mapper.NewCsvMapper(c, cmc)
+		m, err = mapper.NewCSVMapper(c, cmc)
 	case config.ModbusType:
 		rmc := config.NewRegisterMappingsConfig(cfgFile)
 		m, err = mapper.NewModbusMapper(c, rmc)

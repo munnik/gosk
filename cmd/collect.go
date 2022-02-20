@@ -31,7 +31,7 @@ var (
 	collectCmd = &cobra.Command{
 		Use:   "collect",
 		Short: "Collect data using a specific protocol",
-		Long:  fmt.Sprintf(`Collect data using a specific protocol, current supported protocols are %v, %v and %v`, config.NMEA0183Type, config.ModbusType, config.CsvType),
+		Long:  fmt.Sprintf(`Collect data using a specific protocol, current supported protocols are %v, %v and %v`, config.NMEA0183Type, config.ModbusType, config.CSVType),
 		Run:   doCollect,
 	}
 )
@@ -54,7 +54,7 @@ func doCollect(cmd *cobra.Command, args []string) {
 	c := config.NewCollectorConfig(cfgFile).WithProtocol(protocol)
 	var reader collector.Collector
 	switch protocol {
-	case config.CsvType:
+	case config.CSVType:
 		reader, err = collector.NewLineReader(c)
 	case config.ModbusType:
 		rgc := config.NewRegisterGroupsConfig(cfgFile)

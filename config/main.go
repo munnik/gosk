@@ -17,8 +17,8 @@ const (
 	NMEA0183Type = "nmea0183"
 	// ModbusType is used to identify the data as Modbus data
 	ModbusType = "modbus"
-	// SygoType is used to identify the data as Sygo data
-	SygoType = "sygo"
+	// CsvType is used to identify the data as comma seperated values data
+	CsvType = "csv"
 
 	ParityMap string = "NOE" // None, Odd, Even
 )
@@ -128,6 +128,45 @@ func NewRegisterMappingsConfig(configFilePath string) []RegisterMappingConfig {
 	viper.ReadInConfig()
 
 	err := viper.UnmarshalKey("registerMappings", &result)
+	if err != nil {
+		logger.GetLogger().Fatal(
+			"Unable to read the configuration",
+			zap.String("Config file", configFilePath),
+			zap.String("Error", err.Error()),
+		)
+	}
+
+	for _, rm := range result {
+		if rm.Path == "" {
+			logger.GetLogger().Warn(
+				"Path was not set",
+				zap.String("Register mapping", fmt.Sprintf("%+v", rm)),
+			)
+			continue
+		}
+		if rm.Expression == "" {
+			logger.GetLogger().Warn(
+				"Expression was not set",
+				zap.String("Register mapping", fmt.Sprintf("%+v", rm)),
+			)
+		}
+	}
+	return result
+}
+
+type CsvMappingConfig struct {
+	BeginsWith         string `mapstructure:"beginsWith"`
+	Expression         string `mapstructure:"expression"`
+	CompiledExpression *vm.Program
+	Path               string `mapstructure:"path"`
+}
+
+func NewCsvMappingConfig(configFilePath string) []CsvMappingConfig {
+	var result []CsvMappingConfig
+	viper.SetConfigFile(configFilePath)
+	viper.ReadInConfig()
+
+	err := viper.UnmarshalKey("csvMappings", &result)
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Unable to read the configuration",

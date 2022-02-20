@@ -12,3 +12,4 @@ gosk*.log
 **/lcov.info
 dist/*
 !dist/config.yaml
+config/collector/nmea0183/zmg.yaml

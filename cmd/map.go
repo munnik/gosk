@@ -65,13 +65,14 @@ func doMap(cmd *cobra.Command, args []string) {
 	c := config.NewMapperConfig(cfgFile)
 	var m mapper.Mapper
 	switch protocol {
-	case config.NMEA0183Type:
-		m, err = mapper.NewNmea0183Mapper(c)
-	case config.SygoType:
-		m, err = mapper.NewSygoMapper(c)
+	case config.CsvType:
+		cmc := config.NewCsvMappingConfig(cfgFile)
+		m, err = mapper.NewCsvMapper(c, cmc)
 	case config.ModbusType:
 		rmc := config.NewRegisterMappingsConfig(cfgFile)
 		m, err = mapper.NewModbusMapper(c, rmc)
+	case config.NMEA0183Type:
+		m, err = mapper.NewNmea0183Mapper(c)
 	default:
 		logger.GetLogger().Fatal(
 			"Not a supported protocol",

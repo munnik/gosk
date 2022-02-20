@@ -1,0 +1,89 @@
+---
+context: "vessels.urn:mrn:imo:mmsi:244770688" # if the data itself doesn't provide a context then this context is used
+csvMappings:
+  - beginsWith: "01,"
+    expression: "floatValues[0] / 100.0"
+    path: "design.draft.port.forward"
+  - beginsWith: "02,"
+    expression: "floatValues[0] / 100.0"
+    path: "design.draft.starboard.forward"
+  - beginsWith: "03,"
+    expression: "floatValues[0] / 100.0"
+    path: "design.draft.port.center"
+  - beginsWith: "04,"
+    expression: "floatValues[0] / 100.0"
+    path: "design.draft.starboard.center"
+  - beginsWith: "05,"
+    expression: "floatValues[0] / 100.0"
+    path: "design.draft.port.aft"
+  - beginsWith: "06,"
+    expression: "floatValues[0] / 100.0"
+    path: "design.draft.starboard.aft"
+  - beginsWith: "G,"
+    expression: "floatValues[0] / 100.0"
+    path: "design.draft.current"
+  - beginsWith: "T,"
+    expression: "floatValues[0] * 1000.0"
+    path: "design.displacement"
+  - beginsWith: "B115,"
+    expression: >
+      floatValues[0] < 5 ? ((floatValues[0] - 0) / 5 * (178 - 0) + 0) / 1000 : 
+      floatValues[0] < 10 ? ((floatValues[0] - 5) / 5 * (356 - 178) + 178) / 1000 :
+      floatValues[0] < 15 ? ((floatValues[0] - 10) / 5 * (532 - 356) + 356) / 1000 :
+      floatValues[0] < 20 ? ((floatValues[0] - 15) / 5 * (713 - 532) + 532) / 1000 :
+      floatValues[0] < 25 ? ((floatValues[0] - 20) / 5 * (892 - 713) + 713) / 1000 :
+      floatValues[0] < 30 ? ((floatValues[0] - 25) / 5 * (1070 - 892) + 892) / 1000 :
+      floatValues[0] < 35 ? ((floatValues[0] - 30) / 5 * (1248 - 1070) + 1070) / 1000 :
+      floatValues[0] < 40 ? ((floatValues[0] - 35) / 5 * (1427 - 1248) + 1248) / 1000 :
+      floatValues[0] < 45 ? ((floatValues[0] - 40) / 5 * (1605 - 1427) + 1427) / 1000 :
+      floatValues[0] < 50 ? ((floatValues[0] - 45) / 5 * (1784 - 1605) + 1605) / 1000 :
+      floatValues[0] < 55 ? ((floatValues[0] - 50) / 5 * (1962 - 1784) + 1784) / 1000 :
+      floatValues[0] < 60 ? ((floatValues[0] - 55) / 5 * (2141 - 1962) + 1962) / 1000 :
+      floatValues[0] < 65 ? ((floatValues[0] - 60) / 5 * (2260 - 2141) + 2141) / 1000 :
+      floatValues[0] < 70 ? ((floatValues[0] - 65) / 5 * (2380 - 2260) + 2260) / 1000 :
+      floatValues[0] < 75 ? ((floatValues[0] - 70) / 5 * (2500 - 2380) + 2380) / 1000 :
+      floatValues[0] < 80 ? ((floatValues[0] - 75) / 5 * (2620 - 2500) + 2500) / 1000 :
+      floatValues[0] < 85 ? ((floatValues[0] - 80) / 5 * (2740 - 2620) + 2620) / 1000 :
+      floatValues[0] < 90 ? ((floatValues[0] - 85) / 5 * (3039 - 2740) + 2740) / 1000 :
+      floatValues[0] < 95 ? ((floatValues[0] - 90) / 5 * (3338 - 3039) + 3039) / 1000 :
+      floatValues[0] < 100 ? ((floatValues[0] - 95) / 5 * (3637 - 3338) + 3338) / 1000 :
+      floatValues[0] < 105 ? ((floatValues[0] - 100) / 5 * (3936 - 3637) + 3637) / 1000 :
+      floatValues[0] < 110 ? ((floatValues[0] - 105) / 5 * (4235 - 3936) + 3936) / 1000 :
+      floatValues[0] < 115 ? ((floatValues[0] - 110) / 5 * (4398 - 4235) + 4235) / 1000 :
+      floatValues[0] < 120 ? ((floatValues[0] - 115) / 5 * (4562 - 4398) + 4398) / 1000 :
+      floatValues[0] < 125 ? ((floatValues[0] - 120) / 5 * (4725 - 4562) + 4562) / 1000 :
+      floatValues[0] < 130 ? ((floatValues[0] - 125) / 5 * (4889 - 4725) + 4725) / 1000 :
+      floatValues[0] < 135 ? ((floatValues[0] - 130) / 5 * (5052 - 4889) + 4889) / 1000 :
+      ((floatValues[0] - 135) / 5 * (5216 - 5052) + 5052) / 1000
+    path: "tanks.fuel.port.aft.currentVolume"
+  - beginsWith: "B116,"
+    expression: >
+      floatValues[0] < 5 ? ((floatValues[0] - 0) / 5 * (178 - 0) + 0) / 1000 : 
+      floatValues[0] < 10 ? ((floatValues[0] - 5) / 5 * (356 - 178) + 178) / 1000 :
+      floatValues[0] < 15 ? ((floatValues[0] - 10) / 5 * (532 - 356) + 356) / 1000 :
+      floatValues[0] < 20 ? ((floatValues[0] - 15) / 5 * (713 - 532) + 532) / 1000 :
+      floatValues[0] < 25 ? ((floatValues[0] - 20) / 5 * (892 - 713) + 713) / 1000 :
+      floatValues[0] < 30 ? ((floatValues[0] - 25) / 5 * (1070 - 892) + 892) / 1000 :
+      floatValues[0] < 35 ? ((floatValues[0] - 30) / 5 * (1248 - 1070) + 1070) / 1000 :
+      floatValues[0] < 40 ? ((floatValues[0] - 35) / 5 * (1427 - 1248) + 1248) / 1000 :
+      floatValues[0] < 45 ? ((floatValues[0] - 40) / 5 * (1605 - 1427) + 1427) / 1000 :
+      floatValues[0] < 50 ? ((floatValues[0] - 45) / 5 * (1784 - 1605) + 1605) / 1000 :
+      floatValues[0] < 55 ? ((floatValues[0] - 50) / 5 * (1962 - 1784) + 1784) / 1000 :
+      floatValues[0] < 60 ? ((floatValues[0] - 55) / 5 * (2141 - 1962) + 1962) / 1000 :
+      floatValues[0] < 65 ? ((floatValues[0] - 60) / 5 * (2260 - 2141) + 2141) / 1000 :
+      floatValues[0] < 70 ? ((floatValues[0] - 65) / 5 * (2380 - 2260) + 2260) / 1000 :
+      floatValues[0] < 75 ? ((floatValues[0] - 70) / 5 * (2500 - 2380) + 2380) / 1000 :
+      floatValues[0] < 80 ? ((floatValues[0] - 75) / 5 * (2620 - 2500) + 2500) / 1000 :
+      floatValues[0] < 85 ? ((floatValues[0] - 80) / 5 * (2740 - 2620) + 2620) / 1000 :
+      floatValues[0] < 90 ? ((floatValues[0] - 85) / 5 * (3039 - 2740) + 2740) / 1000 :
+      floatValues[0] < 95 ? ((floatValues[0] - 90) / 5 * (3338 - 3039) + 3039) / 1000 :
+      floatValues[0] < 100 ? ((floatValues[0] - 95) / 5 * (3637 - 3338) + 3338) / 1000 :
+      floatValues[0] < 105 ? ((floatValues[0] - 100) / 5 * (3936 - 3637) + 3637) / 1000 :
+      floatValues[0] < 110 ? ((floatValues[0] - 105) / 5 * (4235 - 3936) + 3936) / 1000 :
+      floatValues[0] < 115 ? ((floatValues[0] - 110) / 5 * (4398 - 4235) + 4235) / 1000 :
+      floatValues[0] < 120 ? ((floatValues[0] - 115) / 5 * (4562 - 4398) + 4398) / 1000 :
+      floatValues[0] < 125 ? ((floatValues[0] - 120) / 5 * (4725 - 4562) + 4562) / 1000 :
+      floatValues[0] < 130 ? ((floatValues[0] - 125) / 5 * (4889 - 4725) + 4725) / 1000 :
+      floatValues[0] < 135 ? ((floatValues[0] - 130) / 5 * (5052 - 4889) + 4889) / 1000 :
+      ((floatValues[0] - 135) / 5 * (5216 - 5052) + 5052) / 1000
+    path: "tanks.fuel.starboard.aft.currentVolume"

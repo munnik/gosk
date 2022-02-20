@@ -52,7 +52,7 @@ func init() {
 	databaseCmd.AddCommand(mappedDatabaseCmd)
 	rawDatabaseCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
 	rawDatabaseCmd.MarkFlagRequired("subscribeURL")
-	mappedDatabaseCmd.Flags().StringVarP(&publishURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
+	mappedDatabaseCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
 	mappedDatabaseCmd.MarkFlagRequired("subscribeURL")
 }
 

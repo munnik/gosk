@@ -9,6 +9,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/jackc/pgx/v4"
+	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
 	"go.nanomsg.org/mangos/v3"
@@ -19,16 +20,11 @@ import (
 var fs embed.FS
 
 type PostgresqlWriter struct {
-	Url string
+	url string
 }
 
-func NewPostgresqlWriter() *PostgresqlWriter {
-	return &PostgresqlWriter{}
-}
-
-func (w *PostgresqlWriter) WithUrl(u string) *PostgresqlWriter {
-	w.Url = u
-	return w
+func NewPostgresqlWriter(c *config.PostgresqlConfig) *PostgresqlWriter {
+	return &PostgresqlWriter{url: c.URLString}
 }
 
 func (w *PostgresqlWriter) WriteRaw(subscriber mangos.Socket) {
@@ -40,11 +36,11 @@ func (w *PostgresqlWriter) WriteRaw(subscriber mangos.Socket) {
 		return
 	}
 
-	conn, err := pgx.Connect(context.Background(), w.Url)
+	conn, err := pgx.Connect(context.Background(), w.url)
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not connect to the database",
-			zap.String("URL", w.Url),
+			zap.String("URL", w.url),
 			zap.String("Error", err.Error()),
 		)
 		return
@@ -89,11 +85,11 @@ func (w *PostgresqlWriter) WriteMapped(subscriber mangos.Socket) {
 		return
 	}
 
-	conn, err := pgx.Connect(context.Background(), w.Url)
+	conn, err := pgx.Connect(context.Background(), w.url)
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not connect to the database",
-			zap.String("URL", w.Url),
+			zap.String("URL", w.url),
 			zap.String("Error", err.Error()),
 		)
 		return
@@ -138,7 +134,7 @@ func (w *PostgresqlWriter) updateDatabase() error {
 	if err != nil {
 		return err
 	}
-	m, err := migrate.NewWithSourceInstance("iofs", d, w.Url)
+	m, err := migrate.NewWithSourceInstance("iofs", d, w.url)
 	if err != nil {
 		return err
 	}

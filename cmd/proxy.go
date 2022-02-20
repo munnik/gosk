@@ -30,24 +30,23 @@ var (
 		Long:  `This proxy can connect to multiple publishers and serve multiple subscribers`,
 		Run:   proxy,
 	}
-	proxyPublishURI    string
-	proxySubscribeURIs []string
+	proxySubscribeURLs []string
 )
 
 func init() {
 	rootCmd.AddCommand(proxyCmd)
-	proxyCmd.Flags().StringVarP(&proxyPublishURI, "publishURI", "u", "", "Nanomsg URI, the URI is used to publish the collected data on. It listens for connections.")
-	proxyCmd.MarkFlagRequired("publishURI")
-	proxyCmd.Flags().StringSliceVarP(&proxySubscribeURIs, "subscribeURI", "s", []string{}, "Nanomsg URI, the URI is used to listen for subscribed data.")
+	proxyCmd.Flags().StringVarP(&publishURL, "publishURL", "u", "", "Nanomsg URL, the URL is used to publish the collected data on. It listens for connections.")
+	proxyCmd.MarkFlagRequired("publishURL")
+	proxyCmd.Flags().StringSliceVarP(&proxySubscribeURLs, "subscribeURL", "s", []string{}, "Nanomsg URL, the URL is used to listen for subscribed data.")
 }
 
 func proxy(cmd *cobra.Command, args []string) {
-	proxy := nanomsg.NewProxy(proxyPublishURI)
+	proxy := nanomsg.NewProxy(publishURL)
 	defer proxy.Close()
 	var wg sync.WaitGroup
-	wg.Add(len(proxySubscribeURIs))
-	for _, proxySubscribeURI := range proxySubscribeURIs {
-		proxy.SubscribeTo(proxySubscribeURI, &wg)
+	wg.Add(len(proxySubscribeURLs))
+	for _, proxySubscribeURL := range proxySubscribeURLs {
+		proxy.SubscribeTo(proxySubscribeURL, &wg)
 	}
 	wg.Wait()
 }

@@ -45,26 +45,25 @@ var (
 		Long:  `Read messages from a broker`,
 		Run:   readMqtt,
 	}
-	mqttSubscribeURI string
-	mqttPublishURI   string
+	mqttBrokerURL string
 )
 
 func init() {
 	rootCmd.AddCommand(mqttCmd)
 	mqttCmd.AddCommand(mqttWriteCmd)
 	mqttCmd.AddCommand(mqttReadCmd)
-	mqttWriteCmd.Flags().StringVarP(&mqttSubscribeURI, "subscribeURI", "s", "", "Nanomsg URI, the URI is used to listen for subscribed data.")
-	mqttWriteCmd.MarkFlagRequired("subscribeURI")
-	mqttReadCmd.Flags().StringVarP(&mqttPublishURI, "publishURI", "u", "", "Nanomsg URI, the URI is used to publish the collected data on. It listens for connections.")
-	mqttReadCmd.MarkFlagRequired("publishURI")
+	mqttWriteCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
+	mqttWriteCmd.MarkFlagRequired("subscribeURL")
+	mqttReadCmd.Flags().StringVarP(&mqttBrokerURL, "mqttBroker", "u", "", "MQTT broker URL, the URL is used to send the data to.")
+	mqttReadCmd.MarkFlagRequired("mqttBroker")
 }
 
 func writeMqtt(cmd *cobra.Command, args []string) {
-	subscriber, err := nanomsg.NewSub(mqttSubscribeURI, []byte{})
+	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
-			"Could not subscribe to the URI",
-			zap.String("URI", databaseSubscribeURI),
+			"Could not subscribe to the URL",
+			zap.String("URL", subscribeURL),
 			zap.String("Error", err.Error()),
 		)
 	}
@@ -76,5 +75,5 @@ func writeMqtt(cmd *cobra.Command, args []string) {
 func readMqtt(cmd *cobra.Command, args []string) {
 	c := config.NewMqttConfig(cfgFile)
 	r := reader.NewMqttReader(c)
-	r.ReadMapped(nanomsg.NewPub(mqttPublishURI))
+	r.ReadMapped(nanomsg.NewPub(mqttBrokerURL))
 }

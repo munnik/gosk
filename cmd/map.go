@@ -32,16 +32,14 @@ var (
 		Long:  `Map raw data to meaningfull data based on the SignalK specification`,
 		Run:   doMap,
 	}
-	mapSubscribeURI string
-	mapPublishURI   string
 )
 
 func init() {
 	rootCmd.AddCommand(mapCmd)
-	mapCmd.Flags().StringVarP(&mapPublishURI, "publishURI", "u", "", "Nanomsg URI, the URI is used to publish the collected data on. It listens for connections.")
-	mapCmd.MarkFlagRequired("publishURI")
-	mapCmd.Flags().StringVarP(&mapSubscribeURI, "subscribeURI", "s", "", "Nanomsg URI, the URI is used to listen for subscribed data.")
-	mapCmd.MarkFlagRequired("subscribeURI")
+	mapCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
+	mapCmd.MarkFlagRequired("subscribeURL")
+	mapCmd.Flags().StringVarP(&publishURL, "publishURL", "u", "", "Nanomsg URL, the URL is used to publish the data on. It listens for connections.")
+	mapCmd.MarkFlagRequired("publishURL")
 }
 
 func doMap(cmd *cobra.Command, args []string) {
@@ -54,15 +52,15 @@ func doMap(cmd *cobra.Command, args []string) {
 		)
 	}
 
-	subscriber, err := nanomsg.NewSub(mapSubscribeURI, []byte{})
+	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe",
-			zap.String("URI", mapSubscribeURI),
+			zap.String("URL", subscribeURL),
 			zap.String("Error", err.Error()),
 		)
 	}
-	publisher := nanomsg.NewPub(mapPublishURI)
+	publisher := nanomsg.NewPub(publishURL)
 
 	c := config.NewMapperConfig(cfgFile)
 	var m mapper.Mapper

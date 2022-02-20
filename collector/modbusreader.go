@@ -82,7 +82,7 @@ func (m *ModbusReader) receive(stream chan<- []byte) error {
 
 func (m ModbusReader) createClient() (*ModbusClient, error) {
 	client, err := modbus.NewClient(&modbus.ClientConfiguration{
-		URL:      m.config.URI.String(),
+		URL:      m.config.URL.String(),
 		Speed:    uint(m.config.BaudRate),
 		DataBits: uint(m.config.DataBits),
 		Parity:   uint(m.config.Parity),
@@ -90,10 +90,10 @@ func (m ModbusReader) createClient() (*ModbusClient, error) {
 		Timeout:  1 * time.Second,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("unable to create modbus client %v, the error that occurred was %v", m.config.URI.String(), err)
+		return nil, fmt.Errorf("unable to create modbus client %v, the error that occurred was %v", m.config.URL.String(), err)
 	}
 	if err := client.Open(); err != nil {
-		return nil, fmt.Errorf("unable to open modbus client %v, the error that occurred was %v", m.config.URI.String(), err)
+		return nil, fmt.Errorf("unable to open modbus client %v, the error that occurred was %v", m.config.URL.String(), err)
 	}
 	return &ModbusClient{realClient: client}, nil
 }

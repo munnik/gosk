@@ -19,6 +19,7 @@ package cmd
 import (
 	"go.uber.org/zap"
 
+	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/writer"
@@ -43,46 +44,42 @@ var (
 		Long:  `Store mapped messages in the timeseries database`,
 		Run:   mappedDatabase,
 	}
-	databaseSubscribeURI string
-	databaseURI          string
 )
 
 func init() {
 	rootCmd.AddCommand(databaseCmd)
 	databaseCmd.AddCommand(rawDatabaseCmd)
 	databaseCmd.AddCommand(mappedDatabaseCmd)
-	rawDatabaseCmd.Flags().StringVarP(&databaseSubscribeURI, "subscribeURI", "s", "", "Nanomsg URI, the URI is used to listen for subscribed data.")
-	rawDatabaseCmd.MarkFlagRequired("subscribeURI")
-	rawDatabaseCmd.Flags().StringVarP(&databaseURI, "databaseURI", "d", "", "The URI used to connect to the database")
-	rawDatabaseCmd.MarkFlagRequired("databaseURI")
-	mappedDatabaseCmd.Flags().StringVarP(&databaseSubscribeURI, "subscribeURI", "s", "", "Nanomsg URI, the URI is used to listen for subscribed data.")
-	mappedDatabaseCmd.MarkFlagRequired("subscribeURI")
-	mappedDatabaseCmd.Flags().StringVarP(&databaseURI, "databaseURI", "d", "", "The URI used to connect to the database")
-	mappedDatabaseCmd.MarkFlagRequired("databaseURI")
+	rawDatabaseCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
+	rawDatabaseCmd.MarkFlagRequired("subscribeURL")
+	mappedDatabaseCmd.Flags().StringVarP(&publishURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
+	mappedDatabaseCmd.MarkFlagRequired("subscribeURL")
 }
 
 func rawDatabase(cmd *cobra.Command, args []string) {
-	subscriber, err := nanomsg.NewSub(databaseSubscribeURI, []byte{})
+	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
-			"Could not subscribe to the URI",
-			zap.String("URI", databaseSubscribeURI),
+			"Could not subscribe to the URL",
+			zap.String("URL", subscribeURL),
 			zap.String("Error", err.Error()),
 		)
 	}
-	w := writer.NewPostgresqlWriter().WithUrl(databaseURI)
+	c := config.NewPostgresqlConfig(cfgFile)
+	w := writer.NewPostgresqlWriter(c)
 	w.WriteRaw(subscriber)
 }
 
 func mappedDatabase(cmd *cobra.Command, args []string) {
-	subscriber, err := nanomsg.NewSub(databaseSubscribeURI, []byte{})
+	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
-			"Could not subscribe to the URI",
-			zap.String("URI", databaseSubscribeURI),
+			"Could not subscribe to the URL",
+			zap.String("URL", subscribeURL),
 			zap.String("Error", err.Error()),
 		)
 	}
-	w := writer.NewPostgresqlWriter().WithUrl(databaseURI)
+	c := config.NewPostgresqlConfig(cfgFile)
+	w := writer.NewPostgresqlWriter(c)
 	w.WriteMapped(subscriber)
 }

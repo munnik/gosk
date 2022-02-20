@@ -34,13 +34,12 @@ var (
 		Long:  fmt.Sprintf(`Collect data using a specific protocol, current supported protocols are %v, %v and %v`, config.NMEA0183Type, config.ModbusType, config.SygoType),
 		Run:   doCollect,
 	}
-	collectPublishURI string
 )
 
 func init() {
 	rootCmd.AddCommand(collectCmd)
-	collectCmd.Flags().StringVarP(&collectPublishURI, "publishURI", "u", "", "Nanomsg URI, the URI is used to publish the collected data on. It listens for connections.")
-	collectCmd.MarkFlagRequired("publishURI")
+	collectCmd.Flags().StringVarP(&publishURL, "publishURL", "u", "", "Nanomsg URL, the URL is used to publish the data on. It listens for connections.")
+	collectCmd.MarkFlagRequired("publishURL")
 }
 
 func doCollect(cmd *cobra.Command, args []string) {
@@ -76,5 +75,5 @@ func doCollect(cmd *cobra.Command, args []string) {
 			zap.String("Error", err.Error()),
 		)
 	}
-	reader.Collect(nanomsg.NewPub(collectPublishURI))
+	reader.Collect(nanomsg.NewPub(publishURL))
 }

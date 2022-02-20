@@ -1,7 +1,7 @@
 ---
 name: "Modbus simulator" # name is used in the key of the collected data
-uri: "tcp://127.0.0.1:5020" # uri of the connection, tcp:// and udp:// are supported for network connections, use file:///dev/ttyUSB0 for a serial device connection
-listen: false # when uri is a network connection this determine to dial or listen for a connection [optional default is false]
+url: "tcp://127.0.0.1:5020" # url of the connection, tcp:// and udp:// are supported for network connections, use file:///dev/ttyUSB0 for a serial device connection
+listen: false # when url is a network connection this determine to dial or listen for a connection [optional default is false]
 registerGroups: # groups of registers that should be read in one request
   - slave: 1 # slave id
     functionCode: 4 # function code of the registers, 1 = coils, 2 = discrete inputs, 3 = holding registers, 4 = input registers

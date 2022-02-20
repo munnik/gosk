@@ -32,8 +32,8 @@ var upgrader = websocket.Upgrader{
 }
 
 type WebsocketWriter struct {
-	Url        string
-	Self       string
+	url        string
+	self       string
 	broadcast  chan message.Mapped
 	clients    map[*Client]bool
 	register   chan *Client
@@ -51,13 +51,13 @@ func NewWebsocketWriter() *WebsocketWriter {
 	}
 }
 
-func (ws *WebsocketWriter) WithUrl(u string) *WebsocketWriter {
-	ws.Url = u
+func (ws *WebsocketWriter) WithURL(u string) *WebsocketWriter {
+	ws.url = u
 	return ws
 }
 
 func (ws *WebsocketWriter) WitSelf(s string) *WebsocketWriter {
-	ws.Self = s
+	ws.self = s
 	return ws
 }
 
@@ -72,7 +72,7 @@ func (ws *WebsocketWriter) WriteMapped(subscriber mangos.Socket) {
 			zap.String("Request", r.URL.String()),
 		)
 	})
-	err := http.ListenAndServe(ws.Url, nil)
+	err := http.ListenAndServe(ws.url, nil)
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"ListenAndServe",
@@ -95,7 +95,7 @@ func (w *WebsocketWriter) run() {
 			}{
 				Name:      "GOSK",
 				Version:   "1.0.0",
-				Self:      w.Self,
+				Self:      w.self,
 				Roles:     []string{"main", "master"},
 				Timestamp: time.Now().UTC(),
 			})
@@ -176,7 +176,7 @@ func (ws *WebsocketWriter) serveWs(w http.ResponseWriter, r *http.Request) {
 	} else if subscribeParam == "all" {
 		c.handleSubscribeMessages(SubscribeMessage{Context: "*", Subscribe: []SubscribeSection{{Path: "*"}}})
 	} else {
-		c.handleSubscribeMessages(SubscribeMessage{Context: c.w.Self, Subscribe: []SubscribeSection{{Path: "*"}}})
+		c.handleSubscribeMessages(SubscribeMessage{Context: c.w.self, Subscribe: []SubscribeSection{{Path: "*"}}})
 	}
 
 	c.w.register <- c

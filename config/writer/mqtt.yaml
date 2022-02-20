@@ -3,5 +3,5 @@ client_id: "000001"
 context: "vessels.urn:mrn:imo:mmsi:244770688" # if the data itself doesn't provide a context then this context is used
 username: "unknown"
 password: "unknown"
-uri: "mqtt://broker.mqtt.cool:1883"
+url: "mqtt://broker.mqtt.cool:1883"
 interval: 10

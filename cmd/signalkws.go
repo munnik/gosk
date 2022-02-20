@@ -31,31 +31,30 @@ var (
 		Long:  `Starts a websocket that publishes SignalK deltas`,
 		Run:   serveSignalKWs,
 	}
-	websocketSubscribeURI string
-	websocketURI          string
-	self                  string
+	websocketURL string
+	self         string
 )
 
 func init() {
 	rootCmd.AddCommand(signalKWsCmd)
-	signalKWsCmd.Flags().StringVarP(&websocketSubscribeURI, "subscribeURI", "s", "", "Nanomsg URI, the URI is used to listen for subscribed data.")
-	signalKWsCmd.MarkFlagRequired("subscribeURI")
-	signalKWsCmd.Flags().StringVarP(&websocketURI, "websocketURI", "w", "", "The URi to start the websocket on")
-	signalKWsCmd.MarkFlagRequired("websocketURI")
+	signalKWsCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
+	signalKWsCmd.MarkFlagRequired("subscribeURL")
+	signalKWsCmd.Flags().StringVarP(&websocketURL, "websocketURL", "w", "", "The URL to start the websocket on")
+	signalKWsCmd.MarkFlagRequired("websocketURL")
 	signalKWsCmd.Flags().StringVarP(&self, "self", "i", "", "The context self.")
 	signalKWsCmd.MarkFlagRequired("self")
 }
 
 func serveSignalKWs(cmd *cobra.Command, args []string) {
-	subscriber, err := nanomsg.NewSub(websocketSubscribeURI, []byte{})
+	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
-			"Could not subscribe to the URI",
-			zap.String("URI", websocketSubscribeURI),
+			"Could not subscribe to the URL",
+			zap.String("URL", subscribeURL),
 			zap.String("Error", err.Error()),
 		)
 	}
 
-	w := writer.NewWebsocketWriter().WitSelf(self).WithUrl(websocketURI)
+	w := writer.NewWebsocketWriter().WitSelf(self).WithURL(websocketURL)
 	w.WriteMapped(subscriber)
 }

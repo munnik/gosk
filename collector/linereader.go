@@ -44,30 +44,30 @@ func (l LineReader) createReader() (io.Reader, error) {
 	var reader io.Reader
 	var err error
 	for {
-		if l.config.URI.Scheme == "tcp" || l.config.URI.Scheme == "udp" {
+		if l.config.URL.Scheme == "tcp" || l.config.URL.Scheme == "udp" {
 			reader, err = l.createNetworkReader()
 			if err == nil {
 				break
 			}
 			logger.GetLogger().Warn(
 				"Unable to create a reader, retrying in 5 seconds",
-				zap.String("URI", l.config.URI.String()),
+				zap.String("URL", l.config.URL.String()),
 				zap.String("Error", err.Error()),
 			)
 			time.Sleep(5 * time.Second)
-		} else if l.config.URI.Scheme == "file" {
+		} else if l.config.URL.Scheme == "file" {
 			reader, err = l.createFileReader()
 			if err == nil {
 				break
 			}
 			logger.GetLogger().Warn(
 				"Unable to create a reader, retrying in 5 seconds",
-				zap.String("URI", l.config.URI.String()),
+				zap.String("URL", l.config.URL.String()),
 				zap.String("Error", err.Error()),
 			)
 			time.Sleep(5 * time.Second)
 		} else {
-			return nil, fmt.Errorf("unsupported connection scheme %v", l.config.URI.Scheme)
+			return nil, fmt.Errorf("unsupported connection scheme %v", l.config.URL.Scheme)
 		}
 	}
 	return reader, nil
@@ -75,28 +75,28 @@ func (l LineReader) createReader() (io.Reader, error) {
 
 func (l LineReader) createNetworkReader() (io.Reader, error) {
 	if l.config.Listen {
-		if l.config.URI.Scheme == "tcp" {
-			listener, err := net.Listen(l.config.URI.Scheme, fmt.Sprintf("%s:%s", l.config.URI.Hostname(), l.config.URI.Port()))
+		if l.config.URL.Scheme == "tcp" {
+			listener, err := net.Listen(l.config.URL.Scheme, fmt.Sprintf("%s:%s", l.config.URL.Hostname(), l.config.URL.Port()))
 			if err != nil {
-				return nil, fmt.Errorf("unable to listen on %v, the error that occurred was %v", l.config.URI.String(), err)
+				return nil, fmt.Errorf("unable to listen on %v, the error that occurred was %v", l.config.URL.String(), err)
 			}
 			conn, err := listener.Accept()
 			if err != nil {
-				return nil, fmt.Errorf("unable to accept a connection on %v, the error that occurred was %v", l.config.URI.String(), err)
+				return nil, fmt.Errorf("unable to accept a connection on %v, the error that occurred was %v", l.config.URL.String(), err)
 			}
 			return conn, nil
-		} else if l.config.URI.Scheme == "udp" {
-			conn, err := net.ListenPacket(l.config.URI.Scheme, fmt.Sprintf("%s:%s", l.config.URI.Hostname(), l.config.URI.Port()))
+		} else if l.config.URL.Scheme == "udp" {
+			conn, err := net.ListenPacket(l.config.URL.Scheme, fmt.Sprintf("%s:%s", l.config.URL.Hostname(), l.config.URL.Port()))
 			if err != nil {
-				return nil, fmt.Errorf("unable to listen on %v, the error that occurred was %v", l.config.URI.String(), err)
+				return nil, fmt.Errorf("unable to listen on %v, the error that occurred was %v", l.config.URL.String(), err)
 			}
 			// TODO: test
 			return UdpListenerReader{conn: conn}, nil
 		}
 	} else {
-		conn, err := net.Dial(l.config.URI.Scheme, fmt.Sprintf("%s:%s", l.config.URI.Hostname(), l.config.URI.Port()))
+		conn, err := net.Dial(l.config.URL.Scheme, fmt.Sprintf("%s:%s", l.config.URL.Hostname(), l.config.URL.Port()))
 		if err != nil {
-			return nil, fmt.Errorf("unable to dial to %v, the error that occurred was %v", l.config.URI.String(), err)
+			return nil, fmt.Errorf("unable to dial to %v, the error that occurred was %v", l.config.URL.String(), err)
 		}
 		return conn, nil
 	}
@@ -104,27 +104,27 @@ func (l LineReader) createNetworkReader() (io.Reader, error) {
 }
 
 func (l LineReader) createFileReader() (io.Reader, error) {
-	fi, err := os.Stat(l.config.URI.Path)
+	fi, err := os.Stat(l.config.URL.Path)
 	if err != nil {
-		return nil, fmt.Errorf("unable to stat the file %v, the error that occurred was %v", l.config.URI.Path, err)
+		return nil, fmt.Errorf("unable to stat the file %v, the error that occurred was %v", l.config.URL.Path, err)
 	}
 	var reader io.Reader
 	if fi.Mode()&os.ModeCharDevice == os.ModeCharDevice {
 		// the file is a serial device
 		reader, err = serial.Open(&serial.Config{
-			Address:  l.config.URI.Path,
+			Address:  l.config.URL.Path,
 			BaudRate: l.config.BaudRate,
 			DataBits: l.config.DataBits,
 			StopBits: l.config.StopBits,
 			Parity:   string(config.ParityMap[l.config.Parity]),
 		})
 		if err != nil {
-			return nil, fmt.Errorf("unable to open the port %v for reading, the error that occurred was %v", l.config.URI.Path, err)
+			return nil, fmt.Errorf("unable to open the port %v for reading, the error that occurred was %v", l.config.URL.Path, err)
 		}
 	} else {
-		reader, err = os.Open(l.config.URI.Path)
+		reader, err = os.Open(l.config.URL.Path)
 		if err != nil {
-			return nil, fmt.Errorf("unable to open the file %v for reading, the error that occurred was %v", l.config.URI.Path, err)
+			return nil, fmt.Errorf("unable to open the file %v for reading, the error that occurred was %v", l.config.URL.Path, err)
 		}
 	}
 	return reader, nil
@@ -136,7 +136,7 @@ func (l LineReader) scan(reader io.Reader, stream chan<- []byte) error {
 		stream <- scanner.Bytes()
 	}
 	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("error while scanning %v, the error that occurred was %v", l.config.URI.String(), err)
+		return fmt.Errorf("error while scanning %v, the error that occurred was %v", l.config.URL.String(), err)
 	}
 	return nil
 }

@@ -37,7 +37,7 @@ func NewMqttWriter(c *config.MqttConfig) *MqttWriter {
 
 func (w *MqttWriter) createClientOptions() *mqtt.ClientOptions {
 	o := mqtt.NewClientOptions()
-	o.AddBroker(w.config.URI)
+	o.AddBroker(w.config.URLString)
 	o.SetClientID(w.config.ClientId)
 	o.SetCleanSession(true) // TODO: verify
 	o.SetUsername(w.config.Username)
@@ -53,7 +53,7 @@ func (w *MqttWriter) WriteMapped(subscriber mangos.Socket) {
 		logger.GetLogger().Fatal(
 			"Could not connect to the MQTT broker",
 			zap.String("Error", token.Error().Error()),
-			zap.String("Url", w.config.URI),
+			zap.String("URL", w.config.URLString),
 		)
 		return
 	}

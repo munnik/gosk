@@ -36,7 +36,7 @@ func NewMqttReader(c *config.MqttConfig) *MqttReader {
 
 func (r *MqttReader) createClientOptions() *mqtt.ClientOptions {
 	o := mqtt.NewClientOptions()
-	o.AddBroker(r.config.URI)
+	o.AddBroker(r.config.URLString)
 	o.SetClientID(r.config.ClientId)
 	o.SetCleanSession(true) // TODO: verify
 	o.SetUsername(r.config.Username)
@@ -54,7 +54,7 @@ func (r *MqttReader) ReadMapped(publisher mangos.Socket) {
 		logger.GetLogger().Fatal(
 			"Could not connect to the MQTT broker",
 			zap.String("Error", token.Error().Error()),
-			zap.String("Url", r.config.URI),
+			zap.String("URL", r.config.URLString),
 		)
 		return
 	}
@@ -64,7 +64,7 @@ func (r *MqttReader) ReadMapped(publisher mangos.Socket) {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the MQTT topic",
 			zap.String("Error", token.Error().Error()),
-			zap.String("Url", r.config.URI),
+			zap.String("URL", r.config.URLString),
 		)
 		return
 	}

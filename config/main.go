@@ -25,8 +25,8 @@ const (
 
 type CollectorConfig struct {
 	Name         string   `mapstructure:"name"`
-	URI          *url.URL `mapstructure:"_"`
-	URIString    string   `mapstructure:"uri"`
+	URL          *url.URL `mapstructure:"_"`
+	URLString    string   `mapstructure:"url"`
 	Listen       bool     `mapstructure:"listen"`
 	BaudRate     int      `mapstructure:"baudRate"`
 	DataBits     int      `mapstructure:"dataBits"`
@@ -56,7 +56,7 @@ func NewCollectorConfig(configFilePath string) *CollectorConfig {
 		)
 	}
 
-	result.URI, _ = url.Parse(result.URIString)
+	result.URL, _ = url.Parse(result.URLString)
 	result.Parity = strings.Index(ParityMap, result.ParityString)
 
 	return &result
@@ -155,12 +155,12 @@ func NewRegisterMappingsConfig(configFilePath string) []RegisterMappingConfig {
 }
 
 type MqttConfig struct {
-	URI      string `mapstructure:"uri"`
-	ClientId string `mapstructure:"client_id"`
-	Username string `mapstructure:"username"`
-	Password string `mapstructure:"password"`
-	Context  string `mapstructure:"context"`
-	Interval int    `mapstructure:"interval"`
+	URLString string `mapstructure:"url"`
+	ClientId  string `mapstructure:"client_id"`
+	Username  string `mapstructure:"username"`
+	Password  string `mapstructure:"password"`
+	Context   string `mapstructure:"context"`
+	Interval  int    `mapstructure:"interval"`
 }
 
 func NewMqttConfig(configFilePath string) *MqttConfig {
@@ -184,4 +184,25 @@ type CacheConfig struct {
 	LifeWindow       int    `mapstructure:"lifeWindow"`       // time after which entry can be evicted, value in seconds
 	HardMaxCacheSize int    `mapstructure:"hardMaxCacheSize"` // cache will not allocate more memory than this limit, value in MB
 	Heartbeat        uint64 `mapstructure:"heartbeat"`        // every heartbeat all cached values that are in the cache for at least one heartbeat will be send again, value in seconds
+}
+
+type PostgresqlConfig struct {
+	URLString string `mapstructure:"url"`
+}
+
+func NewPostgresqlConfig(configFilePath string) *PostgresqlConfig {
+	result := PostgresqlConfig{}
+	viper.SetConfigFile(configFilePath)
+	viper.ReadInConfig()
+
+	err := viper.Unmarshal(&result)
+	if err != nil {
+		logger.GetLogger().Fatal(
+			"Unable to read the configuration",
+			zap.String("Config file", configFilePath),
+			zap.String("Error", err.Error()),
+		)
+	}
+
+	return &result
 }

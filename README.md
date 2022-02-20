@@ -98,7 +98,7 @@ The `value` is a base64 encoded string of the following bytes
 
 #### 1.2.2 Mapped JSON messages
 
-The basis is the [Signal K Delta format](https://signalk.org/specification/1.5.0/doc/data_model.html#delta-format) with some extras. The `label`, `type` and `src` properties in the `source` section are used as follows. `label` is filled with `name` property of the collector config, `type` is filled with protocol that is used and `src` is filled with the `uri` property of the collector config. Each individual `value` section has an extra property `uuid` that is filled with the `uuid` of the corresponding raw data.
+The basis is the [Signal K Delta format](https://signalk.org/specification/1.5.0/doc/data_model.html#delta-format) with some extras. The `label`, `type` and `src` properties in the `source` section are used as follows. `label` is filled with `name` property of the collector config, `type` is filled with protocol that is used and `src` is filled with the `url` property of the collector config. Each individual `value` section has an extra property `uuid` that is filled with the `uuid` of the corresponding raw data.
 
 ##### Example:
 

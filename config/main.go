@@ -179,3 +179,9 @@ func NewMqttConfig(configFilePath string) *MqttConfig {
 
 	return &result
 }
+
+type CacheConfig struct {
+	LifeWindow       int    `mapstructure:"lifeWindow"`       // time after which entry can be evicted, value in seconds
+	HardMaxCacheSize int    `mapstructure:"hardMaxCacheSize"` // cache will not allocate more memory than this limit, value in MB
+	Heartbeat        uint64 `mapstructure:"heartbeat"`        // every heartbeat all cached values that are in the cache for at least one heartbeat will be send again, value in seconds
+}

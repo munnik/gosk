@@ -1,0 +1,4 @@
+---
+lifeWindow: 3600
+hardMaxCacheSize: 8192
+heartbeat: 120

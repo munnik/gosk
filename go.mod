@@ -29,6 +29,7 @@ require (
 	github.com/BertoldVdb/go-ais v0.1.0 // indirect
 	github.com/Microsoft/go-winio v0.5.2 // indirect
 	github.com/adrianmo/go-nmea v1.6.0 // indirect
+	github.com/allegro/bigcache/v3 v3.0.2 // indirect
 	github.com/fsnotify/fsnotify v1.5.1 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect

@@ -42,7 +42,7 @@ func process(subscriber mangos.Socket, publisher mangos.Socket, mapper realMappe
 		if mapped, err = mapper.doMap(raw); err != nil {
 			logger.GetLogger().Warn(
 				"Could not map the received data",
-				zap.ByteString("Received", received),
+				zap.ByteString("Raw bytes", raw.Value),
 				zap.String("Error", err.Error()),
 			)
 			continue

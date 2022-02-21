@@ -121,6 +121,14 @@ var _ = Describe("DoMap Modbus", func() {
 				Path:          "testingPath",
 			},
 			{
+				Slave:         1,
+				FunctionCode:  config.DiscreteInputs,
+				Address:       10,
+				NumberOfCoils: 1,
+				Expression:    `{"state": coils[0], "message": "level high"}`,
+				Path:          "testingPath",
+			},
+			{
 				Slave:             1,
 				FunctionCode:      config.HoldingRegisters,
 				Address:           52,
@@ -210,6 +218,25 @@ var _ = Describe("DoMap Modbus", func() {
 					now,
 				).AddValue(
 					message.NewValue().WithPath("testingPath").WithUuid(uuid.Nil).WithValue(true),
+				),
+			),
+			false,
+		),
+		Entry("With value all coils set to true, producing an alarm",
+			mapper,
+			func() *message.Raw {
+				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{1, 0, 2, 0, 10, 0, 1, 255, 255})
+				m.Uuid = uuid.Nil
+				m.Timestamp = now
+				return m
+			}(),
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				message.NewUpdate().WithSource(
+					message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType),
+				).WithTimestamp(
+					now,
+				).AddValue(
+					message.NewValue().WithPath("testingPath").WithUuid(uuid.Nil).WithValue(message.Alarm{State: true, Message: "level high"}),
 				),
 			),
 			false,

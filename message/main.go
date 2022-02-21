@@ -225,37 +225,8 @@ func (v *Value) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	var metadata mapstructure.Metadata
-	var decoder *mapstructure.Decoder
-
-	p := Position{}
-	metadata = mapstructure.Metadata{}
-	decoder, err = mapstructure.NewDecoder(&mapstructure.DecoderConfig{Metadata: &metadata, Result: &p})
-	if err == nil {
-		if err = decoder.Decode(j["value"]); err == nil && len(metadata.Unused) == 0 {
-			v.Value = p
-			return nil
-		}
-	}
-
-	l := Length{}
-	metadata = mapstructure.Metadata{}
-	decoder, err = mapstructure.NewDecoder(&mapstructure.DecoderConfig{Metadata: &metadata, Result: &l})
-	if err == nil {
-		if err = decoder.Decode(j["value"]); err == nil && len(metadata.Unused) == 0 {
-			v.Value = l
-			return nil
-		}
-	}
-
-	a := Alarm{}
-	metadata = mapstructure.Metadata{}
-	decoder, err = mapstructure.NewDecoder(&mapstructure.DecoderConfig{Metadata: &metadata, Result: &a})
-	if err == nil {
-		if err = decoder.Decode(j["value"]); err == nil && len(metadata.Unused) == 0 {
-			v.Value = a
-			return nil
-		}
+	if decoded, err := Decode(j["value"]); err == nil {
+		v.Value = decoded
 	}
 
 	return fmt.Errorf("don't know how to unmarshal %v", string(data))
@@ -314,4 +285,27 @@ func (b Buffer) MarshalJSON() ([]byte, error) {
 	var result map[string]interface{} = make(map[string]interface{})
 	result["deltas"] = b.Deltas
 	return json.Marshal(result)
+}
+
+func Decode(input interface{}) (interface{}, error) {
+	var metadata mapstructure.Metadata
+	p := Position{}
+	metadata = mapstructure.Metadata{}
+	if err := mapstructure.DecodeMetadata(input, &p, &metadata); err == nil && len(metadata.Unused) == 0 {
+		return p, nil
+	}
+
+	l := Length{}
+	metadata = mapstructure.Metadata{}
+	if err := mapstructure.DecodeMetadata(input, &l, &metadata); err == nil && len(metadata.Unused) == 0 {
+		return l, nil
+	}
+
+	a := Alarm{}
+	metadata = mapstructure.Metadata{}
+	if err := mapstructure.DecodeMetadata(input, &a, &metadata); err == nil && len(metadata.Unused) == 0 {
+		return a, nil
+	}
+
+	return nil, fmt.Errorf("don't know how to decode %v", input)
 }

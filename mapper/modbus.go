@@ -96,6 +96,13 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 			)
 			continue
 		}
+
+		// the value is a map so we could try to decode it
+		if m, ok := output.(map[string]interface{}); ok {
+			if decoded, err := message.Decode(m); err == nil {
+				output = decoded
+			}
+		}
 		u.AddValue(message.NewValue().WithUuid(r.Uuid).WithPath(rmc.Path).WithValue(output))
 	}
 

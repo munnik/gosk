@@ -15,7 +15,9 @@ import (
 
 // MaximumNumberOfRegisters is maximum number of registers that can be read in one request, a modbus message is limit to 256 bytes
 // TODO: this should be checked when register groups are created
-const MaximumNumberOfRegisters = 120
+const MaximumNumberOfRegisters = 125
+const MaximumNumberOfCoils = 2000
+
 const (
 	Coils = iota + 1
 	DiscreteInputs
@@ -32,6 +34,9 @@ func NewModbusReader(c *config.CollectorConfig, rgs []config.RegisterGroupConfig
 	for _, rg := range rgs {
 		if rg.NumberOfRegisters > MaximumNumberOfRegisters {
 			return nil, fmt.Errorf("maximum number %v of registers exceeded for register group %v", MaximumNumberOfRegisters, rg)
+		}
+		if rg.NumberOfCoils > MaximumNumberOfCoils {
+			return nil, fmt.Errorf("maximum number %v of coils exceeded for register group %v", MaximumNumberOfCoils, rg)
 		}
 	}
 	return &ModbusReader{config: c, registerGroupsConfig: rgs}, nil
@@ -120,39 +125,39 @@ func (m *ModbusClient) close() {
 	m.mu.Unlock()
 }
 
-func (m *ModbusClient) Read(slave uint8, functionCode uint16, address uint16, numberOfRegisters uint16) ([]byte, error) {
+func (m *ModbusClient) Read(rgc config.RegisterGroupConfig) ([]byte, error) {
 	var bytes []byte
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.realClient.SetUnitId(slave)
-	switch functionCode {
+	m.realClient.SetUnitId(rgc.Slave)
+	switch rgc.FunctionCode {
 	case Coils:
-		result, err := m.realClient.ReadCoils(address, numberOfRegisters)
+		result, err := m.realClient.ReadCoils(rgc.Address, rgc.NumberOfCoils)
 		if err != nil {
-			return nil, fmt.Errorf("error while reading register %v, with length %v and function code %v, , the error that occurred was %v", address, numberOfRegisters, functionCode, err)
+			return nil, fmt.Errorf("error while reading register %v, with length %v and function code %v, , the error that occurred was %v", rgc.Address, rgc.NumberOfCoils, rgc.FunctionCode, err)
 		}
-		bytes = boolsToBytes(slave, functionCode, address, numberOfRegisters, result)
+		bytes = CoilsToBytes(rgc, result)
 	case DiscreteInputs:
-		result, err := m.realClient.ReadDiscreteInputs(address, numberOfRegisters)
+		result, err := m.realClient.ReadDiscreteInputs(rgc.Address, rgc.NumberOfCoils)
 		if err != nil {
-			return nil, fmt.Errorf("error while reading register %v, with length %v and function code %v, , the error that occurred was %v", address, numberOfRegisters, functionCode, err)
+			return nil, fmt.Errorf("error while reading register %v, with length %v and function code %v, , the error that occurred was %v", rgc.Address, rgc.NumberOfCoils, rgc.FunctionCode, err)
 		}
-		bytes = boolsToBytes(slave, functionCode, address, numberOfRegisters, result)
+		bytes = CoilsToBytes(rgc, result)
 	case HoldingRegisters:
-		result, err := m.realClient.ReadRegisters(address, numberOfRegisters, modbus.HOLDING_REGISTER)
+		result, err := m.realClient.ReadRegisters(rgc.Address, rgc.NumberOfRegisters, modbus.HOLDING_REGISTER)
 		if err != nil {
-			return nil, fmt.Errorf("error while reading register %v, with length %v and function code %v, , the error that occurred was %v", address, numberOfRegisters, functionCode, err)
+			return nil, fmt.Errorf("error while reading register %v, with length %v and function code %v, , the error that occurred was %v", rgc.Address, rgc.NumberOfRegisters, rgc.FunctionCode, err)
 		}
-		bytes = unint16sToBytes(slave, functionCode, address, numberOfRegisters, result)
+		bytes = RegistersToBytes(rgc, result)
 	case InputRegisters:
-		result, err := m.realClient.ReadRegisters(address, numberOfRegisters, modbus.INPUT_REGISTER)
+		result, err := m.realClient.ReadRegisters(rgc.Address, rgc.NumberOfRegisters, modbus.INPUT_REGISTER)
 		if err != nil {
-			return nil, fmt.Errorf("error while reading register %v, with length %v and function code %v, , the error that occurred was %v", address, numberOfRegisters, functionCode, err)
+			return nil, fmt.Errorf("error while reading register %v, with length %v and function code %v, , the error that occurred was %v", rgc.Address, rgc.NumberOfRegisters, rgc.FunctionCode, err)
 		}
-		bytes = unint16sToBytes(slave, functionCode, address, numberOfRegisters, result)
+		bytes = RegistersToBytes(rgc, result)
 	default:
-		return nil, fmt.Errorf("unsupported function code type %v", functionCode)
+		return nil, fmt.Errorf("unsupported function code type %v", rgc.FunctionCode)
 	}
 	return bytes, nil
 }
@@ -163,7 +168,7 @@ func (m *ModbusClient) Poll(stream chan<- []byte, rgc config.RegisterGroupConfig
 	for {
 		select {
 		case <-ticker.C:
-			bytes, err := m.Read(rgc.Slave, rgc.FunctionCode, rgc.Address, rgc.NumberOfRegisters)
+			bytes, err := m.Read(rgc)
 			// TODO: how to handle failed reads, never attempt again or keep trying
 			if err != nil {
 				return err
@@ -176,7 +181,7 @@ func (m *ModbusClient) Poll(stream chan<- []byte, rgc config.RegisterGroupConfig
 	}
 }
 
-func boolsToBytes(slave uint8, functionCode uint16, address uint16, numberOfRegisters uint16, values []bool) []byte {
+func CoilsToBytes(rgc config.RegisterGroupConfig, values []bool) []byte {
 	uint16s := make([]uint16, (len(values)-1)/16+1)
 	for i, v := range values {
 		if v {
@@ -184,12 +189,13 @@ func boolsToBytes(slave uint8, functionCode uint16, address uint16, numberOfRegi
 			uint16s[i/16] += 1 << (15 - i%16)
 		}
 	}
-	return unint16sToBytes(slave, functionCode, address, numberOfRegisters, uint16s)
+	rgc.NumberOfRegisters = (rgc.NumberOfCoils-1)/16 + 1
+	return RegistersToBytes(rgc, uint16s)
 }
 
-func unint16sToBytes(slave uint8, functionCode uint16, address uint16, numberOfRegisters uint16, values []uint16) []byte {
+func RegistersToBytes(rgc config.RegisterGroupConfig, values []uint16) []byte {
 	bytes := make([]byte, 0, 7+2*len(values)) // 7 is the length of the start bytes
-	bytes = append(bytes, startBytes(slave, functionCode, address, numberOfRegisters)...)
+	bytes = append(bytes, StartBytes(rgc.Slave, rgc.FunctionCode, rgc.Address, rgc.NumberOfRegisters)...)
 	out := make([]byte, 2)
 	for _, v := range values {
 		// TODO: make BigEndian / LittleEndian configurable
@@ -199,7 +205,7 @@ func unint16sToBytes(slave uint8, functionCode uint16, address uint16, numberOfR
 	return bytes
 }
 
-func startBytes(slave uint8, functionCode uint16, address uint16, numberOfRegisters uint16) []byte {
+func StartBytes(slave uint8, functionCode uint16, address uint16, numberOfRegisters uint16) []byte {
 	bytes := []byte{byte(slave)}
 	out := make([]byte, 2)
 	binary.BigEndian.PutUint16(out, functionCode)

@@ -51,14 +51,17 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 			continue
 		}
 		// in case of coils
-		if rmc.Address < address || rmc.Address+(rmc.NumberOfCoils-1)/16+1 > address+numberOfRegisters {
-			continue
+		if rmc.FunctionCode == config.Coils || rmc.FunctionCode == config.DiscreteInputs {
+			if rmc.Address < address || rmc.Address+(rmc.NumberOfCoils-1)/16+1 > address+numberOfRegisters {
+				continue
+			}
 		}
 		// in case of registers
-		if rmc.Address < address || rmc.Address+rmc.NumberOfRegisters > address+numberOfRegisters {
-			continue
+		if rmc.FunctionCode == config.HoldingRegisters || rmc.FunctionCode == config.InputRegisters {
+			if rmc.Address < address || rmc.Address+rmc.NumberOfRegisters > address+numberOfRegisters {
+				continue
+			}
 		}
-
 		// the raw message contains data that can be mapped with this register mapping
 		var env = map[string]interface{}{
 			"registers": []uint16{},

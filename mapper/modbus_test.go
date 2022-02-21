@@ -120,6 +120,14 @@ var _ = Describe("DoMap Modbus", func() {
 				Expression:    "coils[0] && coils[1]",
 				Path:          "testingPath",
 			},
+			{
+				Slave:             1,
+				FunctionCode:      config.HoldingRegisters,
+				Address:           52,
+				NumberOfRegisters: 1,
+				Expression:        "(registers[0] - 4000) * 0.00000000138888888888888",
+				Path:              "testingPath",
+			},
 		},
 	)
 	now := time.Now()
@@ -202,6 +210,70 @@ var _ = Describe("DoMap Modbus", func() {
 					now,
 				).AddValue(
 					message.NewValue().WithPath("testingPath").WithUuid(uuid.Nil).WithValue(true),
+				),
+			),
+			false,
+		),
+	)
+	DescribeTable("Holding registers",
+		func(m *ModbusMapper, input *message.Raw, expected *message.Mapped, expectError bool) {
+			result, err := m.DoMap(input)
+			if expectError {
+				Expect(err).To(HaveOccurred())
+				Expect(result).To(BeNil())
+			} else {
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(expected))
+			}
+		},
+		Entry("With empty value",
+			mapper,
+			func() *message.Raw {
+				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{})
+				m.Uuid = uuid.Nil
+				m.Timestamp = now
+				return m
+			}(),
+			nil,
+			true,
+		),
+		Entry("With invalid value",
+			mapper,
+			func() *message.Raw {
+				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0, 5, 34, 4})
+				m.Uuid = uuid.Nil
+				m.Timestamp = now
+				return m
+			}(),
+			nil,
+			true,
+		),
+		Entry("With value without registers",
+			mapper,
+			func() *message.Raw {
+				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{1, 0, 2, 0, 40, 0, 1})
+				m.Uuid = uuid.Nil
+				m.Timestamp = now
+				return m
+			}(),
+			nil,
+			true,
+		),
+		Entry("With value and actual registers",
+			mapper,
+			func() *message.Raw {
+				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{1, 0, 3, 0, 52, 0, 1, 15, 146})
+				m.Uuid = uuid.Nil
+				m.Timestamp = now
+				return m
+			}(),
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				message.NewUpdate().WithSource(
+					message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType),
+				).WithTimestamp(
+					now,
+				).AddValue(
+					message.NewValue().WithPath("testingPath").WithUuid(uuid.Nil).WithValue(-1.9444444444444323e-08),
 				),
 			),
 			false,

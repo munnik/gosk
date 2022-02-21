@@ -227,6 +227,7 @@ func (v *Value) UnmarshalJSON(data []byte) error {
 
 	if decoded, err := Decode(j["value"]); err == nil {
 		v.Value = decoded
+		return nil
 	}
 
 	return fmt.Errorf("don't know how to unmarshal %v", string(data))

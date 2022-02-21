@@ -224,20 +224,38 @@ func (v *Value) UnmarshalJSON(data []byte) error {
 		v.Value = s
 		return nil
 	}
-	var p Position
-	if err = mapstructure.Decode(j["value"], &p); err == nil {
-		v.Value = p
-		return nil
+
+	var metadata mapstructure.Metadata
+	var decoder *mapstructure.Decoder
+
+	p := Position{}
+	metadata = mapstructure.Metadata{}
+	decoder, err = mapstructure.NewDecoder(&mapstructure.DecoderConfig{Metadata: &metadata, Result: &p})
+	if err == nil {
+		if err = decoder.Decode(j["value"]); err == nil && len(metadata.Unused) == 0 {
+			v.Value = p
+			return nil
+		}
 	}
-	var l Length
-	if err = mapstructure.Decode(j["value"], &l); err == nil {
-		v.Value = l
-		return nil
+
+	l := Length{}
+	metadata = mapstructure.Metadata{}
+	decoder, err = mapstructure.NewDecoder(&mapstructure.DecoderConfig{Metadata: &metadata, Result: &l})
+	if err == nil {
+		if err = decoder.Decode(j["value"]); err == nil && len(metadata.Unused) == 0 {
+			v.Value = l
+			return nil
+		}
 	}
-	var a Alarm
-	if err = mapstructure.Decode(j["value"], &a); err == nil {
-		v.Value = a
-		return nil
+
+	a := Alarm{}
+	metadata = mapstructure.Metadata{}
+	decoder, err = mapstructure.NewDecoder(&mapstructure.DecoderConfig{Metadata: &metadata, Result: &a})
+	if err == nil {
+		if err = decoder.Decode(j["value"]); err == nil && len(metadata.Unused) == 0 {
+			v.Value = a
+			return nil
+		}
 	}
 
 	return fmt.Errorf("don't know how to unmarshal %v", string(data))

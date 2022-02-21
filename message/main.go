@@ -250,6 +250,11 @@ type Length struct {
 	Waterline *float64 `json:"waterline,omitempty"`
 }
 
+type Alarm struct {
+	State   bool   `json:"state,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
 type Buffer struct {
 	Deltas []Mapped `json:"deltas"`
 	lock   *sync.RWMutex

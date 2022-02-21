@@ -211,6 +211,14 @@ func (m *Nmea0183Mapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 			u.AddValue(message.NewValue().WithUuid(r.Uuid).WithPath("steering.rudderAngle").WithValue(rudderAnglePortSide))
 		}
 	}
+	if v, ok := sentence.(nmea.Alarm); ok {
+		description, _ := v.GetDescription()
+		active, err := v.IsActive()
+		if err != nil {
+			active = true
+		}
+		u.AddValue(message.NewValue().WithUuid(r.Uuid).WithPath("notifications.ais").WithValue(message.Alarm{State: active, Message: description}))
+	}
 
 	if len(u.Values) == 0 {
 		return result, fmt.Errorf("data cannot be mapped: %s", sentence.String())

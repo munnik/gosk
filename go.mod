@@ -14,7 +14,7 @@ require (
 	github.com/jackc/pgx/v4 v4.15.0
 	github.com/klauspost/compress v1.14.3
 	github.com/mitchellh/mapstructure v1.4.3
-	github.com/munnik/go-nmea v1.4.7
+	github.com/munnik/go-nmea v1.5.0
 	github.com/onsi/ginkgo/v2 v2.1.2
 	github.com/onsi/gomega v1.18.1
 	github.com/simonvetter/modbus v1.4.0

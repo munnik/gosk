@@ -14,11 +14,11 @@ type Mapper interface {
 	Map(subscriber mangos.Socket, publisher mangos.Socket)
 }
 
-type realMapper interface {
-	doMap(*message.Raw) (*message.Mapped, error)
+type RealMapper interface {
+	DoMap(*message.Raw) (*message.Mapped, error)
 }
 
-func process(subscriber mangos.Socket, publisher mangos.Socket, mapper realMapper) {
+func process(subscriber mangos.Socket, publisher mangos.Socket, mapper RealMapper) {
 	raw := &message.Raw{}
 	var mapped *message.Mapped
 	var toSend []byte
@@ -39,7 +39,7 @@ func process(subscriber mangos.Socket, publisher mangos.Socket, mapper realMappe
 			)
 			continue
 		}
-		if mapped, err = mapper.doMap(raw); err != nil {
+		if mapped, err = mapper.DoMap(raw); err != nil {
 			logger.GetLogger().Warn(
 				"Could not map the received data",
 				zap.ByteString("Raw bytes", raw.Value),

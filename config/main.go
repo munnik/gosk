@@ -23,6 +23,13 @@ const (
 	ParityMap string = "NOE" // None, Odd, Even
 )
 
+const (
+	Coils = iota + 1
+	DiscreteInputs
+	HoldingRegisters
+	InputRegisters
+)
+
 type CollectorConfig struct {
 	Name         string   `mapstructure:"name"`
 	URL          *url.URL `mapstructure:"_"`

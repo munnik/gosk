@@ -8,13 +8,13 @@ import (
 )
 
 var _ = Describe("Helper functions", func() {
-	var (
-		rgc config.RegisterGroupConfig
-
-		input  []bool
-		result []byte
-	)
 	Describe("BoolsToBytes", func() {
+		var (
+			rgc config.RegisterGroupConfig
+
+			input  []bool
+			result []byte
+		)
 		JustBeforeEach(func() {
 			result = CoilsToBytes(rgc, input)
 		})

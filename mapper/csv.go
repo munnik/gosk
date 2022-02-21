@@ -27,7 +27,7 @@ func (m *CSVMapper) Map(subscriber mangos.Socket, publisher mangos.Socket) {
 	process(subscriber, publisher, m)
 }
 
-func (m *CSVMapper) doMap(r *message.Raw) (*message.Mapped, error) {
+func (m *CSVMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	result := message.NewMapped().WithContext(m.config.Context).WithOrigin(m.config.Context)
 	s := message.NewSource().WithLabel(r.Collector).WithType(m.protocol)
 	u := message.NewUpdate().WithSource(s).WithTimestamp(r.Timestamp)

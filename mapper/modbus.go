@@ -26,7 +26,7 @@ func (m *ModbusMapper) Map(subscriber mangos.Socket, publisher mangos.Socket) {
 	process(subscriber, publisher, m)
 }
 
-func (m *ModbusMapper) doMap(r *message.Raw) (*message.Mapped, error) {
+func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	result := message.NewMapped().WithContext(m.config.Context).WithOrigin(m.config.Context)
 	s := message.NewSource().WithLabel(r.Collector).WithType(m.protocol)
 	u := message.NewUpdate().WithSource(s).WithTimestamp(r.Timestamp)
@@ -50,6 +50,11 @@ func (m *ModbusMapper) doMap(r *message.Raw) (*message.Mapped, error) {
 		if rmc.Slave != slave || rmc.FunctionCode != functionCode {
 			continue
 		}
+		// in case of coils
+		if rmc.Address < address || rmc.Address+(rmc.NumberOfCoils-1)/16+1 > address+numberOfRegisters {
+			continue
+		}
+		// in case of registers
 		if rmc.Address < address || rmc.Address+rmc.NumberOfRegisters > address+numberOfRegisters {
 			continue
 		}
@@ -57,6 +62,7 @@ func (m *ModbusMapper) doMap(r *message.Raw) (*message.Mapped, error) {
 		// the raw message contains data that can be mapped with this register mapping
 		var env = map[string]interface{}{
 			"registers": []uint16{},
+			"coils":     []bool{},
 		}
 		if rmc.CompiledExpression == nil {
 			// TODO: each iteration the CompiledExpression is nil
@@ -72,7 +78,11 @@ func (m *ModbusMapper) doMap(r *message.Raw) (*message.Mapped, error) {
 		}
 
 		// the compiled program exists, let's run it
-		env["registers"] = registerData[rmc.Address-address : rmc.Address-address+rmc.NumberOfRegisters]
+		if rmc.FunctionCode == config.Coils || rmc.FunctionCode == config.DiscreteInputs {
+			env["coils"] = RegistersToCoils(registerData[rmc.Address-address : rmc.Address-address+(rmc.NumberOfCoils-1)/16+1])[:rmc.NumberOfCoils]
+		} else if rmc.FunctionCode == config.HoldingRegisters || rmc.FunctionCode == config.InputRegisters {
+			env["registers"] = registerData[rmc.Address-address : rmc.Address-address+rmc.NumberOfRegisters]
+		}
 		output, err := expr.Run(rmc.CompiledExpression, env)
 		if err != nil {
 			logger.GetLogger().Warn(
@@ -90,4 +100,29 @@ func (m *ModbusMapper) doMap(r *message.Raw) (*message.Mapped, error) {
 		return result, fmt.Errorf("data cannot be mapped: %v", r.Value)
 	}
 	return result.AddUpdate(u), nil
+}
+
+func RegistersToCoils(registers []uint16) []bool {
+	result := make([]bool, 0, len(registers)*16)
+	for _, r := range registers {
+		result = append(result,
+			r&32768 == 32768,
+			r&16384 == 16384,
+			r&8192 == 8192,
+			r&4096 == 4096,
+			r&2048 == 2048,
+			r&1024 == 1024,
+			r&512 == 512,
+			r&256 == 256,
+			r&128 == 128,
+			r&64 == 64,
+			r&32 == 32,
+			r&16 == 16,
+			r&8 == 8,
+			r&4 == 4,
+			r&2 == 2,
+			r&1 == 1,
+		)
+	}
+	return result
 }

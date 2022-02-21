@@ -18,13 +18,6 @@ import (
 const MaximumNumberOfRegisters = 125
 const MaximumNumberOfCoils = 2000
 
-const (
-	Coils = iota + 1
-	DiscreteInputs
-	HoldingRegisters
-	InputRegisters
-)
-
 type ModbusReader struct {
 	config               *config.CollectorConfig
 	registerGroupsConfig []config.RegisterGroupConfig
@@ -132,25 +125,25 @@ func (m *ModbusClient) Read(rgc config.RegisterGroupConfig) ([]byte, error) {
 	defer m.mu.Unlock()
 	m.realClient.SetUnitId(rgc.Slave)
 	switch rgc.FunctionCode {
-	case Coils:
+	case config.Coils:
 		result, err := m.realClient.ReadCoils(rgc.Address, rgc.NumberOfCoils)
 		if err != nil {
 			return nil, fmt.Errorf("error while reading register %v, with length %v and function code %v, , the error that occurred was %v", rgc.Address, rgc.NumberOfCoils, rgc.FunctionCode, err)
 		}
 		bytes = CoilsToBytes(rgc, result)
-	case DiscreteInputs:
+	case config.DiscreteInputs:
 		result, err := m.realClient.ReadDiscreteInputs(rgc.Address, rgc.NumberOfCoils)
 		if err != nil {
 			return nil, fmt.Errorf("error while reading register %v, with length %v and function code %v, , the error that occurred was %v", rgc.Address, rgc.NumberOfCoils, rgc.FunctionCode, err)
 		}
 		bytes = CoilsToBytes(rgc, result)
-	case HoldingRegisters:
+	case config.HoldingRegisters:
 		result, err := m.realClient.ReadRegisters(rgc.Address, rgc.NumberOfRegisters, modbus.HOLDING_REGISTER)
 		if err != nil {
 			return nil, fmt.Errorf("error while reading register %v, with length %v and function code %v, , the error that occurred was %v", rgc.Address, rgc.NumberOfRegisters, rgc.FunctionCode, err)
 		}
 		bytes = RegistersToBytes(rgc, result)
-	case InputRegisters:
+	case config.InputRegisters:
 		result, err := m.realClient.ReadRegisters(rgc.Address, rgc.NumberOfRegisters, modbus.INPUT_REGISTER)
 		if err != nil {
 			return nil, fmt.Errorf("error while reading register %v, with length %v and function code %v, , the error that occurred was %v", rgc.Address, rgc.NumberOfRegisters, rgc.FunctionCode, err)

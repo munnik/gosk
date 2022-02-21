@@ -234,6 +234,11 @@ func (v *Value) UnmarshalJSON(data []byte) error {
 		v.Value = l
 		return nil
 	}
+	var a Alarm
+	if err = mapstructure.Decode(j["value"], &a); err == nil {
+		v.Value = a
+		return nil
+	}
 
 	return fmt.Errorf("don't know how to unmarshal %v", string(data))
 }

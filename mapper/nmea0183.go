@@ -2,7 +2,6 @@ package mapper
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/munnik/go-nmea"
 	"github.com/munnik/gosk/config"
@@ -47,7 +46,7 @@ func (m *Nmea0183Mapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	if v, ok := sentence.(nmea.MMSI); ok {
 		if mmsi, err := v.GetMMSI(); err == nil {
 			result.WithContext(fmt.Sprintf("vessels.urn:mrn:imo:mmsi:%s", mmsi))
-			u.AddValue(message.NewValue().WithUuid(r.Uuid).WithPath("mmsi").WithValue(strconv.Quote(mmsi)))
+			u.AddValue(message.NewValue().WithUuid(r.Uuid).WithPath("mmsi").WithValue(mmsi))
 		}
 	}
 
@@ -63,12 +62,12 @@ func (m *Nmea0183Mapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	}
 	if v, ok := sentence.(nmea.FixQuality); ok {
 		if fixQuality, err := v.GetFixQuality(); err == nil {
-			u.AddValue(message.NewValue().WithUuid(r.Uuid).WithPath("navigation.gnss.methodQuality").WithValue(strconv.Quote(fixQuality)))
+			u.AddValue(message.NewValue().WithUuid(r.Uuid).WithPath("navigation.gnss.methodQuality").WithValue(fixQuality))
 		}
 	}
 	if v, ok := sentence.(nmea.FixType); ok {
 		if fixType, err := v.GetFixType(); err == nil {
-			u.AddValue(message.NewValue().WithUuid(r.Uuid).WithPath("navigation.gnss.type").WithValue(strconv.Quote(fixType)))
+			u.AddValue(message.NewValue().WithUuid(r.Uuid).WithPath("navigation.gnss.type").WithValue(fixType))
 		}
 	}
 	if v, ok := sentence.(nmea.RateOfTurn); ok {
@@ -93,7 +92,7 @@ func (m *Nmea0183Mapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	}
 	if v, ok := sentence.(nmea.NavigationStatus); ok {
 		if navigationStatus, err := v.GetNavigationStatus(); err == nil {
-			u.AddValue(message.NewValue().WithUuid(r.Uuid).WithPath("navigation.state").WithValue(strconv.Quote(navigationStatus)))
+			u.AddValue(message.NewValue().WithUuid(r.Uuid).WithPath("navigation.state").WithValue(navigationStatus))
 		}
 	}
 	if v, ok := sentence.(nmea.NumberOfSatellites); ok {
@@ -124,22 +123,22 @@ func (m *Nmea0183Mapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	}
 	if v, ok := sentence.(nmea.VesselName); ok {
 		if vesselName, err := v.GetVesselName(); err == nil {
-			u.AddValue(message.NewValue().WithUuid(r.Uuid).WithPath("name").WithValue(strconv.Quote(vesselName)))
+			u.AddValue(message.NewValue().WithUuid(r.Uuid).WithPath("name").WithValue(vesselName))
 		}
 	}
 	if v, ok := sentence.(nmea.CallSign); ok {
 		if callSign, err := v.GetCallSign(); err == nil {
-			u.AddValue(message.NewValue().WithUuid(r.Uuid).WithPath("communication.callsignVhf").WithValue(strconv.Quote(callSign)))
+			u.AddValue(message.NewValue().WithUuid(r.Uuid).WithPath("communication.callsignVhf").WithValue(callSign))
 		}
 	}
 	if v, ok := sentence.(nmea.IMONumber); ok {
 		if imoNumber, err := v.GetIMONumber(); err == nil {
-			u.AddValue(message.NewValue().WithUuid(r.Uuid).WithPath("registrations.imo").WithValue(strconv.Quote(imoNumber)))
+			u.AddValue(message.NewValue().WithUuid(r.Uuid).WithPath("registrations.imo").WithValue(imoNumber))
 		}
 	}
 	if v, ok := sentence.(nmea.ENINumber); ok {
 		if eniNumber, err := v.GetENINumber(); err == nil {
-			u.AddValue(message.NewValue().WithUuid(r.Uuid).WithPath("registrations.other.eni.registration").WithValue(strconv.Quote(eniNumber)))
+			u.AddValue(message.NewValue().WithUuid(r.Uuid).WithPath("registrations.other.eni.registration").WithValue(eniNumber))
 		}
 	}
 	if v, ok := sentence.(nmea.VesselLength); ok {

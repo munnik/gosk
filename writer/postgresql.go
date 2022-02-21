@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"strconv"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
@@ -124,6 +125,9 @@ func (w *PostgresqlWriter) WriteMapped(subscriber mangos.Socket) {
 		}
 		for _, update := range mapped.Updates {
 			for _, value := range update.Values {
+				if str, ok := value.Value.(string); ok {
+					value.Value = strconv.Quote(str)
+				}
 				if _, err := conn.Exec(context.Background(), query, update.Timestamp, update.Source.Label, update.Source.Type, mapped.Context, value.Path, value.Value, value.Uuid, mapped.Origin); err != nil {
 					logger.GetLogger().Warn(
 						"Error on inserting the received data in the database",

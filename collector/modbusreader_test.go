@@ -21,10 +21,10 @@ var _ = Describe("Helper functions", func() {
 		Context("with 8 coils", func() {
 			BeforeEach(func() {
 				rgc = config.RegisterGroupConfig{
-					Slave:         1,
-					FunctionCode:  2,
-					Address:       50,
-					NumberOfCoils: 8,
+					Slave:                  1,
+					FunctionCode:           2,
+					Address:                50,
+					NumberOfCoilsRegisters: 8,
 				}
 				// 128 + 64 + _ + _ 8 + _ + 2 + 1 = 203
 				input = []bool{true, true, false, false, true, false, true, true}
@@ -36,8 +36,8 @@ var _ = Describe("Helper functions", func() {
 					2,  // lsb function code
 					0,  // msb address
 					50, // lsb address
-					0,  // msb number of registers
-					1,  // lsb number of registers
+					0,  // msb number of coils or registers
+					8,  // lsb number of coils or registers
 					203,
 					0,
 				}))
@@ -46,10 +46,10 @@ var _ = Describe("Helper functions", func() {
 		Context("with 5 coils", func() {
 			BeforeEach(func() {
 				rgc = config.RegisterGroupConfig{
-					Slave:         1,
-					FunctionCode:  2,
-					Address:       50,
-					NumberOfCoils: 5,
+					Slave:                  1,
+					FunctionCode:           2,
+					Address:                50,
+					NumberOfCoilsRegisters: 5,
 				}
 				// 128 + 64 + _ + _ 8 = 200
 				input = []bool{true, true, false, false, true}
@@ -61,8 +61,8 @@ var _ = Describe("Helper functions", func() {
 					2,  // lsb function code
 					0,  // msb address
 					50, // lsb address
-					0,  // msb number of registers
-					1,  // lsb number of registers
+					0,  // msb number of coils or registers
+					5,  // lsb number of coils or registers
 					200,
 					0,
 				}))
@@ -71,10 +71,10 @@ var _ = Describe("Helper functions", func() {
 		Context("with 16 coils", func() {
 			BeforeEach(func() {
 				rgc = config.RegisterGroupConfig{
-					Slave:         1,
-					FunctionCode:  2,
-					Address:       50,
-					NumberOfCoils: 16,
+					Slave:                  1,
+					FunctionCode:           2,
+					Address:                50,
+					NumberOfCoilsRegisters: 16,
 				}
 				input = []bool{
 					// _ + 64 + 32 + _ + _ + _ + 2 + _ = 98
@@ -90,8 +90,8 @@ var _ = Describe("Helper functions", func() {
 					2,  // lsb function code
 					0,  // msb address
 					50, // lsb address
-					0,  // msb number of registers
-					1,  // lsb number of registers
+					0,  // msb number of coils or registers
+					16, // lsb number of coils or registers
 					98,
 					203,
 				}))
@@ -100,10 +100,10 @@ var _ = Describe("Helper functions", func() {
 		Context("with 9 coils", func() {
 			BeforeEach(func() {
 				rgc = config.RegisterGroupConfig{
-					Slave:         1,
-					FunctionCode:  2,
-					Address:       50,
-					NumberOfCoils: 9,
+					Slave:                  1,
+					FunctionCode:           2,
+					Address:                50,
+					NumberOfCoilsRegisters: 9,
 				}
 				input = []bool{
 					// _ + 64 + 32 + _ + _ + _ + 2 + _ = 98
@@ -119,8 +119,8 @@ var _ = Describe("Helper functions", func() {
 					2,  // lsb function code
 					0,  // msb address
 					50, // lsb address
-					0,  // msb number of registers
-					1,  // lsb number of registers
+					0,  // msb number of coils or registers
+					9,  // lsb number of coils or registers
 					98,
 					128,
 				}))
@@ -129,10 +129,10 @@ var _ = Describe("Helper functions", func() {
 		Context("with 25 coils", func() {
 			BeforeEach(func() {
 				rgc = config.RegisterGroupConfig{
-					Slave:         1,
-					FunctionCode:  2,
-					Address:       50,
-					NumberOfCoils: 25,
+					Slave:                  1,
+					FunctionCode:           2,
+					Address:                50,
+					NumberOfCoilsRegisters: 25,
 				}
 				input = []bool{
 					// _ + 64 + 32 + _ + _ + _ + 2 + _ = 98
@@ -152,8 +152,8 @@ var _ = Describe("Helper functions", func() {
 					2,  // lsb function code
 					0,  // msb address
 					50, // lsb address
-					0,  // msb number of registers
-					2,  // lsb number of registers
+					0,  // msb number of coils or registers
+					25, // lsb number of coils or registers
 					98,
 					203,
 					98,

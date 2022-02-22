@@ -23,16 +23,19 @@ type ModbusReader struct {
 	registerGroupsConfig []config.RegisterGroupConfig
 }
 
-func NewModbusReader(c *config.CollectorConfig, rgs []config.RegisterGroupConfig) (*ModbusReader, error) {
-	for _, rg := range rgs {
-		if rg.NumberOfRegisters > MaximumNumberOfRegisters {
-			return nil, fmt.Errorf("maximum number %v of registers exceeded for register group %v", MaximumNumberOfRegisters, rg)
-		}
-		if rg.NumberOfCoils > MaximumNumberOfCoils {
-			return nil, fmt.Errorf("maximum number %v of coils exceeded for register group %v", MaximumNumberOfCoils, rg)
+func NewModbusReader(c *config.CollectorConfig, rgcs []config.RegisterGroupConfig) (*ModbusReader, error) {
+	for _, rgc := range rgcs {
+		if rgc.FunctionCode == config.Coils || rgc.FunctionCode == config.DiscreteInputs {
+			if rgc.NumberOfCoilsRegisters > MaximumNumberOfCoils {
+				return nil, fmt.Errorf("maximum number %v of coils exceeded for register group %v", MaximumNumberOfCoils, rgc)
+			}
+		} else {
+			if rgc.NumberOfCoilsRegisters > MaximumNumberOfRegisters {
+				return nil, fmt.Errorf("maximum number %v of registers exceeded for register group %v", MaximumNumberOfRegisters, rgc)
+			}
 		}
 	}
-	return &ModbusReader{config: c, registerGroupsConfig: rgs}, nil
+	return &ModbusReader{config: c, registerGroupsConfig: rgcs}, nil
 }
 
 func (r *ModbusReader) Collect(publisher mangos.Socket) {
@@ -126,27 +129,27 @@ func (m *ModbusClient) Read(rgc config.RegisterGroupConfig) ([]byte, error) {
 	m.realClient.SetUnitId(rgc.Slave)
 	switch rgc.FunctionCode {
 	case config.Coils:
-		result, err := m.realClient.ReadCoils(rgc.Address, rgc.NumberOfCoils)
+		result, err := m.realClient.ReadCoils(rgc.Address, rgc.NumberOfCoilsRegisters)
 		if err != nil {
-			return nil, fmt.Errorf("error while reading register %v, with length %v and function code %v, , the error that occurred was %v", rgc.Address, rgc.NumberOfCoils, rgc.FunctionCode, err)
+			return nil, fmt.Errorf("error while reading register %v, with length %v and function code %v, , the error that occurred was %v", rgc.Address, rgc.NumberOfCoilsRegisters, rgc.FunctionCode, err)
 		}
 		bytes = CoilsToBytes(rgc, result)
 	case config.DiscreteInputs:
-		result, err := m.realClient.ReadDiscreteInputs(rgc.Address, rgc.NumberOfCoils)
+		result, err := m.realClient.ReadDiscreteInputs(rgc.Address, rgc.NumberOfCoilsRegisters)
 		if err != nil {
-			return nil, fmt.Errorf("error while reading register %v, with length %v and function code %v, , the error that occurred was %v", rgc.Address, rgc.NumberOfCoils, rgc.FunctionCode, err)
+			return nil, fmt.Errorf("error while reading register %v, with length %v and function code %v, , the error that occurred was %v", rgc.Address, rgc.NumberOfCoilsRegisters, rgc.FunctionCode, err)
 		}
 		bytes = CoilsToBytes(rgc, result)
 	case config.HoldingRegisters:
-		result, err := m.realClient.ReadRegisters(rgc.Address, rgc.NumberOfRegisters, modbus.HOLDING_REGISTER)
+		result, err := m.realClient.ReadRegisters(rgc.Address, rgc.NumberOfCoilsRegisters, modbus.HOLDING_REGISTER)
 		if err != nil {
-			return nil, fmt.Errorf("error while reading register %v, with length %v and function code %v, , the error that occurred was %v", rgc.Address, rgc.NumberOfRegisters, rgc.FunctionCode, err)
+			return nil, fmt.Errorf("error while reading register %v, with length %v and function code %v, , the error that occurred was %v", rgc.Address, rgc.NumberOfCoilsRegisters, rgc.FunctionCode, err)
 		}
 		bytes = RegistersToBytes(rgc, result)
 	case config.InputRegisters:
-		result, err := m.realClient.ReadRegisters(rgc.Address, rgc.NumberOfRegisters, modbus.INPUT_REGISTER)
+		result, err := m.realClient.ReadRegisters(rgc.Address, rgc.NumberOfCoilsRegisters, modbus.INPUT_REGISTER)
 		if err != nil {
-			return nil, fmt.Errorf("error while reading register %v, with length %v and function code %v, , the error that occurred was %v", rgc.Address, rgc.NumberOfRegisters, rgc.FunctionCode, err)
+			return nil, fmt.Errorf("error while reading register %v, with length %v and function code %v, , the error that occurred was %v", rgc.Address, rgc.NumberOfCoilsRegisters, rgc.FunctionCode, err)
 		}
 		bytes = RegistersToBytes(rgc, result)
 	default:
@@ -182,13 +185,12 @@ func CoilsToBytes(rgc config.RegisterGroupConfig, values []bool) []byte {
 			uint16s[i/16] += 1 << (15 - i%16)
 		}
 	}
-	rgc.NumberOfRegisters = (rgc.NumberOfCoils-1)/16 + 1
 	return RegistersToBytes(rgc, uint16s)
 }
 
 func RegistersToBytes(rgc config.RegisterGroupConfig, values []uint16) []byte {
 	bytes := make([]byte, 0, 7+2*len(values)) // 7 is the length of the start bytes
-	bytes = append(bytes, StartBytes(rgc.Slave, rgc.FunctionCode, rgc.Address, rgc.NumberOfRegisters)...)
+	bytes = append(bytes, StartBytes(rgc.Slave, rgc.FunctionCode, rgc.Address, rgc.NumberOfCoilsRegisters)...)
 	out := make([]byte, 2)
 	for _, v := range values {
 		// TODO: make BigEndian / LittleEndian configurable

@@ -31,18 +31,15 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	s := message.NewSource().WithLabel(r.Collector).WithType(m.protocol)
 	u := message.NewUpdate().WithSource(s).WithTimestamp(r.Timestamp)
 
-	if len(r.Value) < 7 {
+	if len(r.Value) < 8 {
 		return nil, fmt.Errorf("no usefull data in %v", r.Value)
 	}
 	slave := uint8(r.Value[0])
 	functionCode := binary.BigEndian.Uint16(r.Value[1:3])
 	address := binary.BigEndian.Uint16(r.Value[3:5])
-	numberOfRegisters := binary.BigEndian.Uint16(r.Value[5:7])
-	registerData := make([]uint16, numberOfRegisters)
-	if uint16(len(r.Value)) != (7 + 2*numberOfRegisters) {
-		return nil, fmt.Errorf("the length of the value is not equal to %v but %v", 7+2*numberOfRegisters, len(r.Value))
-	}
-	for i := uint16(0); i < numberOfRegisters; i += 1 {
+	numberOfCoilsOrRegisters := binary.BigEndian.Uint16(r.Value[5:7])
+	registerData := make([]uint16, (len(r.Value)-7)/2)
+	for i := range registerData {
 		registerData[i] = binary.BigEndian.Uint16(r.Value[7+i*2 : 9+i*2])
 	}
 
@@ -50,18 +47,10 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		if rmc.Slave != slave || rmc.FunctionCode != functionCode {
 			continue
 		}
-		// in case of coils
-		if rmc.FunctionCode == config.Coils || rmc.FunctionCode == config.DiscreteInputs {
-			if rmc.Address < address || rmc.Address+(rmc.NumberOfCoils-1)/16+1 > address+numberOfRegisters {
-				continue
-			}
+		if rmc.Address < address || rmc.Address+rmc.NumberOfCoilsOrRegisters > address+numberOfCoilsOrRegisters {
+			continue
 		}
-		// in case of registers
-		if rmc.FunctionCode == config.HoldingRegisters || rmc.FunctionCode == config.InputRegisters {
-			if rmc.Address < address || rmc.Address+rmc.NumberOfRegisters > address+numberOfRegisters {
-				continue
-			}
-		}
+
 		// the raw message contains data that can be mapped with this register mapping
 		var env = map[string]interface{}{
 			"registers": []uint16{},
@@ -82,9 +71,9 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 
 		// the compiled program exists, let's run it
 		if rmc.FunctionCode == config.Coils || rmc.FunctionCode == config.DiscreteInputs {
-			env["coils"] = RegistersToCoils(registerData[rmc.Address-address : rmc.Address-address+(rmc.NumberOfCoils-1)/16+1])[:rmc.NumberOfCoils]
+			env["coils"] = RegistersToCoils(registerData[(rmc.Address-address)/16 : (rmc.Address-address)/16+(rmc.NumberOfCoilsOrRegisters-1)/16+1])[:rmc.NumberOfCoilsOrRegisters]
 		} else if rmc.FunctionCode == config.HoldingRegisters || rmc.FunctionCode == config.InputRegisters {
-			env["registers"] = registerData[rmc.Address-address : rmc.Address-address+rmc.NumberOfRegisters]
+			env["registers"] = registerData[rmc.Address-address : rmc.Address-address+rmc.NumberOfCoilsOrRegisters]
 		}
 		output, err := expr.Run(rmc.CompiledExpression, env)
 		if err != nil {

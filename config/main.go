@@ -75,12 +75,11 @@ func (c *CollectorConfig) WithProtocol(p string) *CollectorConfig {
 }
 
 type RegisterGroupConfig struct {
-	Slave             uint8         `mapstructure:"slave"`
-	FunctionCode      uint16        `mapstructure:"functionCode"`
-	Address           uint16        `mapstructure:"address"`
-	NumberOfRegisters uint16        `mapstructure:"numberOfRegisters"`
-	NumberOfCoils     uint16        `mapstructure:"numberOfCoils"`
-	PollingInterval   time.Duration `mapstructure:"pollingInterval"`
+	Slave                  uint8         `mapstructure:"slave"`
+	FunctionCode           uint16        `mapstructure:"functionCode"`
+	Address                uint16        `mapstructure:"address"`
+	NumberOfCoilsRegisters uint16        `mapstructure:"numberOfCoilsOrRegisters"`
+	PollingInterval        time.Duration `mapstructure:"pollingInterval"`
 }
 
 func NewRegisterGroupsConfig(configFilePath string) []RegisterGroupConfig {
@@ -97,20 +96,6 @@ func NewRegisterGroupsConfig(configFilePath string) []RegisterGroupConfig {
 		)
 	}
 
-	for _, rgc := range result {
-		if rgc.NumberOfRegisters == 0 && rgc.NumberOfCoils == 0 {
-			logger.GetLogger().Warn(
-				"Both NumberOfRegsiters and NumberOfCoils are 0",
-				zap.String("Register mapping", fmt.Sprintf("%+v", rgc)),
-			)
-		}
-		if rgc.NumberOfRegisters > 0 && rgc.NumberOfCoils > 0 {
-			logger.GetLogger().Warn(
-				"Both NumberOfRegsiters and NumberOfCoils are set",
-				zap.String("Register mapping", fmt.Sprintf("%+v", rgc)),
-			)
-		}
-	}
 	return result
 }
 
@@ -136,14 +121,13 @@ func NewMapperConfig(configFilePath string) MapperConfig {
 }
 
 type RegisterMappingConfig struct {
-	Slave              uint8  `mapstructure:"slave"`
-	FunctionCode       uint16 `mapstructure:"functionCode"`
-	Address            uint16 `mapstructure:"address"`
-	NumberOfRegisters  uint16 `mapstructure:"numberOfRegisters"`
-	NumberOfCoils      uint16 `mapstructure:"numberOfCoils"`
-	Expression         string `mapstructure:"expression"`
-	CompiledExpression *vm.Program
-	Path               string `mapstructure:"path"`
+	Slave                    uint8  `mapstructure:"slave"`
+	FunctionCode             uint16 `mapstructure:"functionCode"`
+	Address                  uint16 `mapstructure:"address"`
+	NumberOfCoilsOrRegisters uint16 `mapstructure:"numberOfCoilsOrRegisters"`
+	Expression               string `mapstructure:"expression"`
+	CompiledExpression       *vm.Program
+	Path                     string `mapstructure:"path"`
 }
 
 func NewRegisterMappingsConfig(configFilePath string) []RegisterMappingConfig {
@@ -171,18 +155,6 @@ func NewRegisterMappingsConfig(configFilePath string) []RegisterMappingConfig {
 		if rmc.Expression == "" {
 			logger.GetLogger().Warn(
 				"Expression was not set",
-				zap.String("Register mapping", fmt.Sprintf("%+v", rmc)),
-			)
-		}
-		if rmc.NumberOfRegisters == 0 && rmc.NumberOfCoils == 0 {
-			logger.GetLogger().Warn(
-				"Both NumberOfRegsiters and NumberOfCoils are 0",
-				zap.String("Register mapping", fmt.Sprintf("%+v", rmc)),
-			)
-		}
-		if rmc.NumberOfRegisters > 0 && rmc.NumberOfCoils > 0 {
-			logger.GetLogger().Warn(
-				"Both NumberOfRegsiters and NumberOfCoils are set",
 				zap.String("Register mapping", fmt.Sprintf("%+v", rmc)),
 			)
 		}

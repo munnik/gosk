@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/antonmedv/expr"
+	"github.com/antonmedv/expr/vm"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
@@ -13,13 +14,13 @@ import (
 )
 
 type ModbusMapper struct {
-	config                config.MapperConfig
-	protocol              string
-	registerMappingConfig []config.RegisterMappingConfig
+	config               config.MapperConfig
+	protocol             string
+	modbusMappingsConfig []config.ModbusMappingsConfig
 }
 
-func NewModbusMapper(c config.MapperConfig, rmc []config.RegisterMappingConfig) (*ModbusMapper, error) {
-	return &ModbusMapper{config: c, protocol: config.ModbusType, registerMappingConfig: rmc}, nil
+func NewModbusMapper(c config.MapperConfig, mmc []config.ModbusMappingsConfig) (*ModbusMapper, error) {
+	return &ModbusMapper{config: c, protocol: config.ModbusType, modbusMappingsConfig: mmc}, nil
 }
 
 func (m *ModbusMapper) Map(subscriber mangos.Socket, publisher mangos.Socket) {
@@ -43,11 +44,14 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		registerData[i] = binary.BigEndian.Uint16(r.Value[7+i*2 : 9+i*2])
 	}
 
-	for _, rmc := range m.registerMappingConfig {
-		if rmc.Slave != slave || rmc.FunctionCode != functionCode {
+	// Reuse this vm instance between runs
+	vm := vm.VM{}
+
+	for _, mmc := range m.modbusMappingsConfig {
+		if mmc.Slave != slave || mmc.FunctionCode != functionCode {
 			continue
 		}
-		if rmc.Address < address || rmc.Address+rmc.NumberOfCoilsOrRegisters > address+numberOfCoilsOrRegisters {
+		if mmc.Address < address || mmc.Address+mmc.NumberOfCoilsOrRegisters > address+numberOfCoilsOrRegisters {
 			continue
 		}
 
@@ -56,13 +60,13 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 			"registers": []uint16{},
 			"coils":     []bool{},
 		}
-		if rmc.CompiledExpression == nil {
+		if mmc.CompiledExpression == nil {
 			// TODO: each iteration the CompiledExpression is nil
 			var err error
-			if rmc.CompiledExpression, err = expr.Compile(rmc.Expression, expr.Env(env)); err != nil {
+			if mmc.CompiledExpression, err = expr.Compile(mmc.Expression, expr.Env(env)); err != nil {
 				logger.GetLogger().Warn(
 					"Could not compile the mapping expression",
-					zap.String("Expression", rmc.Expression),
+					zap.String("Expression", mmc.Expression),
 					zap.String("Error", err.Error()),
 				)
 				continue
@@ -70,16 +74,16 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		}
 
 		// the compiled program exists, let's run it
-		if rmc.FunctionCode == config.Coils || rmc.FunctionCode == config.DiscreteInputs {
-			env["coils"] = RegistersToCoils(registerData[(rmc.Address-address)/16 : (rmc.Address-address)/16+(rmc.NumberOfCoilsOrRegisters-1)/16+1])[:rmc.NumberOfCoilsOrRegisters]
-		} else if rmc.FunctionCode == config.HoldingRegisters || rmc.FunctionCode == config.InputRegisters {
-			env["registers"] = registerData[rmc.Address-address : rmc.Address-address+rmc.NumberOfCoilsOrRegisters]
+		if mmc.FunctionCode == config.Coils || mmc.FunctionCode == config.DiscreteInputs {
+			env["coils"] = RegistersToCoils(registerData[(mmc.Address-address)/16 : (mmc.Address-address)/16+(mmc.NumberOfCoilsOrRegisters-1)/16+1])[:mmc.NumberOfCoilsOrRegisters]
+		} else if mmc.FunctionCode == config.HoldingRegisters || mmc.FunctionCode == config.InputRegisters {
+			env["registers"] = registerData[mmc.Address-address : mmc.Address-address+mmc.NumberOfCoilsOrRegisters]
 		}
-		output, err := expr.Run(rmc.CompiledExpression, env)
+		output, err := vm.Run(mmc.CompiledExpression, env)
 		if err != nil {
 			logger.GetLogger().Warn(
 				"Could not run the mapping expression",
-				zap.String("Expression", rmc.Expression),
+				zap.String("Expression", mmc.Expression),
 				zap.String("Environment", fmt.Sprintf("%+v", env)),
 				zap.String("Error", err.Error()),
 			)
@@ -92,12 +96,13 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 				output = decoded
 			}
 		}
-		u.AddValue(message.NewValue().WithUuid(r.Uuid).WithPath(rmc.Path).WithValue(output))
+		u.AddValue(message.NewValue().WithUuid(r.Uuid).WithPath(mmc.Path).WithValue(output))
 	}
 
 	if len(u.Values) == 0 {
-		return result, fmt.Errorf("data cannot be mapped: %v", r.Value)
+		return nil, fmt.Errorf("data cannot be mapped: %v", r.Value)
 	}
+
 	return result.AddUpdate(u), nil
 }
 

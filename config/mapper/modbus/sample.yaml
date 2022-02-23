@@ -1,6 +1,6 @@
 ---
 context: "vessels.urn:mrn:imo:mmsi:244770688" # if the data itself doesn't provide a context then this context is used
-registerMappings:
+mappings:
   - slave: 1 # slave id
     functionCode: 4
     address: 51440 # address of the first register to map

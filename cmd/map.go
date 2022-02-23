@@ -68,8 +68,11 @@ func doMap(cmd *cobra.Command, args []string) {
 	case config.CSVType:
 		cmc := config.NewCSVMappingConfig(cfgFile)
 		m, err = mapper.NewCSVMapper(c, cmc)
+	case config.JSONType:
+		jmc := config.NewJSONMappingConfig(cfgFile)
+		m, err = mapper.NewJSONMapper(c, jmc)
 	case config.ModbusType:
-		rmc := config.NewRegisterMappingsConfig(cfgFile)
+		rmc := config.NewModbusMappingsConfig(cfgFile)
 		m, err = mapper.NewModbusMapper(c, rmc)
 	case config.NMEA0183Type:
 		m, err = mapper.NewNmea0183Mapper(c)

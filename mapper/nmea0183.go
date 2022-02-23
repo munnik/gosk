@@ -220,7 +220,8 @@ func (m *Nmea0183Mapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	}
 
 	if len(u.Values) == 0 {
-		return result, fmt.Errorf("data cannot be mapped: %s", sentence.String())
+		return nil, fmt.Errorf("data cannot be mapped: %s", sentence.String())
 	}
+
 	return result.AddUpdate(u), nil
 }

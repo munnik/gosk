@@ -111,7 +111,7 @@ var _ = Describe("Helper functions", func() {
 var _ = Describe("DoMap Modbus", func() {
 	mapper, _ := NewModbusMapper(
 		config.MapperConfig{Context: "testingContext"},
-		config.NewRegisterMappingsConfig("modbus_test.yaml"),
+		config.NewModbusMappingsConfig("modbus_test.yaml"),
 	)
 	now := time.Now()
 

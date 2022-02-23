@@ -122,7 +122,7 @@ func NewMapperConfig(configFilePath string) MapperConfig {
 	return result
 }
 
-type RegisterMappingConfig struct {
+type ModbusMappingsConfig struct {
 	Slave                    uint8  `mapstructure:"slave"`
 	FunctionCode             uint16 `mapstructure:"functionCode"`
 	Address                  uint16 `mapstructure:"address"`
@@ -132,12 +132,12 @@ type RegisterMappingConfig struct {
 	Path                     string `mapstructure:"path"`
 }
 
-func NewRegisterMappingsConfig(configFilePath string) []RegisterMappingConfig {
-	var result []RegisterMappingConfig
+func NewModbusMappingsConfig(configFilePath string) []ModbusMappingsConfig {
+	var result []ModbusMappingsConfig
 	viper.SetConfigFile(configFilePath)
 	viper.ReadInConfig()
 
-	err := viper.UnmarshalKey("registerMappings", &result)
+	err := viper.UnmarshalKey("mappings", &result)
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Unable to read the configuration",
@@ -176,7 +176,7 @@ func NewCSVMappingConfig(configFilePath string) []CSVMappingConfig {
 	viper.SetConfigFile(configFilePath)
 	viper.ReadInConfig()
 
-	err := viper.UnmarshalKey("csvMappings", &result)
+	err := viper.UnmarshalKey("mappings", &result)
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Unable to read the configuration",
@@ -197,6 +197,44 @@ func NewCSVMappingConfig(configFilePath string) []CSVMappingConfig {
 			logger.GetLogger().Warn(
 				"Expression was not set",
 				zap.String("Register mapping", fmt.Sprintf("%+v", cmc)),
+			)
+		}
+	}
+	return result
+}
+
+type JSONMappingConfig struct {
+	Expression         string `mapstructure:"expression"`
+	CompiledExpression *vm.Program
+	Path               string `mapstructure:"path"`
+}
+
+func NewJSONMappingConfig(configFilePath string) []JSONMappingConfig {
+	var result []JSONMappingConfig
+	viper.SetConfigFile(configFilePath)
+	viper.ReadInConfig()
+
+	err := viper.UnmarshalKey("mappings", &result)
+	if err != nil {
+		logger.GetLogger().Fatal(
+			"Unable to read the configuration",
+			zap.String("Config file", configFilePath),
+			zap.String("Error", err.Error()),
+		)
+	}
+
+	for _, jmc := range result {
+		if jmc.Path == "" {
+			logger.GetLogger().Warn(
+				"Path was not set",
+				zap.String("Register mapping", fmt.Sprintf("%+v", jmc)),
+			)
+			continue
+		}
+		if jmc.Expression == "" {
+			logger.GetLogger().Warn(
+				"Expression was not set",
+				zap.String("Register mapping", fmt.Sprintf("%+v", jmc)),
 			)
 		}
 	}

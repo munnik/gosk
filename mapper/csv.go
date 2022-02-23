@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/antonmedv/expr"
+	"github.com/antonmedv/expr/vm"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
@@ -31,6 +32,9 @@ func (m *CSVMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	result := message.NewMapped().WithContext(m.config.Context).WithOrigin(m.config.Context)
 	s := message.NewSource().WithLabel(r.Collector).WithType(m.protocol)
 	u := message.NewUpdate().WithSource(s).WithTimestamp(r.Timestamp)
+
+	// Reuse this vm instance between runs
+	vm := vm.VM{}
 
 	for _, cmc := range m.csvMappingConfig {
 		stringValue := string(r.Value)
@@ -73,7 +77,7 @@ func (m *CSVMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		}
 
 		// the compiled program exists, let's run it
-		output, err := expr.Run(cmc.CompiledExpression, env)
+		output, err := vm.Run(cmc.CompiledExpression, env)
 		if err != nil {
 			logger.GetLogger().Warn(
 				"Could not run the mapping expression",
@@ -87,9 +91,8 @@ func (m *CSVMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	}
 
 	if len(u.Values) == 0 {
-		return result, fmt.Errorf("data cannot be mapped: %v", r.Value)
+		return nil, fmt.Errorf("data cannot be mapped: %v", r.Value)
 	}
 
-	result.AddUpdate(u)
-	return result, nil
+	return result.AddUpdate(u), nil
 }

@@ -1,6 +1,6 @@
 ---
 context: "vessels.urn:mrn:imo:mmsi:123456789"
-registerMappings:
+mappings:
   - slave: 1
     functionCode: 4
     address: 22

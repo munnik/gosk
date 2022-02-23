@@ -246,7 +246,7 @@ type Length struct {
 }
 
 type Alarm struct {
-	State   bool   `json:"state,omitempty"`
+	State   bool   `json:"state"`
 	Message string `json:"message,omitempty"`
 }
 

@@ -111,96 +111,7 @@ var _ = Describe("Helper functions", func() {
 var _ = Describe("DoMap Modbus", func() {
 	mapper, _ := NewModbusMapper(
 		config.MapperConfig{Context: "testingContext"},
-		[]config.RegisterMappingConfig{
-			{
-				Slave:                    1,
-				FunctionCode:             config.DiscreteInputs,
-				Address:                  40,
-				NumberOfCoilsOrRegisters: 2,
-				Expression:               "coils[0] && coils[1]",
-				Path:                     "testingPath",
-			},
-			{
-				Slave:                    1,
-				FunctionCode:             config.HoldingRegisters,
-				Address:                  52,
-				NumberOfCoilsOrRegisters: 1,
-				Expression:               "(registers[0] - 4000) * 0.00000000138888888888888",
-				Path:                     "testingPath",
-			},
-			{
-				Slave:                    1,
-				FunctionCode:             config.InputRegisters,
-				Address:                  22,
-				NumberOfCoilsOrRegisters: 2,
-				Expression:               "(registers[0] * 256 * 256) + registers[1]",
-				Path:                     "testingPath",
-			},
-			{
-				Slave:                    2,
-				FunctionCode:             2,
-				Address:                  800,
-				NumberOfCoilsOrRegisters: 1,
-				Expression:               `{"state": not coils[0],"message":"The fuel level is too high"}`,
-				Path:                     "notifications.tanks.fuel.portAft",
-			},
-			{
-				Slave:                    2,
-				FunctionCode:             2,
-				Address:                  801,
-				NumberOfCoilsOrRegisters: 1,
-				Expression:               `{"state": not coils[0],"message":"The fuel level is too low"}`,
-				Path:                     "notifications.tanks.fuel.portAft",
-			},
-			{
-				Slave:                    2,
-				FunctionCode:             2,
-				Address:                  802,
-				NumberOfCoilsOrRegisters: 1,
-				Expression:               `{"state": not coils[0],"message":"The fuel level is too high"}`,
-				Path:                     "notifications.tanks.fuel.starboardAft",
-			},
-			{
-				Slave:                    2,
-				FunctionCode:             2,
-				Address:                  803,
-				NumberOfCoilsOrRegisters: 1,
-				Expression:               `{"state": not coils[0],"message":"The fuel level is too low"}`,
-				Path:                     "notifications.tanks.fuel.starboardAft",
-			},
-			{
-				Slave:                    2,
-				FunctionCode:             2,
-				Address:                  804,
-				NumberOfCoilsOrRegisters: 1,
-				Expression:               `{"state": not coils[0],"message":"The bilge level is too high"}`,
-				Path:                     "notifications.bilge.engineRoomForward",
-			},
-			{
-				Slave:                    2,
-				FunctionCode:             2,
-				Address:                  805,
-				NumberOfCoilsOrRegisters: 1,
-				Expression:               `{"state": not coils[0],"message":"The bilge level is too high"}`,
-				Path:                     "notifications.bilge.hold1",
-			},
-			{
-				Slave:                    2,
-				FunctionCode:             2,
-				Address:                  806,
-				NumberOfCoilsOrRegisters: 1,
-				Expression:               `{"state": not coils[0],"message":"The bilge level is too high"}`,
-				Path:                     "notifications.bilge.hold2",
-			},
-			{
-				Slave:                    2,
-				FunctionCode:             2,
-				Address:                  807,
-				NumberOfCoilsOrRegisters: 1,
-				Expression:               `{"state": not coils[0],"message":"The bilge level is too high"}`,
-				Path:                     "notifications.bilge.engineRoomAft",
-			},
-		},
+		config.NewRegisterMappingsConfig("modbus_test.yaml"),
 	)
 	now := time.Now()
 
@@ -289,7 +200,7 @@ var _ = Describe("DoMap Modbus", func() {
 		Entry("With real data",
 			mapper,
 			func() *message.Raw {
-				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x02, 0x00, 0x02, 0x03, 0x20, 0x00, 0x08, 0xff, 0x00})
+				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{2, 0, 2, 3, 32, 0, 8, 255, 0})
 				m.Uuid = uuid.Nil
 				m.Timestamp = now
 				return m
@@ -378,7 +289,7 @@ var _ = Describe("DoMap Modbus", func() {
 				).WithTimestamp(
 					now,
 				).AddValue(
-					message.NewValue().WithPath("testingPath").WithUuid(uuid.Nil).WithValue(-1.9444444444444323e-08),
+					message.NewValue().WithPath("propulsion.mainEngine.fuel.rate").WithUuid(uuid.Nil).WithValue(-1.9444444444444323e-08),
 				),
 			),
 			false,

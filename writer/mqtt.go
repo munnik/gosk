@@ -19,14 +19,14 @@ const (
 )
 
 type MqttWriter struct {
-	config     *config.MqttConfig
+	config     *config.MQTTConfig
 	mqttClient mqtt.Client
 	buffer     message.Buffer
 	timer      time.Timer
 	encoder    *zstd.Encoder
 }
 
-func NewMqttWriter(c *config.MqttConfig) *MqttWriter {
+func NewMqttWriter(c *config.MQTTConfig) *MqttWriter {
 	var encoder, _ = zstd.NewWriter(nil)
 	return &MqttWriter{
 		config:  c,

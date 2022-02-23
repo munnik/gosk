@@ -16,10 +16,10 @@ import (
 type CSVMapper struct {
 	config           config.MapperConfig
 	protocol         string
-	csvMappingConfig []config.CsvMappingConfig
+	csvMappingConfig []config.CSVMappingConfig
 }
 
-func NewCSVMapper(c config.MapperConfig, cmc []config.CsvMappingConfig) (*CSVMapper, error) {
+func NewCSVMapper(c config.MapperConfig, cmc []config.CSVMappingConfig) (*CSVMapper, error) {
 	return &CSVMapper{config: c, protocol: config.CSVType, csvMappingConfig: cmc}, nil
 }
 

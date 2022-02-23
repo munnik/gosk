@@ -37,13 +37,13 @@ var (
 		Use:   "write",
 		Short: "Write messages to a broker",
 		Long:  `Write messages to a broker`,
-		Run:   writeMqtt,
+		Run:   writeMQTT,
 	}
 	mqttReadCmd = &cobra.Command{
 		Use:   "read",
 		Short: "Read messages from a broker",
 		Long:  `Read messages from a broker`,
-		Run:   readMqtt,
+		Run:   readMQTT,
 	}
 	mqttBrokerURL string
 )
@@ -58,7 +58,7 @@ func init() {
 	mqttReadCmd.MarkFlagRequired("mqttBroker")
 }
 
-func writeMqtt(cmd *cobra.Command, args []string) {
+func writeMQTT(cmd *cobra.Command, args []string) {
 	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
@@ -67,13 +67,13 @@ func writeMqtt(cmd *cobra.Command, args []string) {
 			zap.String("Error", err.Error()),
 		)
 	}
-	c := config.NewMqttConfig(cfgFile)
+	c := config.NewMQTTConfig(cfgFile)
 	w := writer.NewMqttWriter(c)
 	w.WriteMapped(subscriber)
 }
 
-func readMqtt(cmd *cobra.Command, args []string) {
-	c := config.NewMqttConfig(cfgFile)
+func readMQTT(cmd *cobra.Command, args []string) {
+	c := config.NewMQTTConfig(cfgFile)
 	r := reader.NewMqttReader(c)
 	r.ReadMapped(nanomsg.NewPub(mqttBrokerURL))
 }

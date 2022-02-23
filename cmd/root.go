@@ -87,6 +87,7 @@ func getProtocol(cfgFilePath string) (string, error) {
 		config.NMEA0183Type: {},
 		config.ModbusType:   {},
 		config.CSVType:      {},
+		config.JSONType:     {},
 	}
 	for len(strippedPath) > 0 && strippedPath != "." {
 		if _, ok := supportedProtocols[path.Base(strippedPath)]; ok {

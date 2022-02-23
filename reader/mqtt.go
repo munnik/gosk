@@ -20,13 +20,13 @@ const (
 )
 
 type MqttReader struct {
-	config     *config.MqttConfig
+	config     *config.MQTTConfig
 	mqttClient mqtt.Client
 	publisher  mangos.Socket
 	decoder    *zstd.Decoder
 }
 
-func NewMqttReader(c *config.MqttConfig) *MqttReader {
+func NewMqttReader(c *config.MQTTConfig) *MqttReader {
 	var decoder, _ = zstd.NewReader(nil)
 	return &MqttReader{
 		config:  c,

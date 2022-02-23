@@ -19,6 +19,8 @@ const (
 	ModbusType = "modbus"
 	// CSVType is used to identify the data as comma seperated values data
 	CSVType = "csv"
+	// JSONType is used to identify the data as json messages
+	JSONType = "json"
 
 	ParityMap string = "NOE" // None, Odd, Even
 )
@@ -162,15 +164,15 @@ func NewRegisterMappingsConfig(configFilePath string) []RegisterMappingConfig {
 	return result
 }
 
-type CsvMappingConfig struct {
+type CSVMappingConfig struct {
 	BeginsWith         string `mapstructure:"beginsWith"`
 	Expression         string `mapstructure:"expression"`
 	CompiledExpression *vm.Program
 	Path               string `mapstructure:"path"`
 }
 
-func NewCsvMappingConfig(configFilePath string) []CsvMappingConfig {
-	var result []CsvMappingConfig
+func NewCSVMappingConfig(configFilePath string) []CSVMappingConfig {
+	var result []CSVMappingConfig
 	viper.SetConfigFile(configFilePath)
 	viper.ReadInConfig()
 
@@ -201,7 +203,7 @@ func NewCsvMappingConfig(configFilePath string) []CsvMappingConfig {
 	return result
 }
 
-type MqttConfig struct {
+type MQTTConfig struct {
 	URLString string `mapstructure:"url"`
 	ClientId  string `mapstructure:"client_id"`
 	Username  string `mapstructure:"username"`
@@ -210,8 +212,8 @@ type MqttConfig struct {
 	Interval  int    `mapstructure:"interval"`
 }
 
-func NewMqttConfig(configFilePath string) *MqttConfig {
-	result := MqttConfig{}
+func NewMQTTConfig(configFilePath string) *MQTTConfig {
+	result := MQTTConfig{}
 	viper.SetConfigFile(configFilePath)
 	viper.ReadInConfig()
 

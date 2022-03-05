@@ -2,6 +2,7 @@ package writer
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -16,6 +17,7 @@ import (
 const (
 	disconnectWait = 5000 // time to wait before disconnect in ms
 	keepAlive      = 30 * time.Second
+	writeTopic     = "vessels/urn:mrn:imo:mmsi:%s"
 )
 
 type MqttWriter struct {
@@ -38,7 +40,6 @@ func NewMqttWriter(c *config.MQTTConfig) *MqttWriter {
 func (w *MqttWriter) createClientOptions() *mqtt.ClientOptions {
 	o := mqtt.NewClientOptions()
 	o.AddBroker(w.config.URLString)
-	o.SetClientID(w.config.ClientId)
 	o.SetCleanSession(true) // TODO: verify
 	o.SetUsername(w.config.Username)
 	o.SetPassword(w.config.Password)
@@ -109,7 +110,7 @@ func (w *MqttWriter) sendMqtt() error {
 				zap.ByteString("Bytes", bytes),
 			)
 		}
-	}(w.config.Context, bytes)
+	}(fmt.Sprintf(writeTopic, w.config.Username), bytes)
 
 	return nil
 }

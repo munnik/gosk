@@ -243,10 +243,8 @@ func NewJSONMappingConfig(configFilePath string) []JSONMappingConfig {
 
 type MQTTConfig struct {
 	URLString string `mapstructure:"url"`
-	ClientId  string `mapstructure:"client_id"`
 	Username  string `mapstructure:"username"`
 	Password  string `mapstructure:"password"`
-	Context   string `mapstructure:"context"`
 	Interval  int    `mapstructure:"interval"`
 }
 

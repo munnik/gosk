@@ -12,12 +12,12 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/jackc/pgx/v4 v4.15.0
-	github.com/klauspost/compress v1.14.4
+	github.com/klauspost/compress v1.15.0
 	github.com/mitchellh/mapstructure v1.4.3
 	github.com/munnik/go-nmea v1.5.0
 	github.com/onsi/ginkgo/v2 v2.1.2
 	github.com/onsi/gomega v1.18.1
-	github.com/simonvetter/modbus v1.4.0
+	github.com/simonvetter/modbus v1.5.0
 	github.com/spf13/cobra v1.3.0
 	github.com/spf13/viper v1.10.1
 	go.nanomsg.org/mangos/v3 v3.3.0
@@ -27,7 +27,7 @@ require (
 require (
 	github.com/BertoldVdb/go-ais v0.1.0 // indirect
 	github.com/Microsoft/go-winio v0.5.2 // indirect
-	github.com/adrianmo/go-nmea v1.6.0 // indirect
+	github.com/adrianmo/go-nmea v1.7.0 // indirect
 	github.com/fsnotify/fsnotify v1.5.1 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
@@ -40,8 +40,9 @@ require (
 	github.com/jackc/pgproto3/v2 v2.2.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20200714003250-2b9c44734f2b // indirect
 	github.com/jackc/pgtype v1.10.0 // indirect
+	github.com/jackc/puddle v1.2.1 // indirect
 	github.com/lib/pq v1.10.4 // indirect
-	github.com/magiconair/properties v1.8.5 // indirect
+	github.com/magiconair/properties v1.8.6 // indirect
 	github.com/martinlindhe/unit v0.0.0-20210313160520-19b60e03648d // indirect
 	github.com/onsi/ginkgo v1.16.5 // indirect
 	github.com/pelletier/go-toml v1.9.4 // indirect
@@ -51,10 +52,10 @@ require (
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/subosito/gotenv v1.2.0 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
-	go.uber.org/multierr v1.7.0 // indirect
+	go.uber.org/multierr v1.8.0 // indirect
 	golang.org/x/crypto v0.0.0-20220214200702-86341886e292 // indirect
-	golang.org/x/net v0.0.0-20220127200216-cd36cc0744dd // indirect
-	golang.org/x/sys v0.0.0-20220222172238-00053529121e // indirect
+	golang.org/x/net v0.0.0-20220225172249-27dd8689420f // indirect
+	golang.org/x/sys v0.0.0-20220227234510-4e6760a101f9 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	gopkg.in/ini.v1 v1.66.4 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect

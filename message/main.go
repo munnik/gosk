@@ -212,19 +212,6 @@ func (v *Value) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	if f, ok := j["value"].(int64); ok {
-		v.Value = f
-		return nil
-	}
-	if f, ok := j["value"].(float64); ok {
-		v.Value = f
-		return nil
-	}
-	if s, ok = j["value"].(string); ok {
-		v.Value = s
-		return nil
-	}
-
 	if decoded, err := Decode(j["value"]); err == nil {
 		v.Value = decoded
 		return nil
@@ -289,6 +276,16 @@ func (b Buffer) MarshalJSON() ([]byte, error) {
 }
 
 func Decode(input interface{}) (interface{}, error) {
+	if i, ok := input.(int64); ok {
+		return i, nil
+	}
+	if f, ok := input.(float64); ok {
+		return f, nil
+	}
+	if s, ok := input.(string); ok {
+		return s, nil
+	}
+
 	var metadata mapstructure.Metadata
 	p := Position{}
 	metadata = mapstructure.Metadata{}

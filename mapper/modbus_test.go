@@ -12,7 +12,8 @@ import (
 )
 
 var _ = Describe("Helper functions", func() {
-	DescribeTable("RegistersToCoils",
+	DescribeTable(
+		"RegistersToCoils",
 		func(input []uint16, expected []bool) {
 			result := RegistersToCoils(input)
 			Expect(result).To(Equal(expected))
@@ -115,7 +116,8 @@ var _ = Describe("DoMap Modbus", func() {
 	)
 	now := time.Now()
 
-	DescribeTable("Coils",
+	DescribeTable(
+		"Coils",
 		func(m *ModbusMapper, input *message.Raw, expected *message.Mapped, expectError bool) {
 			result, err := m.DoMap(input)
 			if expectError {
@@ -231,7 +233,8 @@ var _ = Describe("DoMap Modbus", func() {
 			false,
 		),
 	)
-	DescribeTable("Holding registers",
+	DescribeTable(
+		"Holding registers",
 		func(m *ModbusMapper, input *message.Raw, expected *message.Mapped, expectError bool) {
 			result, err := m.DoMap(input)
 			if expectError {

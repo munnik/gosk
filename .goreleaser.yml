@@ -24,7 +24,12 @@ nfpms:
     license: "Apache 2.0"
     formats:
       - "apk"
-    dependencies:
-      - "postgresql"
-      - "postgresql-timescaledb-tsl"
+      - "deb"
+    overrides:
+      apk:
+        dependencies:
+          - "postgresql14-client"
+      deb:
+        dependencies:
+          - "postgresql-client"
     bindir: "/usr/bin"

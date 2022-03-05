@@ -17,6 +17,7 @@ import (
 const (
 	disconnectWait = 5000 // time to wait before disconnect in ms
 	keepAlive      = 30 * time.Second
+	readTopic      = "vessels/#"
 )
 
 type MqttReader struct {
@@ -37,7 +38,6 @@ func NewMqttReader(c *config.MQTTConfig) *MqttReader {
 func (r *MqttReader) createClientOptions() *mqtt.ClientOptions {
 	o := mqtt.NewClientOptions()
 	o.AddBroker(r.config.URLString)
-	o.SetClientID(r.config.ClientId)
 	o.SetCleanSession(true) // TODO: verify
 	o.SetUsername(r.config.Username)
 	o.SetPassword(r.config.Password)
@@ -60,7 +60,7 @@ func (r *MqttReader) ReadMapped(publisher mangos.Socket) {
 	}
 	defer r.mqttClient.Disconnect(disconnectWait)
 
-	if token := r.mqttClient.Subscribe(r.config.Context, 1, nil); token.Wait() && token.Error() != nil {
+	if token := r.mqttClient.Subscribe(readTopic, 1, nil); token.Wait() && token.Error() != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the MQTT topic",
 			zap.String("Error", token.Error().Error()),

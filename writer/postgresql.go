@@ -83,7 +83,7 @@ func (w *PostgresqlWriter) WriteRaw(subscriber mangos.Socket) {
 			)
 			continue
 		}
-		w.WriteSingleRawEntry(raw)
+		go w.WriteSingleRawEntry(raw)
 	}
 }
 
@@ -133,7 +133,7 @@ func (w *PostgresqlWriter) WriteMapped(subscriber mangos.Socket) {
 			)
 			continue
 		}
-		w.WriteSingleMappedEntry(mapped)
+		go w.WriteSingleMappedEntry(mapped)
 	}
 }
 

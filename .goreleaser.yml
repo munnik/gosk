@@ -2,7 +2,6 @@
 before:
   hooks:
     - go mod tidy
-    - go generate ./...
 builds:
   - env:
       - CGO_ENABLED=0
@@ -31,5 +30,5 @@ nfpms:
           - "postgresql14-client"
       deb:
         dependencies:
-          - "postgresql-client"
+          - "postgresql-client-14"
     bindir: "/usr/bin"

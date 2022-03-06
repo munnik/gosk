@@ -45,7 +45,6 @@ var (
 		Long:  `Read messages from a broker`,
 		Run:   readMQTT,
 	}
-	mqttBrokerURL string
 )
 
 func init() {
@@ -54,8 +53,8 @@ func init() {
 	mqttCmd.AddCommand(mqttReadCmd)
 	mqttWriteCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
 	mqttWriteCmd.MarkFlagRequired("subscribeURL")
-	mqttReadCmd.Flags().StringVarP(&mqttBrokerURL, "mqttBroker", "u", "", "MQTT broker URL, the URL is used to send the data to.")
-	mqttReadCmd.MarkFlagRequired("mqttBroker")
+	mqttReadCmd.Flags().StringVarP(&publishURL, "publishURL", "u", "", "Nanomsg URL, the URL is used to publish the data on. It listens for connections.")
+	mqttReadCmd.MarkFlagRequired("publishURL")
 }
 
 func writeMQTT(cmd *cobra.Command, args []string) {
@@ -75,5 +74,5 @@ func writeMQTT(cmd *cobra.Command, args []string) {
 func readMQTT(cmd *cobra.Command, args []string) {
 	c := config.NewMQTTConfig(cfgFile)
 	r := reader.NewMqttReader(c)
-	r.ReadMapped(nanomsg.NewPub(mqttBrokerURL))
+	r.ReadMapped(nanomsg.NewPub(publishURL))
 }

@@ -5,10 +5,13 @@ import (
 	"embed"
 	"encoding/json"
 	"strconv"
+	"sync"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
+	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4/log/zapadapter"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
@@ -28,6 +31,7 @@ const (
 type PostgresqlWriter struct {
 	url        string
 	connection *pgxpool.Pool
+	mu         sync.Mutex
 }
 
 func NewPostgresqlWriter(c *config.PostgresqlConfig) *PostgresqlWriter {
@@ -35,11 +39,36 @@ func NewPostgresqlWriter(c *config.PostgresqlConfig) *PostgresqlWriter {
 }
 
 func (w *PostgresqlWriter) GetConnection() *pgxpool.Pool {
+	// check if a connection exist and is pingable, return the connection on success
 	if w.connection != nil {
-		return w.connection
+		if err := w.connection.Ping(context.Background()); err == nil {
+			return w.connection
+		}
 	}
 
-	conn, err := pgxpool.Connect(context.Background(), w.url)
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	// check again but now with lock to make sure the connection is not reestablished before acquiring the lock
+	if w.connection != nil {
+		if err := w.connection.Ping(context.Background()); err == nil {
+			return w.connection
+		}
+	}
+
+	conf, err := pgxpool.ParseConfig(w.url)
+	if err != nil {
+		logger.GetLogger().Fatal(
+			"Could not configure the the database connection",
+			zap.String("URL", w.url),
+			zap.String("Error", err.Error()),
+		)
+		return nil
+	}
+	conf.LazyConnect = true
+	conf.ConnConfig.Logger = zapadapter.NewLogger(logger.GetLogger())
+	conf.ConnConfig.LogLevel = pgx.LogLevelWarn
+
+	conn, err := pgxpool.ConnectConfig(context.Background(), conf)
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not connect to the database",
@@ -60,9 +89,6 @@ func (w *PostgresqlWriter) WriteRaw(subscriber mangos.Socket) {
 		)
 		return
 	}
-
-	conn := w.GetConnection()
-	defer conn.Close()
 
 	raw := &message.Raw{}
 
@@ -88,7 +114,7 @@ func (w *PostgresqlWriter) WriteRaw(subscriber mangos.Socket) {
 }
 
 func (w *PostgresqlWriter) WriteSingleRawEntry(raw *message.Raw) {
-	if _, err := w.GetConnection().Exec(context.Background(), rawInsertQuery, raw.Timestamp, raw.Collector, raw.Value, raw.Uuid, raw.Type); err != nil {
+	for _, err := w.GetConnection().Exec(context.Background(), rawInsertQuery, raw.Timestamp, raw.Collector, raw.Value, raw.Uuid, raw.Type); err != nil; {
 		logger.GetLogger().Warn(
 			"Error on inserting the received data in the database",
 			zap.String("Error", err.Error()),
@@ -110,9 +136,6 @@ func (w *PostgresqlWriter) WriteMapped(subscriber mangos.Socket) {
 		)
 		return
 	}
-
-	conn := w.GetConnection()
-	defer conn.Close()
 
 	mapped := &message.Mapped{}
 
@@ -143,7 +166,7 @@ func (w *PostgresqlWriter) WriteSingleMappedEntry(mapped *message.Mapped) {
 			if str, ok := value.Value.(string); ok {
 				value.Value = strconv.Quote(str)
 			}
-			if _, err := w.GetConnection().Exec(context.Background(), mappedInsertQuery, update.Timestamp, update.Source.Label, update.Source.Type, mapped.Context, value.Path, value.Value, value.Uuid, mapped.Origin); err != nil {
+			for _, err := w.GetConnection().Exec(context.Background(), mappedInsertQuery, update.Timestamp, update.Source.Label, update.Source.Type, mapped.Context, value.Path, value.Value, value.Uuid, mapped.Origin); err != nil; {
 				logger.GetLogger().Warn(
 					"Error on inserting the received data in the database",
 					zap.String("Error", err.Error()),

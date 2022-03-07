@@ -16,7 +16,6 @@ import (
 var _ = Describe("Test database", Ordered, func() {
 	c := config.NewPostgresqlConfig("postgresql_test.yaml")
 	w := NewPostgresqlWriter(c)
-	conn := w.GetConnection()
 
 	now := time.Now()
 
@@ -43,6 +42,15 @@ var _ = Describe("Test database", Ordered, func() {
 		})
 	})
 
+	Describe("Reconnect", func() {
+		Context("ping", func() {
+			w.GetConnection().Close()
+			err := w.GetConnection().Ping(context.Background())
+
+			Expect(err).ShouldNot(HaveOccurred())
+		})
+	})
+
 	DescribeTable(
 		"Write mapped",
 		func(input *message.Mapped, expected *message.Mapped) {
@@ -50,7 +58,7 @@ var _ = Describe("Test database", Ordered, func() {
 
 			mappedSelectQuery := `SELECT "time", "collector", "type", "context", "path", "value", "uuid", "origin" FROM "mapped_data" WHERE "uuid" = $1`
 			var written *message.Mapped
-			rows, err := conn.Query(context.Background(), mappedSelectQuery, input.Updates[0].Values[0].Uuid)
+			rows, err := w.GetConnection().Query(context.Background(), mappedSelectQuery, input.Updates[0].Values[0].Uuid)
 			Expect(err).ShouldNot(HaveOccurred())
 			defer rows.Close()
 			rowCount := 0

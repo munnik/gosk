@@ -117,8 +117,8 @@ type ModbusClient struct {
 
 func (m *ModbusClient) close() {
 	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.realClient.Close()
-	m.mu.Unlock()
 }
 
 func (m *ModbusClient) Read(rgc config.RegisterGroupConfig) ([]byte, error) {

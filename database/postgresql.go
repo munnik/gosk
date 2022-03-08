@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"embed"
+	"fmt"
 	"strconv"
 	"sync"
 
@@ -129,8 +130,8 @@ func (db *PostgresqlDatabase) WriteMapped(mapped *message.Mapped) {
 	}
 }
 
-func (db *PostgresqlDatabase) ReadMapped(where WhereClause) ([]message.Mapped, error) {
-	db.GetConnection().Query(context.Background(), mappedSelectQuery+" "+where.String(), where.Arguments()...)
+func (db *PostgresqlDatabase) ReadMapped(where string, arguments ...interface{}) ([]message.Mapped, error) {
+	db.GetConnection().Query(context.Background(), fmt.Sprintf("%s %s", mappedSelectQuery, where), arguments...)
 	return make([]message.Mapped, 0), nil
 }
 

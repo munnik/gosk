@@ -44,17 +44,18 @@ var _ = Describe("Test database", Ordered, func() {
 		Expect(err).ShouldNot(HaveOccurred())
 	})
 
-	Describe("Reconnect", func() {
-		Context("ping", func() {
-			db.GetConnection().Close()
-			err := db.GetConnection().Ping(context.Background())
+	Describe("Reconnect",
+		func() {
+			Context("ping", func() {
+				db.GetConnection().Close()
+				err := db.GetConnection().Ping(context.Background())
 
-			Expect(err).ShouldNot(HaveOccurred())
-		})
-	})
+				Expect(err).ShouldNot(HaveOccurred())
+			})
+		},
+	)
 
-	DescribeTable(
-		"Write mapped",
+	DescribeTable("Write mapped",
 		func(input *message.Mapped, expected *message.Mapped) {
 			db.WriteMapped(input)
 

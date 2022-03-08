@@ -1,4 +1,4 @@
-package writer_test
+package database_test
 
 import (
 	"context"
@@ -7,15 +7,15 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/munnik/gosk/config"
+	. "github.com/munnik/gosk/database"
 	"github.com/munnik/gosk/message"
-	. "github.com/munnik/gosk/writer"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("Test database", Ordered, func() {
 	c := config.NewPostgresqlConfig("postgresql_test.yaml")
-	w := NewPostgresqlWriter(c)
+	db := NewPostgresqlDatabase(c)
 
 	now := time.Now()
 
@@ -34,18 +34,20 @@ var _ = Describe("Test database", Ordered, func() {
 		return message.NewMapped().WithOrigin("testingOrigin").WithContext("testingContext").AddUpdate(u)
 	}()
 
-	Describe("Prepare", func() {
-		Context("execute", func() {
-			err := w.UpgradeDatabase()
+	BeforeEach(func() {
+		err := db.UpgradeDatabase()
+		Expect(err).ShouldNot(HaveOccurred())
+	})
 
-			Expect(err).ShouldNot(HaveOccurred())
-		})
+	AfterEach(func() {
+		err := db.DowngradeDatabase()
+		Expect(err).ShouldNot(HaveOccurred())
 	})
 
 	Describe("Reconnect", func() {
 		Context("ping", func() {
-			w.GetConnection().Close()
-			err := w.GetConnection().Ping(context.Background())
+			db.GetConnection().Close()
+			err := db.GetConnection().Ping(context.Background())
 
 			Expect(err).ShouldNot(HaveOccurred())
 		})
@@ -54,11 +56,11 @@ var _ = Describe("Test database", Ordered, func() {
 	DescribeTable(
 		"Write mapped",
 		func(input *message.Mapped, expected *message.Mapped) {
-			w.WriteSingleMappedEntry(input)
+			db.WriteMapped(input)
 
 			mappedSelectQuery := `SELECT "time", "collector", "type", "context", "path", "value", "uuid", "origin" FROM "mapped_data" WHERE "uuid" = $1`
 			var written *message.Mapped
-			rows, err := w.GetConnection().Query(context.Background(), mappedSelectQuery, input.Updates[0].Values[0].Uuid)
+			rows, err := db.GetConnection().Query(context.Background(), mappedSelectQuery, input.Updates[0].Values[0].Uuid)
 			Expect(err).ShouldNot(HaveOccurred())
 			defer rows.Close()
 			rowCount := 0
@@ -96,12 +98,4 @@ var _ = Describe("Test database", Ordered, func() {
 			mappedStringValue,
 		),
 	)
-
-	Describe("Cleanup", func() {
-		Context("execute", func() {
-			err := w.UpgradeDatabase()
-
-			Expect(err).ShouldNot(HaveOccurred())
-		})
-	})
 })

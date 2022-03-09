@@ -3,6 +3,7 @@ module github.com/munnik/gosk
 go 1.17
 
 require (
+	github.com/Jeffail/gabs/v2 v2.6.1
 	github.com/allegro/bigcache/v3 v3.0.2
 	github.com/antonmedv/expr v1.9.0
 	github.com/eclipse/paho.mqtt.golang v1.3.5

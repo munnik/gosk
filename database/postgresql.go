@@ -20,9 +20,9 @@ import (
 )
 
 const (
-	rawInsertQuery    = `INSERT INTO "raw_data" ("time", "collector", "value", "uuid", "type") VALUES ($1, $2, $3, $4, $5);`
-	mappedInsertQuery = `INSERT INTO "mapped_data" ("time", "collector", "type", "context", "path", "value", "uuid", "origin") VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`
-	mappedSelectQuery = `SELECT "time", "collector", "type", "context", "path", "value", "uuid", "origin" FROM "mapped_data";`
+	rawInsertQuery    = `INSERT INTO "raw_data" ("time", "collector", "value", "uuid", "type") VALUES ($1, $2, $3, $4, $5)`
+	mappedInsertQuery = `INSERT INTO "mapped_data" ("time", "collector", "type", "context", "path", "value", "uuid", "origin") VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+	mappedSelectQuery = `SELECT "time", "collector", "type", "context", "path", "value", "uuid", "origin" FROM "mapped_data"`
 )
 
 //go:embed migrations/*.sql
@@ -130,9 +130,39 @@ func (db *PostgresqlDatabase) WriteMapped(mapped *message.Mapped) {
 	}
 }
 
-func (db *PostgresqlDatabase) ReadMapped(where string, arguments ...interface{}) ([]message.Mapped, error) {
-	db.GetConnection().Query(context.Background(), fmt.Sprintf("%s %s", mappedSelectQuery, where), arguments...)
-	return make([]message.Mapped, 0), nil
+func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...interface{}) ([]message.Mapped, error) {
+	rows, err := db.GetConnection().Query(context.Background(), fmt.Sprintf("%s %s", mappedSelectQuery, appendToQuery), arguments...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make([]message.Mapped, 0)
+	var m *message.Mapped
+
+	for rows.Next() {
+		m = message.NewMapped().AddUpdate(message.NewUpdate().AddValue(message.NewValue()))
+		rows.Scan(
+			&m.Updates[0].Timestamp,
+			&m.Updates[0].Source.Label,
+			&m.Updates[0].Source.Type,
+			&m.Context,
+			&m.Updates[0].Values[0].Path,
+			&m.Updates[0].Values[0].Value,
+			&m.Updates[0].Values[0].Uuid,
+			&m.Origin,
+		)
+		if m.Updates[0].Values[0].Value, err = message.Decode(m.Updates[0].Values[0].Value); err != nil {
+			logger.GetLogger().Warn(
+				"Could not decode value",
+				zap.String("Error", err.Error()),
+				zap.Any("Value", m.Updates[0].Values[0].Value),
+			)
+		}
+		result = append(result, *m)
+	}
+
+	return result, nil
 }
 
 func (db *PostgresqlDatabase) UpgradeDatabase() error {

@@ -305,5 +305,5 @@ func Decode(input interface{}) (interface{}, error) {
 		return a, nil
 	}
 
-	return nil, fmt.Errorf("don't know how to decode %v", input)
+	return input, fmt.Errorf("don't know how to decode %v", input)
 }

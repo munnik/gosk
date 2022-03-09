@@ -1,7 +1,8 @@
 APP=gosk
+VERSION=$(shell git describe --always --dirty)
 
 build:
-	go build -o ${APP} .
+	go build -ldflags "-s -X main.version=${VERSION}" -o ${APP} .
 
 run:
 	go run -race main.go

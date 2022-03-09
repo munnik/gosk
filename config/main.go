@@ -53,17 +53,7 @@ func NewCollectorConfig(configFilePath string) *CollectorConfig {
 		StopBits:     1,
 		ParityString: "N",
 	}
-	viper.SetConfigFile(configFilePath)
-	viper.ReadInConfig()
-
-	err := viper.Unmarshal(&result)
-	if err != nil {
-		logger.GetLogger().Fatal(
-			"Unable to read the configuration",
-			zap.String("Config file", configFilePath),
-			zap.String("Error", err.Error()),
-		)
-	}
+	readConfigFile(&result, configFilePath)
 
 	result.URL, _ = url.Parse(result.URLString)
 	result.Parity = strings.Index(ParityMap, result.ParityString)
@@ -86,17 +76,7 @@ type RegisterGroupConfig struct {
 
 func NewRegisterGroupsConfig(configFilePath string) []RegisterGroupConfig {
 	var result []RegisterGroupConfig
-	viper.SetConfigFile(configFilePath)
-	viper.ReadInConfig()
-
-	err := viper.UnmarshalKey("registerGroups", &result)
-	if err != nil {
-		logger.GetLogger().Fatal(
-			"Unable to read the configuration",
-			zap.String("Config file", configFilePath),
-			zap.String("Error", err.Error()),
-		)
-	}
+	readConfigFile(&result, configFilePath, "registerGroups")
 
 	return result
 }
@@ -107,17 +87,7 @@ type MapperConfig struct {
 
 func NewMapperConfig(configFilePath string) MapperConfig {
 	result := MapperConfig{}
-	viper.SetConfigFile(configFilePath)
-	viper.ReadInConfig()
-
-	err := viper.Unmarshal(&result)
-	if err != nil {
-		logger.GetLogger().Fatal(
-			"Unable to read the configuration",
-			zap.String("Config file", configFilePath),
-			zap.String("Error", err.Error()),
-		)
-	}
+	readConfigFile(&result, configFilePath)
 
 	return result
 }
@@ -134,17 +104,7 @@ type ModbusMappingsConfig struct {
 
 func NewModbusMappingsConfig(configFilePath string) []ModbusMappingsConfig {
 	var result []ModbusMappingsConfig
-	viper.SetConfigFile(configFilePath)
-	viper.ReadInConfig()
-
-	err := viper.UnmarshalKey("mappings", &result)
-	if err != nil {
-		logger.GetLogger().Fatal(
-			"Unable to read the configuration",
-			zap.String("Config file", configFilePath),
-			zap.String("Error", err.Error()),
-		)
-	}
+	readConfigFile(&result, configFilePath, "mappings")
 
 	for _, rmc := range result {
 		if rmc.Path == "" {
@@ -173,17 +133,7 @@ type CSVMappingConfig struct {
 
 func NewCSVMappingConfig(configFilePath string) []CSVMappingConfig {
 	var result []CSVMappingConfig
-	viper.SetConfigFile(configFilePath)
-	viper.ReadInConfig()
-
-	err := viper.UnmarshalKey("mappings", &result)
-	if err != nil {
-		logger.GetLogger().Fatal(
-			"Unable to read the configuration",
-			zap.String("Config file", configFilePath),
-			zap.String("Error", err.Error()),
-		)
-	}
+	readConfigFile(&result, configFilePath, "mappings")
 
 	for _, cmc := range result {
 		if cmc.Path == "" {
@@ -211,17 +161,7 @@ type JSONMappingConfig struct {
 
 func NewJSONMappingConfig(configFilePath string) []JSONMappingConfig {
 	var result []JSONMappingConfig
-	viper.SetConfigFile(configFilePath)
-	viper.ReadInConfig()
-
-	err := viper.UnmarshalKey("mappings", &result)
-	if err != nil {
-		logger.GetLogger().Fatal(
-			"Unable to read the configuration",
-			zap.String("Config file", configFilePath),
-			zap.String("Error", err.Error()),
-		)
-	}
+	readConfigFile(&result, configFilePath, "mappings")
 
 	for _, jmc := range result {
 		if jmc.Path == "" {
@@ -250,17 +190,7 @@ type MQTTConfig struct {
 
 func NewMQTTConfig(configFilePath string) *MQTTConfig {
 	result := MQTTConfig{}
-	viper.SetConfigFile(configFilePath)
-	viper.ReadInConfig()
-
-	err := viper.Unmarshal(&result)
-	if err != nil {
-		logger.GetLogger().Fatal(
-			"Unable to read the configuration",
-			zap.String("Config file", configFilePath),
-			zap.String("Error", err.Error()),
-		)
-	}
+	readConfigFile(&result, configFilePath)
 
 	return &result
 }
@@ -277,10 +207,53 @@ type PostgresqlConfig struct {
 
 func NewPostgresqlConfig(configFilePath string) *PostgresqlConfig {
 	result := PostgresqlConfig{}
+	readConfigFile(&result, configFilePath)
+
+	return &result
+}
+
+type SignalKConfig struct {
+	URLString      string   `mapstructure:"url"`
+	URL            *url.URL `mapstructure:"_"`
+	Version        string   `mapstructure:"_"`
+	SelfContext    string   `mapstructure:"self_context"`
+	DatabaseConfig *PostgresqlConfig
+}
+
+func NewSignalKConfig(configFilePath string) *SignalKConfig {
+	result := SignalKConfig{Version: "undefined"}
+	readConfigFile(&result, configFilePath)
+	readConfigFile(&result.DatabaseConfig, configFilePath, "db")
+
+	result.URL, _ = url.Parse(result.URLString)
+
+	return &result
+}
+
+func (c *SignalKConfig) WithVersion(version string) *SignalKConfig {
+	c.Version = version
+	return c
+}
+
+func readConfigFile(cfg interface{}, configFilePath string, subKeys ...string) interface{} {
 	viper.SetConfigFile(configFilePath)
 	viper.ReadInConfig()
 
-	err := viper.Unmarshal(&result)
+	if len(subKeys) > 1 {
+		logger.GetLogger().Fatal(
+			"Unable to read the configuration, only one key is allowed",
+			zap.String("Config file", configFilePath),
+			zap.Strings("Keys", subKeys),
+		)
+		return nil
+	}
+
+	var err error
+	if len(subKeys) == 0 {
+		err = viper.Unmarshal(&cfg)
+	} else {
+		err = viper.UnmarshalKey(subKeys[0], &cfg)
+	}
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Unable to read the configuration",
@@ -289,5 +262,5 @@ func NewPostgresqlConfig(configFilePath string) *PostgresqlConfig {
 		)
 	}
 
-	return &result
+	return &cfg
 }

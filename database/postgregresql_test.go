@@ -81,9 +81,10 @@ var _ = Describe("Test database", Ordered, func() {
 					&written.Origin,
 				)
 			}
+			Expect(rowCount).To(Equal(1))
+
 			written.Updates[0].Values[0].Value, err = message.Decode(written.Updates[0].Values[0].Value)
 			Expect(err).ShouldNot(HaveOccurred())
-			Expect(rowCount).To(Equal(1))
 			writtenJSON, _ := json.Marshal(written)
 			expectedJSON, _ := json.Marshal(expected)
 			Expect(writtenJSON).To(Equal(expectedJSON))

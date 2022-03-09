@@ -32,6 +32,8 @@ var (
 	cfgFile      string
 	subscribeURL string
 	publishURL   string
+
+	version string
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -47,7 +49,9 @@ data can be published in different ways (e.g. HTTP or Websocket).`,
 
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
-func Execute() {
+func Execute(v string) {
+	version = v
+
 	if err := rootCmd.Execute(); err != nil {
 		logger.GetLogger().Fatal(
 			"Could not execute the Cobra root command",

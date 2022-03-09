@@ -25,27 +25,27 @@ import (
 )
 
 var (
-	signalKWsCmd = &cobra.Command{
+	signalKWSCmd = &cobra.Command{
 		Use:   "ws",
-		Short: "SignalK websocket",
-		Long:  `Starts a websocket that publishes SignalK deltas`,
-		Run:   serveSignalKWs,
+		Short: "SignalK WebSocket",
+		Long:  `Starts a WebSocket server that publishes SignalK delta models`,
+		Run:   serveSignalKWS,
 	}
 	websocketURL string
-	self         string
+	selfContext  string
 )
 
 func init() {
-	rootCmd.AddCommand(signalKWsCmd)
-	signalKWsCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
-	signalKWsCmd.MarkFlagRequired("subscribeURL")
-	signalKWsCmd.Flags().StringVarP(&websocketURL, "websocketURL", "w", "", "The URL to start the websocket on")
-	signalKWsCmd.MarkFlagRequired("websocketURL")
-	signalKWsCmd.Flags().StringVarP(&self, "self", "i", "", "The context self.")
-	signalKWsCmd.MarkFlagRequired("self")
+	rootCmd.AddCommand(signalKWSCmd)
+	signalKWSCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
+	signalKWSCmd.MarkFlagRequired("subscribeURL")
+	signalKWSCmd.Flags().StringVarP(&websocketURL, "websocketURL", "w", "", "The URL to start the websocket on")
+	signalKWSCmd.MarkFlagRequired("websocketURL")
+	signalKWSCmd.Flags().StringVarP(&selfContext, "self", "i", "", "The context self.")
+	signalKWSCmd.MarkFlagRequired("self")
 }
 
-func serveSignalKWs(cmd *cobra.Command, args []string) {
+func serveSignalKWS(cmd *cobra.Command, args []string) {
 	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
@@ -55,6 +55,6 @@ func serveSignalKWs(cmd *cobra.Command, args []string) {
 		)
 	}
 
-	w := writer.NewWebsocketWriter().WitSelf(self).WithURL(websocketURL)
+	w := writer.NewWebsocketWriter().WitSelf(selfContext).WithURL(websocketURL)
 	w.WriteMapped(subscriber)
 }

@@ -25,6 +25,8 @@ import (
 	"go.uber.org/zap"
 )
 
+var version = "undefined" // overwritten by Makefile
+
 func main() {
 	signalChannel := make(chan os.Signal, 1)
 	signal.Notify(signalChannel)
@@ -42,5 +44,5 @@ func main() {
 		}
 	}()
 
-	cmd.Execute()
+	cmd.Execute(version)
 }

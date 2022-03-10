@@ -45,35 +45,35 @@ func (c *BigCache) WriteRaw(raw *message.Raw, returnChanges bool) []*message.Raw
 	return []*message.Raw{}
 }
 
-func (c *BigCache) WriteMapped(mapped *message.Mapped, returnChanges bool) []message.Mapped {
+func (c *BigCache) WriteMapped(mappedList ...message.Mapped) []message.Mapped {
 	changes := make([]message.Mapped, 0)
-	for _, u := range mapped.Updates {
-		for _, v := range u.Values {
-			singleValueUpdate := message.NewUpdate().WithSource(&u.Source).WithTimestamp(u.Timestamp)
-			singleValueUpdate.AddValue(&v)
-			singleUpdateMapped := message.NewMapped().WithContext(mapped.Context).WithOrigin(mapped.Origin)
-			singleUpdateMapped.AddUpdate(singleValueUpdate)
+	for _, mapped := range mappedList {
+		for _, u := range mapped.Updates {
+			for _, v := range u.Values {
+				singleValueUpdate := message.NewUpdate().WithSource(&u.Source).WithTimestamp(u.Timestamp)
+				singleValueUpdate.AddValue(&v)
+				singleUpdateMapped := message.NewMapped().WithContext(mapped.Context).WithOrigin(mapped.Origin)
+				singleUpdateMapped.AddUpdate(singleValueUpdate)
 
-			bytes, err := json.Marshal(singleUpdateMapped)
-			if err != nil {
-				logger.GetLogger().Warn(
-					"Could not marshal the value",
-					zap.String("Error", err.Error()),
-				)
-				continue
-			}
-			if returnChanges {
+				bytes, err := json.Marshal(singleUpdateMapped)
+				if err != nil {
+					logger.GetLogger().Warn(
+						"Could not marshal the value",
+						zap.String("Error", err.Error()),
+					)
+					continue
+				}
 				if originalBytes, err := c.mappedCache.Get(createKey(mapped.Origin, mapped.Context, v.Path)); err == nil {
 					var original *message.Mapped
 					if err := json.Unmarshal(originalBytes, original); err == nil {
-						if !original.Equals(*singleUpdateMapped) {
-							changes = append(changes, *singleUpdateMapped)
+						if original.Equals(*singleUpdateMapped) || singleValueUpdate.Timestamp.Before(original.Updates[0].Timestamp) {
+							continue
 						}
 					}
-
 				}
+				changes = append(changes, *singleUpdateMapped)
+				c.mappedCache.Set(createKey(mapped.Origin, mapped.Context, v.Path), bytes)
 			}
-			c.mappedCache.Set(createKey(mapped.Origin, mapped.Context, v.Path), bytes)
 		}
 	}
 	return changes

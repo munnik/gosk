@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/Jeffail/gabs/v2"
 	"github.com/munnik/gosk/config"
@@ -33,6 +34,7 @@ type HTTPWriter struct {
 	config *config.SignalKConfig
 	db     *database.PostgresqlDatabase
 	bc     *database.BigCache
+	wg     *sync.WaitGroup
 }
 
 func NewHTTPWriter(c *config.SignalKConfig) *HTTPWriter {
@@ -44,6 +46,10 @@ func NewHTTPWriter(c *config.SignalKConfig) *HTTPWriter {
 }
 
 func (a *HTTPWriter) WriteMapped(subscriber mangos.Socket) {
+	// fill the cache with data from the database
+	a.wg.Add(1)
+	go a.readFromDatabase()
+
 	// handle route using handler function
 	http.HandleFunc("/signalk", a.serveEndpoints)
 	http.HandleFunc("/signalk/v3/api/", a.serverV3API)
@@ -64,30 +70,10 @@ func (a *HTTPWriter) serveEndpoints(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *HTTPWriter) serverV3API(w http.ResponseWriter, r *http.Request) {
-	appendToQuery := `
-		INNER JOIN 
-			(
-				SELECT  
-					"context" AS "max_context", 
-					"path" AS "max_path",
-					MAX("time") AS "max_time"
-				FROM 
-					"mapped_data" 
-				GROUP BY 
-					1, 2
-			) "max" 
-		ON 
-			"time" = "max_time" AND 
-			"context" = "max_context" AND 
-			"path" = "max_path"
-		;
-	`
-	mapped, err := a.db.ReadMapped(appendToQuery)
+	a.wg.Wait()
+
+	mapped, err := a.bc.ReadMapped("")
 	if err != nil {
-		logger.GetLogger().Warn(
-			"Could not retrieve all mapped data",
-			zap.String("Error", err.Error()),
-		)
 		w.WriteHeader(400)
 		fmt.Printf("Error occurred while retrieving data, please see the server logs for more details")
 		return
@@ -114,4 +100,35 @@ func (a *HTTPWriter) serverV3API(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, jsonObj.String())
+}
+
+func (a *HTTPWriter) readFromDatabase() {
+	appendToQuery := `
+		INNER JOIN 
+			(
+				SELECT  
+					"context" AS "max_context", 
+					"path" AS "max_path",
+					MAX("time") AS "max_time"
+				FROM 
+					"mapped_data" 
+				GROUP BY 
+					1, 2
+			) "max" 
+		ON 
+			"time" = "max_time" AND 
+			"context" = "max_context" AND 
+			"path" = "max_path"
+		;
+	`
+	mapped, err := a.db.ReadMapped(appendToQuery)
+	if err != nil {
+		logger.GetLogger().Warn(
+			"Could not retrieve all mapped data from database",
+			zap.String("Error", err.Error()),
+		)
+		return
+	}
+	a.bc.WriteMapped(mapped...)
+	a.wg.Done()
 }

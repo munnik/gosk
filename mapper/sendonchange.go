@@ -28,7 +28,7 @@ func NewSendOnChangeMapper(c config.CacheConfig) *SendOnChangeMapper {
 func (m *SendOnChangeMapper) Map(subscriber mangos.Socket, publisher mangos.Socket) {
 	go m.heartBeat(publisher)
 
-	mapped := &message.Mapped{}
+	mapped := message.Mapped{}
 	for {
 		received, err := subscriber.Recv()
 		if err != nil {
@@ -38,7 +38,7 @@ func (m *SendOnChangeMapper) Map(subscriber mangos.Socket, publisher mangos.Sock
 			)
 			continue
 		}
-		if err := json.Unmarshal(received, mapped); err != nil {
+		if err := json.Unmarshal(received, &mapped); err != nil {
 			logger.GetLogger().Warn(
 				"Could not unmarshal the received data",
 				zap.ByteString("Received", received),
@@ -46,7 +46,7 @@ func (m *SendOnChangeMapper) Map(subscriber mangos.Socket, publisher mangos.Sock
 			)
 			continue
 		}
-		for _, changed := range m.bc.WriteMapped(mapped, true) {
+		for _, changed := range m.bc.WriteMapped(mapped) {
 			bytes, err := json.Marshal(changed)
 			if err != nil {
 				logger.GetLogger().Warn(

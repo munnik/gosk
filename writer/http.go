@@ -1,4 +1,4 @@
-package api
+package writer
 
 import (
 	"fmt"
@@ -9,6 +9,7 @@ import (
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/database"
 	"github.com/munnik/gosk/logger"
+	"go.nanomsg.org/mangos/v3"
 	"go.uber.org/zap"
 )
 
@@ -28,16 +29,21 @@ const (
 }`
 )
 
-type SignalKAPI struct {
+type HTTPWriter struct {
 	config *config.SignalKConfig
 	db     *database.PostgresqlDatabase
+	bc     *database.BigCache
 }
 
-func NewSignalKAPI(c *config.SignalKConfig) *SignalKAPI {
-	return &SignalKAPI{config: c, db: database.NewPostgresqlDatabase(c.DatabaseConfig)}
+func NewHTTPWriter(c *config.SignalKConfig) *HTTPWriter {
+	return &HTTPWriter{
+		config: c,
+		db:     database.NewPostgresqlDatabase(c.PostgresqlConfig),
+		bc:     database.NewBigCache(c.BigCacheConfig),
+	}
 }
 
-func (a *SignalKAPI) ServeSignalK() {
+func (a *HTTPWriter) WriteMapped(subscriber mangos.Socket) {
 	// handle route using handler function
 	http.HandleFunc("/signalk", a.serveEndpoints)
 	http.HandleFunc("/signalk/v3/api/", a.serverV3API)
@@ -53,11 +59,11 @@ func (a *SignalKAPI) ServeSignalK() {
 	}
 }
 
-func (a *SignalKAPI) serveEndpoints(w http.ResponseWriter, r *http.Request) {
+func (a *HTTPWriter) serveEndpoints(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, endpoints, a.config.URL.Hostname(), a.config.URL.Port(), a.config.URL.Hostname(), a.config.URL.Port(), a.config.Version)
 }
 
-func (a *SignalKAPI) serverV3API(w http.ResponseWriter, r *http.Request) {
+func (a *HTTPWriter) serverV3API(w http.ResponseWriter, r *http.Request) {
 	appendToQuery := `
 		INNER JOIN 
 			(

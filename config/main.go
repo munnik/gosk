@@ -196,9 +196,16 @@ func NewMQTTConfig(configFilePath string) *MQTTConfig {
 }
 
 type CacheConfig struct {
-	LifeWindow       int    `mapstructure:"lifeWindow"`       // time after which entry can be evicted, value in seconds
-	HardMaxCacheSize int    `mapstructure:"hardMaxCacheSize"` // cache will not allocate more memory than this limit, value in MB
-	Heartbeat        uint64 `mapstructure:"heartbeat"`        // every heartbeat all cached values that are in the cache for at least one heartbeat will be send again, value in seconds
+	Heartbeat      uint64          `mapstructure:"heartbeat"` // every heartbeat all cached values that are in the cache for at least one heartbeat will be send again, value in seconds
+	BigCacheConfig *BigCacheConfig `mapstructure:"_"`
+}
+
+func NewCacheConfig(configFilePath string) *CacheConfig {
+	result := CacheConfig{}
+	readConfigFile(&result, configFilePath)
+	readConfigFile(&result.BigCacheConfig, configFilePath, "cache")
+
+	return &result
 }
 
 type PostgresqlConfig struct {
@@ -212,18 +219,32 @@ func NewPostgresqlConfig(configFilePath string) *PostgresqlConfig {
 	return &result
 }
 
+type BigCacheConfig struct {
+	LifeWindow       int `mapstructure:"lifeWindow"`       // time after which entry can be evicted, value in seconds
+	HardMaxCacheSize int `mapstructure:"hardMaxCacheSize"` // cache will not allocate more memory than this limit, value in MB
+}
+
+func NewBigCacheConfig(configFilePath string) *BigCacheConfig {
+	result := BigCacheConfig{}
+	readConfigFile(&result, configFilePath)
+
+	return &result
+}
+
 type SignalKConfig struct {
-	URLString      string   `mapstructure:"url"`
-	URL            *url.URL `mapstructure:"_"`
-	Version        string   `mapstructure:"_"`
-	SelfContext    string   `mapstructure:"self_context"`
-	DatabaseConfig *PostgresqlConfig
+	URLString        string            `mapstructure:"url"`
+	URL              *url.URL          `mapstructure:"_"`
+	Version          string            `mapstructure:"_"`
+	SelfContext      string            `mapstructure:"self_context"`
+	PostgresqlConfig *PostgresqlConfig `mapstructure:"_"`
+	BigCacheConfig   *BigCacheConfig   `mapstructure:"_"`
 }
 
 func NewSignalKConfig(configFilePath string) *SignalKConfig {
 	result := SignalKConfig{Version: "undefined"}
 	readConfigFile(&result, configFilePath)
-	readConfigFile(&result.DatabaseConfig, configFilePath, "db")
+	readConfigFile(&result.PostgresqlConfig, configFilePath, "db")
+	readConfigFile(&result.BigCacheConfig, configFilePath, "cache")
 
 	result.URL, _ = url.Parse(result.URLString)
 

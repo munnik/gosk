@@ -17,9 +17,12 @@ limitations under the License.
 package cmd
 
 import (
-	"github.com/munnik/gosk/api"
 	"github.com/munnik/gosk/config"
+	"github.com/munnik/gosk/logger"
+	"github.com/munnik/gosk/nanomsg"
+	"github.com/munnik/gosk/writer"
 	"github.com/spf13/cobra"
+	"go.uber.org/zap"
 )
 
 var (
@@ -33,10 +36,20 @@ var (
 
 func init() {
 	rootCmd.AddCommand(signalKHTTPCmd)
+	signalKHTTPCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
+	signalKHTTPCmd.MarkFlagRequired("subscribeURL")
 }
 
 func serveSignalKHTTP(cmd *cobra.Command, args []string) {
+	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
+	if err != nil {
+		logger.GetLogger().Fatal(
+			"Could not subscribe to the URL",
+			zap.String("URL", subscribeURL),
+			zap.String("Error", err.Error()),
+		)
+	}
 	c := config.NewSignalKConfig(cfgFile).WithVersion(version)
-	a := api.NewSignalKAPI(c)
-	a.ServeSignalK()
+	a := writer.NewHTTPWriter(c)
+	a.WriteMapped(subscriber)
 }

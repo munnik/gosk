@@ -23,7 +23,7 @@ func process(stream <-chan []byte, collector string, protocol string, publisher 
 		)
 
 		m = message.NewRaw().WithCollector(collector).WithValue(value).WithType(protocol)
-		toSend, err := json.Marshal(m)
+		bytes, err := json.Marshal(m)
 		if err != nil {
 			logger.GetLogger().Warn(
 				"Unable to marshall the message to JSON",
@@ -32,10 +32,10 @@ func process(stream <-chan []byte, collector string, protocol string, publisher 
 			)
 			continue
 		}
-		if err := publisher.Send(toSend); err != nil {
+		if err := publisher.Send(bytes); err != nil {
 			logger.GetLogger().Warn(
 				"Unable to send the message using NanoMSG",
-				zap.ByteString("Message", value),
+				zap.ByteString("Message", bytes),
 				zap.String("Error", err.Error()),
 			)
 			continue

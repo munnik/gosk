@@ -21,7 +21,7 @@ type RealMapper interface {
 func process(subscriber mangos.Socket, publisher mangos.Socket, mapper RealMapper) {
 	raw := &message.Raw{}
 	var mapped *message.Mapped
-	var toSend []byte
+	var bytes []byte
 	for {
 		received, err := subscriber.Recv()
 		if err != nil {
@@ -47,13 +47,20 @@ func process(subscriber mangos.Socket, publisher mangos.Socket, mapper RealMappe
 			)
 			continue
 		}
-		if toSend, err = json.Marshal(mapped); err != nil {
+		if bytes, err = json.Marshal(mapped); err != nil {
 			logger.GetLogger().Warn(
 				"Could not marshal the mapped data",
 				zap.String("Error", err.Error()),
 			)
 			continue
 		}
-		publisher.Send(toSend)
+		if err := publisher.Send(bytes); err != nil {
+			logger.GetLogger().Warn(
+				"Unable to send the message using NanoMSG",
+				zap.ByteString("Message", bytes),
+				zap.String("Error", err.Error()),
+			)
+			continue
+		}
 	}
 }

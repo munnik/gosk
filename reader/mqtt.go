@@ -103,6 +103,13 @@ func (r *MqttReader) messageReceived(c mqtt.Client, m mqtt.Message) {
 			)
 			continue
 		}
-		r.publisher.Send(bytes)
+		if err := r.publisher.Send(bytes); err != nil {
+			logger.GetLogger().Warn(
+				"Unable to send the message using NanoMSG",
+				zap.ByteString("Message", bytes),
+				zap.String("Error", err.Error()),
+			)
+			continue
+		}
 	}
 }

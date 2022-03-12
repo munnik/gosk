@@ -42,28 +42,24 @@ type CollectorConfig struct {
 	StopBits     int      `mapstructure:"stopBits"`
 	Parity       int      `mapstructure:"_"`
 	ParityString string   `mapstructure:"parity"`
-	Protocol     string
+	Protocol     string   `mapstructure:"protocol"`
 }
 
 func NewCollectorConfig(configFilePath string) *CollectorConfig {
-	result := CollectorConfig{
+	result := &CollectorConfig{
 		Listen:       false,
 		BaudRate:     4800,
 		DataBits:     8,
 		StopBits:     1,
 		ParityString: "N",
 	}
-	readConfigFile(&result, configFilePath)
+	readConfigFile(result, configFilePath)
+	fmt.Println(result)
 
 	result.URL, _ = url.Parse(result.URLString)
 	result.Parity = strings.Index(ParityMap, result.ParityString)
 
-	return &result
-}
-
-func (c *CollectorConfig) WithProtocol(p string) *CollectorConfig {
-	c.Protocol = p
-	return c
+	return result
 }
 
 type RegisterGroupConfig struct {
@@ -82,7 +78,8 @@ func NewRegisterGroupsConfig(configFilePath string) []RegisterGroupConfig {
 }
 
 type MapperConfig struct {
-	Context string `mapstructure:"context"`
+	Context  string `mapstructure:"context"`
+	Protocol string `mapstructure:"protocol"`
 }
 
 func NewMapperConfig(configFilePath string) MapperConfig {
@@ -271,9 +268,9 @@ func readConfigFile(cfg interface{}, configFilePath string, subKeys ...string) i
 
 	var err error
 	if len(subKeys) == 0 {
-		err = viper.Unmarshal(&cfg)
+		err = viper.Unmarshal(cfg)
 	} else {
-		err = viper.UnmarshalKey(subKeys[0], &cfg)
+		err = viper.UnmarshalKey(subKeys[0], cfg)
 	}
 	if err != nil {
 		logger.GetLogger().Fatal(
@@ -283,5 +280,5 @@ func readConfigFile(cfg interface{}, configFilePath string, subKeys ...string) i
 		)
 	}
 
-	return &cfg
+	return cfg
 }

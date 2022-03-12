@@ -43,17 +43,10 @@ func init() {
 }
 
 func doCollect(cmd *cobra.Command, args []string) {
-	protocol, err := getProtocol(cfgFile)
-	if err != nil {
-		logger.GetLogger().Fatal(
-			"Could not determine the protocol, make sure the protocol is in the path of the config file",
-			zap.String("Config file", cfgFile),
-			zap.String("Error", err.Error()),
-		)
-	}
-	c := config.NewCollectorConfig(cfgFile).WithProtocol(protocol)
+	var err error
+	c := config.NewCollectorConfig(cfgFile)
 	var reader collector.Collector
-	switch protocol {
+	switch c.Protocol {
 	case config.CSVType, config.NMEA0183Type, config.JSONType:
 		reader, err = collector.NewLineReader(c)
 	case config.ModbusType:
@@ -62,7 +55,7 @@ func doCollect(cmd *cobra.Command, args []string) {
 	default:
 		logger.GetLogger().Fatal(
 			"Not a supported protocol",
-			zap.String("Protocol", protocol),
+			zap.String("Protocol", c.Protocol),
 		)
 		return
 	}

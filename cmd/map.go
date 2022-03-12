@@ -43,15 +43,6 @@ func init() {
 }
 
 func doMap(cmd *cobra.Command, args []string) {
-	protocol, err := getProtocol(cfgFile)
-	if err != nil {
-		logger.GetLogger().Fatal(
-			"Could not determine the protocol, make sure the protocol is in the path of the config file",
-			zap.String("Config file", cfgFile),
-			zap.String("Error", err.Error()),
-		)
-	}
-
 	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
@@ -64,7 +55,7 @@ func doMap(cmd *cobra.Command, args []string) {
 
 	c := config.NewMapperConfig(cfgFile)
 	var m mapper.Mapper
-	switch protocol {
+	switch c.Protocol {
 	case config.CSVType:
 		cmc := config.NewCSVMappingConfig(cfgFile)
 		m, err = mapper.NewCSVMapper(c, cmc)
@@ -79,7 +70,7 @@ func doMap(cmd *cobra.Command, args []string) {
 	default:
 		logger.GetLogger().Fatal(
 			"Not a supported protocol",
-			zap.String("Protocol", protocol),
+			zap.String("Protocol", c.Protocol),
 		)
 		return
 	}

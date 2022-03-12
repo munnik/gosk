@@ -1,5 +1,6 @@
 ---
 name: "NMEA0183 simulator" # name is used in the key of the collected data
+protocol: "nmea0183"
 url: "tcp://127.0.0.1:13400" # url of the connection, tcp:// and udp:// are supported for network connections, use file:///dev/ttyUSB0 for a serial device connection
 listen: false # when url is a network connection this determine to dial or listen for a connection [optional default is false]
 baudRate: 4800 # when url is a serial device this determines the baud rate for setting up the connection [optional default is 4800]

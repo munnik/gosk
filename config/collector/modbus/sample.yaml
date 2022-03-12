@@ -1,5 +1,6 @@
 ---
 name: "Modbus simulator" # name is used in the key of the collected data
+protocol: "modbus"
 url: "tcp://127.0.0.1:5020" # url of the connection, tcp:// and udp:// are supported for network connections, use file:///dev/ttyUSB0 for a serial device connection
 listen: false # when url is a network connection this determine to dial or listen for a connection [optional default is false]
 registerGroups: # groups of registers that should be read in one request

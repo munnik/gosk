@@ -17,10 +17,6 @@ limitations under the License.
 package cmd
 
 import (
-	"fmt"
-	"path"
-
-	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
@@ -83,22 +79,4 @@ func initConfig() {
 			)
 		}
 	}
-}
-
-func getProtocol(cfgFilePath string) (string, error) {
-	strippedPath := cfgFilePath
-	supportedProtocols := map[string]struct{}{
-		config.NMEA0183Type: {},
-		config.ModbusType:   {},
-		config.CSVType:      {},
-		config.JSONType:     {},
-	}
-	for len(strippedPath) > 0 && strippedPath != "." {
-		if _, ok := supportedProtocols[path.Base(strippedPath)]; ok {
-			return path.Base(strippedPath), nil
-		}
-		strippedPath = path.Dir(strippedPath)
-	}
-
-	return "", fmt.Errorf("the path %s does not contain a supported protocol", cfgFilePath)
 }

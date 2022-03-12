@@ -1,3 +1,4 @@
 ---
 name: "JSON"
+protocol: "json"
 url: "file:///tmp/sample.json"

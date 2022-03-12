@@ -1,5 +1,6 @@
 ---
 context: "vessels.urn:mrn:imo:mmsi:123456789"
+protocol: "json"
 mappings:
   - expression: "json['pwr']"
     path: "propulsion.mainEngine.drive.power"

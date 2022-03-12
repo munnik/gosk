@@ -41,15 +41,16 @@ func (p *Proxy) SubscribeTo(url string, wg *sync.WaitGroup) {
 		for {
 			select {
 			default:
-				if bytes, err := socket.Recv(); err != nil {
+				if received, err := socket.Recv(); err != nil {
 					logger.GetLogger().Warn(
-						"Error occurred when receiving a message",
+						"Could not receive a message from the publisher",
+						zap.String("Error", err.Error()),
 					)
 				} else {
-					if err := p.publisher.Send(bytes); err != nil {
+					if err := p.publisher.Send(received); err != nil {
 						logger.GetLogger().Warn(
 							"Unable to send the message using NanoMSG",
-							zap.ByteString("Message", bytes),
+							zap.ByteString("Message", received),
 							zap.String("Error", err.Error()),
 						)
 						continue

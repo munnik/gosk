@@ -239,7 +239,7 @@ type SignalKConfig struct {
 func NewSignalKConfig(configFilePath string) *SignalKConfig {
 	result := SignalKConfig{Version: "undefined"}
 	readConfigFile(&result, configFilePath)
-	readConfigFile(&result.PostgresqlConfig, configFilePath, "db")
+	readConfigFile(&result.PostgresqlConfig, configFilePath, "database")
 	readConfigFile(&result.BigCacheConfig, configFilePath, "cache")
 
 	result.URL, _ = url.Parse(result.URLString)

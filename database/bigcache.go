@@ -154,7 +154,7 @@ func (c *BigCache) ReadMapped(where string, arguments ...interface{}) ([]message
 	}
 
 	result := make([]message.Mapped, 0)
-	i := c.rawCache.Iterator()
+	i := c.mappedCache.Iterator()
 	for i.SetNext() {
 		var mapped message.Mapped
 		entry, err := i.Value()

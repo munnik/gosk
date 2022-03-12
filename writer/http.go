@@ -1,15 +1,18 @@
 package writer
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Jeffail/gabs/v2"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/database"
 	"github.com/munnik/gosk/logger"
+	"github.com/munnik/gosk/message"
 	"go.nanomsg.org/mangos/v3"
 	"go.uber.org/zap"
 )
@@ -20,7 +23,7 @@ const (
     "v3": {
       "version": "3.0.0",
       "signalk-http": "http://%s:%s/signalk/v3/api/",
-      "signalk-ws": "ws://%s:%s/signalk/v3/stream",
+      "signalk-ws": "ws://%s:%s/signalk/v3/stream"
     }
   },
   "server": {
@@ -42,46 +45,49 @@ func NewHTTPWriter(c *config.SignalKConfig) *HTTPWriter {
 		config: c,
 		db:     database.NewPostgresqlDatabase(c.PostgresqlConfig),
 		bc:     database.NewBigCache(c.BigCacheConfig),
+		wg:     &sync.WaitGroup{},
 	}
 }
 
-func (a *HTTPWriter) WriteMapped(subscriber mangos.Socket) {
+func (w *HTTPWriter) WriteMapped(subscriber mangos.Socket) {
 	// fill the cache with data from the database
-	a.wg.Add(1)
-	go a.readFromDatabase()
+	w.wg.Add(1)
+	go w.readFromDatabase()
+	go w.update(subscriber)
 
 	// handle route using handler function
-	http.HandleFunc("/signalk", a.serveEndpoints)
-	http.HandleFunc("/signalk/v3/api/", a.serverV3API)
+	http.HandleFunc("/signalk", w.serveEndpoints)
+	http.HandleFunc("/signalk/v3/api/", w.serverV3API)
 
 	// listen to port
-	err := http.ListenAndServe(fmt.Sprintf("%s", a.config.URL.Host), nil)
+	err := http.ListenAndServe(fmt.Sprintf("%s", w.config.URL.Host), nil)
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not listen and serve",
-			zap.String("Host", a.config.URL.Host),
+			zap.String("Host", w.config.URL.Host),
 			zap.String("Error", err.Error()),
 		)
 	}
 }
 
-func (a *HTTPWriter) serveEndpoints(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, endpoints, a.config.URL.Hostname(), a.config.URL.Port(), a.config.URL.Hostname(), a.config.URL.Port(), a.config.Version)
+func (w *HTTPWriter) serveEndpoints(rw http.ResponseWriter, r *http.Request) {
+	rw.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(rw, endpoints, w.config.URL.Hostname(), w.config.URL.Port(), w.config.URL.Hostname(), w.config.URL.Port(), w.config.Version)
 }
 
-func (a *HTTPWriter) serverV3API(w http.ResponseWriter, r *http.Request) {
-	a.wg.Wait()
+func (w *HTTPWriter) serverV3API(rw http.ResponseWriter, r *http.Request) {
+	w.wg.Wait()
 
-	mapped, err := a.bc.ReadMapped("")
+	mapped, err := w.bc.ReadMapped("")
 	if err != nil {
-		w.WriteHeader(400)
+		rw.WriteHeader(400)
 		fmt.Printf("Error occurred while retrieving data, please see the server logs for more details")
 		return
 	}
 
 	jsonObj := gabs.New()
 	jsonObj.Set("1.5.0", "version")
-	jsonObj.Set(a.config.SelfContext, "self")
+	jsonObj.Set(w.config.SelfContext, "self")
 
 	var jsonPath []string
 	for _, m := range mapped {
@@ -98,11 +104,11 @@ func (a *HTTPWriter) serverV3API(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, jsonObj.String())
+	rw.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(rw, jsonObj.String())
 }
 
-func (a *HTTPWriter) readFromDatabase() {
+func (w *HTTPWriter) readFromDatabase() {
 	appendToQuery := `
 		INNER JOIN 
 			(
@@ -119,9 +125,11 @@ func (a *HTTPWriter) readFromDatabase() {
 			"time" = "max_time" AND 
 			"context" = "max_context" AND 
 			"path" = "max_path"
+		WHERE
+			"time" > $1
 		;
 	`
-	mapped, err := a.db.ReadMapped(appendToQuery)
+	mapped, err := w.db.ReadMapped(appendToQuery, time.Now().Add(-time.Second*time.Duration(w.config.BigCacheConfig.LifeWindow)))
 	if err != nil {
 		logger.GetLogger().Warn(
 			"Could not retrieve all mapped data from database",
@@ -129,6 +137,29 @@ func (a *HTTPWriter) readFromDatabase() {
 		)
 		return
 	}
-	a.bc.WriteMapped(mapped...)
-	a.wg.Done()
+	w.bc.WriteMapped(mapped...)
+	w.wg.Done()
+}
+
+func (w *HTTPWriter) update(subscriber mangos.Socket) {
+	var mapped message.Mapped
+	for {
+		received, err := subscriber.Recv()
+		if err != nil {
+			logger.GetLogger().Warn(
+				"Could not receive a message from the publisher",
+				zap.String("Error", err.Error()),
+			)
+			continue
+		}
+		if err := json.Unmarshal(received, &mapped); err != nil {
+			logger.GetLogger().Warn(
+				"Could not unmarshal the received data",
+				zap.ByteString("Received", received),
+				zap.String("Error", err.Error()),
+			)
+			continue
+		}
+		w.bc.WriteMapped(mapped)
+	}
 }

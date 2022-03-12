@@ -185,13 +185,13 @@ func (ws *WebsocketWriter) serveWs(w http.ResponseWriter, r *http.Request) {
 	go c.readPump()
 }
 
-func (h *WebsocketWriter) receive(socket mangos.Socket) {
+func (h *WebsocketWriter) receive(subscriber mangos.Socket) {
 	var mapped *message.Mapped
 	for {
-		received, err := socket.Recv()
+		received, err := subscriber.Recv()
 		if err != nil {
 			logger.GetLogger().Warn(
-				"Error on receiving data from the socket",
+				"Could not receive a message from the publisher",
 				zap.String("Error", err.Error()),
 			)
 			continue

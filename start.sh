@@ -1,15 +1,15 @@
 #!/bin/env bash
 
-#make
-#pkill gosk
+make
+pkill gosk
 
-./gosk collect -u "tcp://127.0.0.1:6001" --config "config/collector/zmg.yaml" &
-./gosk collect -u "tcp://127.0.0.1:6002" --config "config/collector/ampero.yaml" &
+./gosk collect -u "tcp://127.0.0.1:6001" --config "config/collector/c32.yaml" &
+./gosk collect -u "tcp://127.0.0.1:6002" --config "config/collector/zmg.yaml" &
 
 sleep 5
 
-./gosk map -u "tcp://127.0.0.1:6011" -s "tcp://127.0.0.1:6001" --config "config/mapper/wheelhouse.yaml" &
-./gosk map -u "tcp://127.0.0.1:6012" -s "tcp://127.0.0.1:6002" --config "config/mapper/ampero.yaml" &
+./gosk map -u "tcp://127.0.0.1:6011" -s "tcp://127.0.0.1:6001" --config "config/mapper/c32.yaml" &
+./gosk map -u "tcp://127.0.0.1:6012" -s "tcp://127.0.0.1:6002" --config "config/mapper/ais.yaml" &
 
 sleep 5
 
@@ -18,7 +18,7 @@ sleep 5
 
 sleep 5
 
-./gosk database raw -s "tcp://127.0.0.1:6000" &
-./gosk database keyvalue -s "tcp://127.0.0.1:6010" &
+./gosk database raw -s "tcp://127.0.0.1:6000"  --config "config/writer/postgresql.yaml" &
+./gosk database mapped -s "tcp://127.0.0.1:6010"  --config "config/writer/postgresql.yaml" &
 
-./gosk http -s "tcp://127.0.0.1:6010"  --config "config/writer/http.yaml" &
+#./gosk http -s "tcp://127.0.0.1:6010"  --config "config/writer/http.yaml" &

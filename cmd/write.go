@@ -27,6 +27,11 @@ import (
 )
 
 var (
+	writeCmd = &cobra.Command{
+		Use:   "write",
+		Short: "Write messages to a storage or remote location",
+		Long:  `Write messages to a storage or remote location`,
+	}
 	databaseCmd = &cobra.Command{
 		Use:   "database",
 		Short: "Store messages in the timeseries database",
@@ -44,16 +49,38 @@ var (
 		Long:  `Store mapped messages in the timeseries database`,
 		Run:   mappedDatabase,
 	}
+	mqttWriteCmd = &cobra.Command{
+		Use:   "mqtt",
+		Short: "Write messages to a broker",
+		Long:  `Write messages to a broker`,
+		Run:   writeMQTT,
+	}
+	signalKHTTPCmd = &cobra.Command{
+		Use:   "http",
+		Short: "SignalK HTTP",
+		Long:  `Starts a HTTP server that publishes SignalK full models`,
+		Run:   serveSignalKHTTP,
+	}
 )
 
 func init() {
-	rootCmd.AddCommand(databaseCmd)
+	rootCmd.AddCommand(writeCmd)
+
+	writeCmd.AddCommand(databaseCmd)
 	databaseCmd.AddCommand(rawDatabaseCmd)
-	databaseCmd.AddCommand(mappedDatabaseCmd)
 	rawDatabaseCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
 	rawDatabaseCmd.MarkFlagRequired("subscribeURL")
+	databaseCmd.AddCommand(mappedDatabaseCmd)
 	mappedDatabaseCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
 	mappedDatabaseCmd.MarkFlagRequired("subscribeURL")
+
+	writeCmd.AddCommand(mqttWriteCmd)
+	mqttWriteCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
+	mqttWriteCmd.MarkFlagRequired("subscribeURL")
+
+	writeCmd.AddCommand(signalKHTTPCmd)
+	signalKHTTPCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
+	signalKHTTPCmd.MarkFlagRequired("subscribeURL")
 }
 
 func rawDatabase(cmd *cobra.Command, args []string) {
@@ -82,4 +109,32 @@ func mappedDatabase(cmd *cobra.Command, args []string) {
 	c := config.NewPostgresqlConfig(cfgFile)
 	w := writer.NewPostgresqlWriter(c)
 	w.WriteMapped(subscriber)
+}
+
+func writeMQTT(cmd *cobra.Command, args []string) {
+	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
+	if err != nil {
+		logger.GetLogger().Fatal(
+			"Could not subscribe to the URL",
+			zap.String("URL", subscribeURL),
+			zap.String("Error", err.Error()),
+		)
+	}
+	c := config.NewMQTTConfig(cfgFile)
+	w := writer.NewMqttWriter(c)
+	w.WriteMapped(subscriber)
+}
+
+func serveSignalKHTTP(cmd *cobra.Command, args []string) {
+	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
+	if err != nil {
+		logger.GetLogger().Fatal(
+			"Could not subscribe to the URL",
+			zap.String("URL", subscribeURL),
+			zap.String("Error", err.Error()),
+		)
+	}
+	c := config.NewSignalKConfig(cfgFile).WithVersion(version)
+	a := writer.NewHTTPWriter(c)
+	a.WriteMapped(subscriber)
 }

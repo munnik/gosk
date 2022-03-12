@@ -38,7 +38,7 @@ func init() {
 	rootCmd.AddCommand(mapCmd)
 	mapCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
 	mapCmd.MarkFlagRequired("subscribeURL")
-	mapCmd.Flags().StringVarP(&publishURL, "publishURL", "u", "", "Nanomsg URL, the URL is used to publish the data on. It listens for connections.")
+	mapCmd.Flags().StringVarP(&publishURL, "publishURL", "p", "", "Nanomsg URL, the URL is used to publish the data on. It listens for connections.")
 	mapCmd.MarkFlagRequired("publishURL")
 }
 

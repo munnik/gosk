@@ -38,7 +38,7 @@ var (
 
 func init() {
 	rootCmd.AddCommand(collectCmd)
-	collectCmd.Flags().StringVarP(&publishURL, "publishURL", "u", "", "Nanomsg URL, the URL is used to publish the data on. It listens for connections.")
+	collectCmd.Flags().StringVarP(&publishURL, "publishURL", "p", "", "Nanomsg URL, the URL is used to publish the data on. It listens for connections.")
 	collectCmd.MarkFlagRequired("publishURL")
 }
 

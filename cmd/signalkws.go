@@ -36,13 +36,15 @@ var (
 )
 
 func init() {
-	rootCmd.AddCommand(signalKWSCmd)
-	signalKWSCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
-	signalKWSCmd.MarkFlagRequired("subscribeURL")
-	signalKWSCmd.Flags().StringVarP(&websocketURL, "websocketURL", "w", "", "The URL to start the websocket on")
-	signalKWSCmd.MarkFlagRequired("websocketURL")
-	signalKWSCmd.Flags().StringVarP(&selfContext, "self", "i", "", "The context self.")
-	signalKWSCmd.MarkFlagRequired("self")
+	// TODO: add to write command and integrate with http writer
+
+	// rootCmd.AddCommand(signalKWSCmd)
+	// signalKWSCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
+	// signalKWSCmd.MarkFlagRequired("subscribeURL")
+	// signalKWSCmd.Flags().StringVarP(&websocketURL, "websocketURL", "w", "", "The URL to start the websocket on")
+	// signalKWSCmd.MarkFlagRequired("websocketURL")
+	// signalKWSCmd.Flags().StringVarP(&selfContext, "self", "i", "", "The context self.")
+	// signalKWSCmd.MarkFlagRequired("self")
 }
 
 func serveSignalKWS(cmd *cobra.Command, args []string) {

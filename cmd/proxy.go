@@ -35,7 +35,7 @@ var (
 
 func init() {
 	rootCmd.AddCommand(proxyCmd)
-	proxyCmd.Flags().StringVarP(&publishURL, "publishURL", "u", "", "Nanomsg URL, the URL is used to publish the collected data on. It listens for connections.")
+	proxyCmd.Flags().StringVarP(&publishURL, "publishURL", "p", "", "Nanomsg URL, the URL is used to publish the collected data on. It listens for connections.")
 	proxyCmd.MarkFlagRequired("publishURL")
 	proxyCmd.Flags().StringSliceVarP(&proxySubscribeURLs, "subscribeURL", "s", []string{}, "Nanomsg URL, the URL is used to listen for subscribed data.")
 }

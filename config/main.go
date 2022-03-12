@@ -54,7 +54,6 @@ func NewCollectorConfig(configFilePath string) *CollectorConfig {
 		ParityString: "N",
 	}
 	readConfigFile(result, configFilePath)
-	fmt.Println(result)
 
 	result.URL, _ = url.Parse(result.URLString)
 	result.Parity = strings.Index(ParityMap, result.ParityString)
@@ -253,9 +252,16 @@ func (c *SignalKConfig) WithVersion(version string) *SignalKConfig {
 	return c
 }
 
-func readConfigFile(cfg interface{}, configFilePath string, subKeys ...string) interface{} {
+func readConfigFile(result interface{}, configFilePath string, subKeys ...string) interface{} {
 	viper.SetConfigFile(configFilePath)
-	viper.ReadInConfig()
+	if err := viper.ReadInConfig(); err != nil {
+		logger.GetLogger().Fatal(
+			"Fatal error while reading the configuration",
+			zap.String("Config file", configFilePath),
+			zap.String("Error", err.Error()),
+		)
+		return result
+	}
 
 	if len(subKeys) > 1 {
 		logger.GetLogger().Fatal(
@@ -263,14 +269,14 @@ func readConfigFile(cfg interface{}, configFilePath string, subKeys ...string) i
 			zap.String("Config file", configFilePath),
 			zap.Strings("Keys", subKeys),
 		)
-		return nil
+		return result
 	}
 
 	var err error
 	if len(subKeys) == 0 {
-		err = viper.Unmarshal(cfg)
+		err = viper.Unmarshal(result)
 	} else {
-		err = viper.UnmarshalKey(subKeys[0], cfg)
+		err = viper.UnmarshalKey(subKeys[0], result)
 	}
 	if err != nil {
 		logger.GetLogger().Fatal(
@@ -279,6 +285,5 @@ func readConfigFile(cfg interface{}, configFilePath string, subKeys ...string) i
 			zap.String("Error", err.Error()),
 		)
 	}
-
-	return cfg
+	return result
 }

@@ -3,7 +3,6 @@ package database
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/allegro/bigcache/v3"
@@ -63,7 +62,7 @@ func (c *BigCache) WriteMapped(mappedList ...message.Mapped) []message.Mapped {
 					)
 					continue
 				}
-				if originalBytes, err := c.mappedCache.Get(createKey(mapped.Origin, mapped.Context, v.Path)); err == nil {
+				if originalBytes, err := c.mappedCache.Get(mapped.Context + "." + v.Path); err == nil {
 					var original *message.Mapped
 					if err := json.Unmarshal(originalBytes, original); err == nil {
 						if original.Equals(*singleUpdateMapped) || singleValueUpdate.Timestamp.Before(original.Updates[0].Timestamp) {
@@ -72,7 +71,7 @@ func (c *BigCache) WriteMapped(mappedList ...message.Mapped) []message.Mapped {
 					}
 				}
 				changes = append(changes, *singleUpdateMapped)
-				c.mappedCache.Set(createKey(mapped.Origin, mapped.Context, v.Path), bytes)
+				c.mappedCache.Set(mapped.Context+"."+v.Path, bytes)
 			}
 		}
 	}
@@ -130,30 +129,8 @@ func (c *BigCache) ReadRaw(where string, arguments ...interface{}) ([]message.Ra
 }
 
 func (c *BigCache) ReadMapped(where string, arguments ...interface{}) ([]message.Mapped, error) {
-	if len(where) > 0 {
-		bytes, err := c.mappedCache.Get(createKey(where))
-		if err != nil {
-			logger.GetLogger().Warn(
-				"Could not find the raw message",
-				zap.String("Key", createKey(where)),
-				zap.String("Error", err.Error()),
-			)
-			return nil, err
-		}
-
-		var mapped message.Mapped
-		if err := json.Unmarshal(bytes, &mapped); err != nil {
-			logger.GetLogger().Warn(
-				"Could not unmarshal the value",
-				zap.String("Error", err.Error()),
-				zap.ByteString("Bytes", bytes),
-			)
-			return nil, err
-		}
-		return []message.Mapped{mapped}, nil
-	}
-
 	result := make([]message.Mapped, 0)
+
 	i := c.mappedCache.Iterator()
 	for i.SetNext() {
 		var mapped message.Mapped
@@ -183,16 +160,4 @@ func (c *BigCache) RawIterator() *bigcache.EntryInfoIterator {
 
 func (c *BigCache) MappedIterator() *bigcache.EntryInfoIterator {
 	return c.mappedCache.Iterator()
-}
-
-func createKey(origin string, rest ...string) string {
-	split := []string{origin}
-	for i, r := range rest {
-		if i == 0 {
-			split = append(split, r)
-		} else {
-			split = append(split, strings.Split(r, ".")...)
-		}
-	}
-	return strings.Join(split, "###")
 }

@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/Jeffail/gabs/v2"
+	"github.com/gorilla/handlers"
+	"github.com/gorilla/mux"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/database"
 	"github.com/munnik/gosk/logger"
@@ -31,6 +33,8 @@ const (
     "version": "%s"
   }
 }`
+	SignalKPath    = "/signalk"
+	SignalKAPIPath = "/signalk/v3/api/"
 )
 
 type HTTPWriter struct {
@@ -55,12 +59,15 @@ func (w *HTTPWriter) WriteMapped(subscriber mangos.Socket) {
 	go w.readFromDatabase()
 	go w.update(subscriber)
 
+	router := mux.NewRouter()
+
 	// handle route using handler function
-	http.HandleFunc("/signalk", w.serveEndpoints)
-	http.HandleFunc("/signalk/v3/api/", w.serverV3API)
+	// router.PathPrefix("/signalk/v3/api/").Handler(http.StripPrefix("/signalk/v3/api/", w))
+	router.PathPrefix(SignalKAPIPath).Handler(w)
+	router.HandleFunc(SignalKPath, w.serveEndpoints).Methods("GET")
 
 	// listen to port
-	err := http.ListenAndServe(fmt.Sprintf("%s", w.config.URL.Host), nil)
+	err := http.ListenAndServe(fmt.Sprintf("%s", w.config.URL.Host), handlers.CompressHandler(router))
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not listen and serve",
@@ -75,7 +82,7 @@ func (w *HTTPWriter) serveEndpoints(rw http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(rw, endpoints, w.config.URL.Hostname(), w.config.URL.Port(), w.config.URL.Hostname(), w.config.URL.Port(), w.config.Version)
 }
 
-func (w *HTTPWriter) serverV3API(rw http.ResponseWriter, r *http.Request) {
+func (w *HTTPWriter) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	w.wg.Wait()
 
 	mapped, err := w.bc.ReadMapped("")
@@ -93,7 +100,7 @@ func (w *HTTPWriter) serverV3API(rw http.ResponseWriter, r *http.Request) {
 	for _, m := range mapped {
 		for _, u := range m.Updates {
 			for _, v := range u.Values {
-				jsonPath = strings.SplitN(m.Context, ".", 1)
+				jsonPath = strings.SplitN(m.Context, ".", 2)
 				jsonPath = append(jsonPath, strings.Split(v.Path, ".")...)
 
 				jsonObj.Set(v.Value, append(jsonPath, "value")...)
@@ -104,8 +111,18 @@ func (w *HTTPWriter) serverV3API(rw http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	searchPath := strings.Replace(r.URL.String(), SignalKAPIPath, "", 1)
+	if searchPath != "" {
+		searchPath = "/" + searchPath
+	}
+	result, err := jsonObj.JSONPointer(searchPath)
+	if err != nil {
+		rw.WriteHeader(400)
+		fmt.Printf("Error occurred while retrieving data, please see the server logs for more details")
+		return
+	}
 	rw.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(rw, jsonObj.String())
+	fmt.Fprintf(rw, result.String())
 }
 
 func (w *HTTPWriter) readFromDatabase() {

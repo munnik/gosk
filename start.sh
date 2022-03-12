@@ -3,13 +3,13 @@
 #make
 #pkill gosk
 
-./gosk collect -u "tcp://127.0.0.1:6001" --config "config/collector/nmea0183/zmg.json" &
-./gosk collect -u "tcp://127.0.0.1:6002" --config "config/collector/modbus/ampero.json" &
+./gosk collect -u "tcp://127.0.0.1:6001" --config "config/collector/nmea0183/zmg.yaml" &
+./gosk collect -u "tcp://127.0.0.1:6002" --config "config/collector/modbus/ampero.yaml" &
 
 sleep 5
 
-./gosk map -u "tcp://127.0.0.1:6011" -s "tcp://127.0.0.1:6001" --config "config/NMEA0183/wheelhouse.json" &
-./gosk map -u "tcp://127.0.0.1:6012" -s "tcp://127.0.0.1:6002" --config "config/MODBUS/c32.json" &
+./gosk map -u "tcp://127.0.0.1:6011" -s "tcp://127.0.0.1:6001" --config "config/NMEA0183/wheelhouse.yaml" &
+./gosk map -u "tcp://127.0.0.1:6012" -s "tcp://127.0.0.1:6002" --config "config/MODBUS/c32.yaml" &
 
 sleep 5
 

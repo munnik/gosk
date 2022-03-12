@@ -1,0 +1,4 @@
+---
+name: "Sygo"
+protocol: "csv"
+url: "file:///tmp/sygo.txt"

@@ -12,4 +12,4 @@ gosk*.log
 **/lcov.info
 dist/*
 config/**/*.yaml
-!config/**/sample.yaml
+!config/**/sample-*.yaml

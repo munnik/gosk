@@ -31,10 +31,6 @@ func (u *Update) AddValue(v *Value) *Update {
 }
 
 func (u Update) Equals(other Update) bool {
-	if u.Source != other.Source {
-		return false
-	}
-
 	if len(u.Values) != len(other.Values) {
 		return false
 	}

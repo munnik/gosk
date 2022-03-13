@@ -131,7 +131,6 @@ func (c *BigCache) ReadMapped(where string, arguments ...interface{}) ([]message
 
 	i := c.mappedCache.Iterator()
 	for i.SetNext() {
-		var mapped message.Mapped
 		entry, err := i.Value()
 		if err != nil {
 			logger.GetLogger().Warn(
@@ -139,7 +138,8 @@ func (c *BigCache) ReadMapped(where string, arguments ...interface{}) ([]message
 				zap.String("Error", err.Error()),
 			)
 		}
-		if err := json.Unmarshal(entry.Value(), &mapped); err != nil {
+		var m message.SingleValueMapped
+		if err := json.Unmarshal(entry.Value(), &m); err != nil {
 			logger.GetLogger().Warn(
 				"Could not unmarshal the value",
 				zap.String("Error", err.Error()),
@@ -147,7 +147,7 @@ func (c *BigCache) ReadMapped(where string, arguments ...interface{}) ([]message
 			)
 			return nil, err
 		}
-		result = append(result, mapped)
+		result = append(result, m.ToMapped())
 	}
 	return result, nil
 }

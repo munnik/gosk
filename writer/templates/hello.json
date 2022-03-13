@@ -1,0 +1,7 @@
+{
+  "name": "GOSK",
+  "version": "{{ .Version }}",
+  "timestamp": "{{ .Now }}",
+  "self": "{{ .Self }}",
+  "roles": ["master", "main"]
+}

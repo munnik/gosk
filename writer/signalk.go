@@ -49,6 +49,7 @@ func (w *SignalKWriter) WriteMapped(subscriber mangos.Socket) {
 
 	router.Get(SignalKHTTPPath+"*", w.serveFullDataModel)
 	router.Get(SignalKEndpointsPath, w.serveEndpoints)
+	router.Get(SignalKWSPath, w.serveWebsocket)
 
 	// listen to port
 	err := http.ListenAndServe(fmt.Sprintf("%s", w.config.URL.Host), router)
@@ -81,6 +82,6 @@ func (w *SignalKWriter) receive(subscriber mangos.Socket) {
 			continue
 		}
 		go w.updateFullDataModel(mapped)
-		// TODO: updateWebsocket
+		go w.updateWebsocket(mapped)
 	}
 }

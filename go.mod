@@ -31,6 +31,9 @@ require (
 	github.com/Microsoft/go-winio v0.5.2 // indirect
 	github.com/adrianmo/go-nmea v1.7.0 // indirect
 	github.com/fsnotify/fsnotify v1.5.1 // indirect
+	github.com/gobwas/httphead v0.1.0 // indirect
+	github.com/gobwas/pool v0.2.1 // indirect
+	github.com/gobwas/ws v1.1.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect

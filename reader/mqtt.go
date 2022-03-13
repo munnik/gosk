@@ -68,6 +68,8 @@ func (r *MqttReader) ReadMapped(publisher mangos.Socket) {
 		)
 		return
 	}
+
+	// never exit
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
 	wg.Wait()

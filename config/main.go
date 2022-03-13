@@ -181,7 +181,7 @@ type MQTTConfig struct {
 	URLString string `mapstructure:"url"`
 	Username  string `mapstructure:"username"`
 	Password  string `mapstructure:"password"`
-	Interval  int    `mapstructure:"interval"`
+	Interval  int    `mapstructure:"interval"` // ignored for reader
 }
 
 func NewMQTTConfig(configFilePath string) *MQTTConfig {

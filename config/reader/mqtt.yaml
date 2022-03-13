@@ -1,6 +1,4 @@
 ---
-client_id: "server"
-context: "vessels.urn:mrn:imo:mmsi:244770688" # if the data itself doesn't provide a context then this context is used
 username: "unknown"
 password: "unknown"
 url: "mqtt://broker.mqtt.cool:1883"

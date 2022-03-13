@@ -10,7 +10,7 @@ import (
 )
 
 type Raw struct {
-	Collector string
+	Collector string    `json:"collector"`
 	Timestamp time.Time `json:"timestamp"`
 	Type      string    `json:"type"`
 	Uuid      uuid.UUID `json:"uuid"`

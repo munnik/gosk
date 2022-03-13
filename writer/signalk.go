@@ -64,7 +64,6 @@ func (w *SignalKWriter) WriteMapped(subscriber mangos.Socket) {
 
 func (w *SignalKWriter) receive(subscriber mangos.Socket) {
 	for {
-		var mapped message.Mapped
 		received, err := subscriber.Recv()
 		if err != nil {
 			logger.GetLogger().Warn(
@@ -73,6 +72,7 @@ func (w *SignalKWriter) receive(subscriber mangos.Socket) {
 			)
 			continue
 		}
+		var mapped message.Mapped
 		if err := json.Unmarshal(received, &mapped); err != nil {
 			logger.GetLogger().Warn(
 				"Could not unmarshal the received data",

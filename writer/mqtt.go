@@ -3,6 +3,7 @@ package writer
 import (
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/allegro/bigcache/v3"
@@ -27,6 +28,7 @@ type MqttWriter struct {
 	mqttClient mqtt.Client
 	cache      *bigcache.BigCache
 	encoder    *zstd.Encoder
+	mu         sync.Mutex
 }
 
 func NewMqttWriter(c *config.MQTTConfig) *MqttWriter {
@@ -54,43 +56,53 @@ func (w *MqttWriter) createClientOptions() *mqtt.ClientOptions {
 
 // When this method is called either the interval to flush or the maximum cache size is reached
 func (w *MqttWriter) onRemove(key string, entry []byte) {
-	var m message.Mapped
-	if err := json.Unmarshal(entry, &m); err != nil {
-		logger.GetLogger().Warn(
-			"Could not unmarshal a message from the publisher",
-			zap.String("Error", err.Error()),
-		)
-		return
-	}
+	go func(entry []byte) {
+		w.mu.Lock()
+		defer w.mu.Unlock()
 
-	deltas := make([]message.Mapped, 0)
-	deltas = append(deltas, m)
-
-	i := w.cache.Iterator()
-	for i.SetNext() {
-		entryInfo, err := i.Value()
-		if err != nil {
-			logger.GetLogger().Warn(
-				"Unable to retrieve an entry from the cache",
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
-		if err := json.Unmarshal(entryInfo.Value(), &m); err != nil {
+		var m message.Mapped
+		if err := json.Unmarshal(entry, &m); err != nil {
 			logger.GetLogger().Warn(
 				"Could not unmarshal a message from the publisher",
 				zap.String("Error", err.Error()),
 			)
-			continue
+			return
 		}
-		w.cache.Delete(entryInfo.Key())
-		deltas = append(deltas, m)
-	}
 
-	w.sendMqtt(deltas)
+		deltas := make([]message.Mapped, 0)
+		deltas = append(deltas, m)
+
+		i := w.cache.Iterator()
+		for i.SetNext() {
+			entryInfo, err := i.Value()
+			if err != nil {
+				logger.GetLogger().Warn(
+					"Unable to retrieve an entry from the cache",
+					zap.String("Error", err.Error()),
+				)
+				continue
+			}
+			if err := json.Unmarshal(entryInfo.Value(), &m); err != nil {
+				logger.GetLogger().Warn(
+					"Could not unmarshal a message from the publisher",
+					zap.String("Error", err.Error()),
+				)
+				continue
+			}
+			deltas = append(deltas, m)
+		}
+
+		w.sendMQTT(deltas)
+		if err := w.cache.Reset(); err != nil {
+			logger.GetLogger().Warn(
+				"Error while resetting the cache",
+				zap.String("Error", err.Error()),
+			)
+		}
+	}(entry)
 }
 
-func (w *MqttWriter) sendMqtt(deltas []message.Mapped) {
+func (w *MqttWriter) sendMQTT(deltas []message.Mapped) {
 	bytes, err := json.Marshal(deltas)
 	if err != nil {
 		logger.GetLogger().Warn(
@@ -123,17 +135,17 @@ func (w *MqttWriter) WriteMapped(subscriber mangos.Socket) {
 	}
 	defer w.mqttClient.Disconnect(disconnectWait)
 
-	go func(w *MqttWriter) {
-		for {
-			received, err := subscriber.Recv()
-			if err != nil {
-				logger.GetLogger().Warn(
-					"Could not receive a message from the publisher",
-					zap.String("Error", err.Error()),
-				)
-				continue
-			}
-			w.cache.Set(uuid.NewString(), received)
+	for {
+		received, err := subscriber.Recv()
+		if err != nil {
+			logger.GetLogger().Warn(
+				"Could not receive a message from the publisher",
+				zap.String("Error", err.Error()),
+			)
+			continue
 		}
-	}(w)
+		w.mu.Lock()
+		w.cache.Set(uuid.NewString(), received)
+		w.mu.Unlock()
+	}
 }

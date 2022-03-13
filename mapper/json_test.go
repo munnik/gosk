@@ -50,7 +50,7 @@ var _ = Describe("DoMap json", func() {
 			}(),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					message.NewSource().WithLabel("testingCollector").WithType(config.JSONType),
+					*message.NewSource().WithLabel("testingCollector").WithType(config.JSONType),
 				).WithTimestamp(
 					now,
 				).AddValue(

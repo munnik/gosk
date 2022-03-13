@@ -62,7 +62,6 @@ func (w *MqttWriter) WriteMapped(subscriber mangos.Socket) {
 
 	go func(w *MqttWriter) {
 		for {
-			m := message.Mapped{}
 			received, err := subscriber.Recv()
 			if err != nil {
 				logger.GetLogger().Warn(
@@ -71,6 +70,7 @@ func (w *MqttWriter) WriteMapped(subscriber mangos.Socket) {
 				)
 				continue
 			}
+			m := message.Mapped{}
 			if err := json.Unmarshal(received, &m); err != nil {
 				logger.GetLogger().Warn(
 					"Could not unmarshal a message from the publisher",

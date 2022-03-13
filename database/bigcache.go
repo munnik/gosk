@@ -45,37 +45,35 @@ func (c *BigCache) WriteRaw(raw *message.Raw, returnChanges bool) []*message.Raw
 }
 
 func (c *BigCache) WriteMapped(mappedList ...message.Mapped) []message.Mapped {
-	changes := make([]message.Mapped, 0)
+	changes := make([]message.SingleValueMapped, 0)
 	for _, mapped := range mappedList {
-		for _, u := range mapped.Updates {
-			for _, v := range u.Values {
-				singleValueUpdate := message.NewUpdate().WithSource(&u.Source).WithTimestamp(u.Timestamp)
-				singleValueUpdate.AddValue(&v)
-				singleUpdateMapped := message.NewMapped().WithContext(mapped.Context).WithOrigin(mapped.Origin)
-				singleUpdateMapped.AddUpdate(singleValueUpdate)
-
-				bytes, err := json.Marshal(singleUpdateMapped)
-				if err != nil {
-					logger.GetLogger().Warn(
-						"Could not marshal the value",
-						zap.String("Error", err.Error()),
-					)
-					continue
-				}
-				if originalBytes, err := c.mappedCache.Get(mapped.Context + "." + v.Path); err == nil {
-					var original *message.Mapped
-					if err := json.Unmarshal(originalBytes, original); err == nil {
-						if original.Equals(*singleUpdateMapped) || singleValueUpdate.Timestamp.Before(original.Updates[0].Timestamp) {
-							continue
-						}
+		for _, m := range mapped.ToSingleValueMapped() {
+			bytes, err := json.Marshal(m)
+			if err != nil {
+				logger.GetLogger().Warn(
+					"Could not marshal the value",
+					zap.String("Error", err.Error()),
+				)
+				continue
+			}
+			if originalBytes, err := c.mappedCache.Get(m.Context + "." + m.Path); err == nil {
+				var original message.SingleValueMapped
+				if err := json.Unmarshal(originalBytes, &original); err == nil {
+					if original.Equals(m) || m.Timestamp.Before(original.Timestamp) {
+						continue
 					}
 				}
-				changes = append(changes, *singleUpdateMapped)
-				c.mappedCache.Set(mapped.Context+"."+v.Path, bytes)
 			}
+			changes = append(changes, m)
+			c.mappedCache.Set(m.Context+"."+m.Path, bytes)
 		}
 	}
-	return changes
+
+	result := make([]message.Mapped, 0)
+	for _, c := range changes {
+		result = append(result, c.ToMapped())
+	}
+	return result
 }
 
 func (c *BigCache) ReadRaw(where string, arguments ...interface{}) ([]message.Raw, error) {

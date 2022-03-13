@@ -113,7 +113,7 @@ var _ = Describe("Mapped", func() {
 			BeforeEach(func() {
 				mapped = NewMapped().WithContext("vessels.urn:mrn:imo:mmsi:234567890").WithOrigin("vessels.urn:mrn:imo:mmsi:123456789")
 				s := NewSource().WithLabel("CAT 3512").WithType(config.ModbusType)
-				u := NewUpdate().WithSource(s)
+				u := NewUpdate().WithSource(*s)
 				v := NewValue().WithPath("propulsion.0.revolutions").WithValue(16.341667).WithUuid(uuid.MustParse("496aa0fb-d838-4631-a12f-dbad3cb27389"))
 				u.AddValue(v)
 				// 2022-02-09T12:03:57.431272983Z
@@ -152,7 +152,7 @@ var _ = Describe("Mapped", func() {
 			BeforeEach(func() {
 				mapped = NewMapped().WithContext("vessels.urn:mrn:imo:mmsi:234567890").WithOrigin("vessels.urn:mrn:imo:mmsi:123456789")
 				s := NewSource().WithLabel("GPS").WithType(config.NMEA0183Type)
-				u := NewUpdate().WithSource(s)
+				u := NewUpdate().WithSource(*s)
 				lat := 52.150099
 				lon := 5.921749
 				v := NewValue().WithPath("navigation.position").WithValue(Position{Latitude: &lat, Longitude: &lon}).WithUuid(uuid.MustParse("496aa0fb-d838-4631-a12f-dbad3cb27389"))
@@ -223,7 +223,7 @@ var _ = Describe("Mapped", func() {
 				v1 := NewValue().WithPath("navigation.position").WithValue(Position{Altitude: &alt, Latitude: &lat, Longitude: &lon}).WithUuid(uuid.MustParse("84679362-f963-405f-aa37-a6a8ed961417"))
 				v2 := NewValue().WithPath("navigation.state").WithValue("motoring").WithUuid(uuid.MustParse("84679362-f963-405f-aa37-a6a8ed961417"))
 				v3 := NewValue().WithPath("notifications.ais").WithValue(Alarm{State: true, Message: "AIS: Antenna VSWR exceeds limit"}).WithUuid(uuid.MustParse("84679362-f963-405f-aa37-a6a8ed961417"))
-				u := NewUpdate().WithSource(s).AddValue(v1).AddValue(v2).AddValue(v3)
+				u := NewUpdate().WithSource(*s).AddValue(v1).AddValue(v2).AddValue(v3)
 				u.Timestamp = time.Date(2022, time.Month(2), 9, 12, 3, 57, 431272983, time.UTC)
 				expected = NewMapped().WithContext("vessels.urn:mrn:imo:mmsi:234567890").WithOrigin("vessels.urn:mrn:imo:mmsi:123456789").AddUpdate(u)
 				marshaled = []byte(`
@@ -281,7 +281,7 @@ var _ = Describe("Mapped", func() {
 				v2 := NewValue().WithPath("navigation.state").WithValue("motoring").WithUuid(uuid.UUID{104, 113, 49, 233, 41, 50, 66, 74, 170, 51, 99, 11, 36, 116, 203, 160})
 				v3 := NewValue().WithPath("navigation.position").WithValue(Position{Latitude: &lat, Longitude: &lon}).WithUuid(uuid.UUID{104, 113, 49, 233, 41, 50, 66, 74, 170, 51, 99, 11, 36, 116, 203, 160})
 				v4 := NewValue().WithPath("navigation.speedOverGround").WithValue(0.0).WithUuid(uuid.UUID{104, 113, 49, 233, 41, 50, 66, 74, 170, 51, 99, 11, 36, 116, 203, 160})
-				u := NewUpdate().WithSource(s).AddValue(v1).AddValue(v2).AddValue(v3).AddValue(v4)
+				u := NewUpdate().WithSource(*s).AddValue(v1).AddValue(v2).AddValue(v3).AddValue(v4)
 				u.Timestamp = time.Date(2022, time.Month(2), 21, 23, 9, 33, 756165025, time.UTC)
 				expected = NewMapped().WithContext("vessels.urn:mrn:imo:mmsi:244700143").WithOrigin("vessels.urn:mrn:imo:mmsi:244620991").AddUpdate(u)
 				marshaled = []byte(`{"context":"vessels.urn:mrn:imo:mmsi:244700143","origin":"vessels.urn:mrn:imo:mmsi:244620991","updates":[{"source":{"label":"AIS","type":"nmea0183"},"timestamp":"2022-02-21T23:09:33.756165025Z","values":[{"path":"mmsi","uuid":"687131e9-2932-424a-aa33-630b2474cba0","value":"244700143"},{"path":"navigation.state","uuid":"687131e9-2932-424a-aa33-630b2474cba0","value":"motoring"},{"path":"navigation.position","uuid":"687131e9-2932-424a-aa33-630b2474cba0","value":{"latitude":51.89874666666666,"longitude":4.487056666666667}},{"path":"navigation.speedOverGround","uuid":"687131e9-2932-424a-aa33-630b2474cba0","value":0}]}]}`)

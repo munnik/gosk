@@ -30,7 +30,7 @@ func (m *JSONMapper) Map(subscriber mangos.Socket, publisher mangos.Socket) {
 func (m *JSONMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	result := message.NewMapped().WithContext(m.config.Context).WithOrigin(m.config.Context)
 	s := message.NewSource().WithLabel(r.Collector).WithType(m.protocol)
-	u := message.NewUpdate().WithSource(s).WithTimestamp(r.Timestamp)
+	u := message.NewUpdate().WithSource(*s).WithTimestamp(r.Timestamp)
 
 	// Reuse this vm instance between runs
 	vm := vm.VM{}

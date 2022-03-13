@@ -1,5 +1,11 @@
 package message
 
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
+
 type Mapped struct {
 	Context string   `json:"context"` // indicates what the data is about
 	Origin  string   `json:"origin"`  // indicates the creator of the data
@@ -54,4 +60,48 @@ func (m Mapped) Equals(other Mapped) bool {
 	}
 
 	return true
+}
+
+func (m Mapped) ToSingleValueMapped() []SingleValueMapped {
+	result := make([]SingleValueMapped, 0)
+
+	for _, u := range m.Updates {
+		for _, v := range u.Values {
+			result = append(result, SingleValueMapped{
+				Context:   m.Context,
+				Origin:    m.Origin,
+				Source:    u.Source,
+				Timestamp: u.Timestamp,
+				Path:      v.Path,
+				Uuid:      v.Uuid,
+				Value:     v.Value,
+			})
+		}
+	}
+	return result
+}
+
+type SingleValueMapped struct {
+	Context   string      `json:"context"`
+	Origin    string      `json:"origin"`
+	Source    Source      `json:"source"`
+	Timestamp time.Time   `json:"timestamp"`
+	Path      string      `json:"path"`
+	Uuid      uuid.UUID   `json:"uuid"`
+	Value     interface{} `json:"value"`
+}
+
+func NewSingleValueMapped() *SingleValueMapped {
+	return &SingleValueMapped{}
+}
+
+func (s SingleValueMapped) ToMapped() Mapped {
+	v := NewValue().WithPath(s.Path).WithUuid(s.Uuid).WithValue(s.Value)
+	u := NewUpdate().WithSource(s.Source).WithTimestamp(s.Timestamp).AddValue(v)
+	m := NewMapped().WithContext(s.Context).WithOrigin(s.Origin).AddUpdate(u)
+	return *m
+}
+
+func (s SingleValueMapped) Equals(other SingleValueMapped) bool {
+	return s.Context == other.Context && s.Path == other.Path && s.Value == other.Value
 }

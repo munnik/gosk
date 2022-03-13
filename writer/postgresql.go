@@ -21,7 +21,6 @@ func NewPostgresqlWriter(c *config.PostgresqlConfig) *PostgresqlWriter {
 
 func (w *PostgresqlWriter) WriteRaw(subscriber mangos.Socket) {
 	for {
-		raw := &message.Raw{}
 		received, err := subscriber.Recv()
 		if err != nil {
 			logger.GetLogger().Warn(
@@ -30,7 +29,8 @@ func (w *PostgresqlWriter) WriteRaw(subscriber mangos.Socket) {
 			)
 			continue
 		}
-		if err := json.Unmarshal(received, raw); err != nil {
+		raw := message.Raw{}
+		if err := json.Unmarshal(received, &raw); err != nil {
 			logger.GetLogger().Warn(
 				"Could not unmarshal the received data",
 				zap.ByteString("Received", received),
@@ -44,7 +44,6 @@ func (w *PostgresqlWriter) WriteRaw(subscriber mangos.Socket) {
 
 func (w *PostgresqlWriter) WriteMapped(subscriber mangos.Socket) {
 	for {
-		mapped := &message.Mapped{}
 		received, err := subscriber.Recv()
 		if err != nil {
 			logger.GetLogger().Warn(
@@ -53,7 +52,8 @@ func (w *PostgresqlWriter) WriteMapped(subscriber mangos.Socket) {
 			)
 			continue
 		}
-		if err := json.Unmarshal(received, mapped); err != nil {
+		mapped := message.Mapped{}
+		if err := json.Unmarshal(received, &mapped); err != nil {
 			logger.GetLogger().Warn(
 				"Could not unmarshal the received data",
 				zap.ByteString("Received", received),

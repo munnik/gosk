@@ -15,8 +15,8 @@ func NewUpdate() *Update {
 	}
 }
 
-func (u *Update) WithSource(s *Source) *Update {
-	u.Source = *s
+func (u *Update) WithSource(s Source) *Update {
+	u.Source = s
 	return u
 }
 

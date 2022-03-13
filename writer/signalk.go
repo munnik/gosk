@@ -63,8 +63,8 @@ func (w *SignalKWriter) WriteMapped(subscriber mangos.Socket) {
 }
 
 func (w *SignalKWriter) receive(subscriber mangos.Socket) {
-	var mapped message.Mapped
 	for {
+		var mapped message.Mapped
 		received, err := subscriber.Recv()
 		if err != nil {
 			logger.GetLogger().Warn(

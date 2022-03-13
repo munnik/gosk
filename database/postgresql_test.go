@@ -19,19 +19,19 @@ var _ = Describe("Test database", Ordered, func() {
 
 	now := time.Now()
 
-	mappedStringValue := func() *message.Mapped {
+	mappedStringValue := func() message.Mapped {
 		v := message.NewValue().WithPath("testingPath").WithUuid(uuid.Must(uuid.NewUUID())).WithValue("testValue")
 		s := message.NewSource().WithLabel("testingLabel").WithType("testingType")
-		u := message.NewUpdate().WithSource(s).WithTimestamp(now).AddValue(v)
+		u := message.NewUpdate().WithSource(*s).WithTimestamp(now).AddValue(v)
 		u.Timestamp = u.Timestamp.Add(-time.Duration(u.Timestamp.Nanosecond())) // resolution of time in postgresql is lower
-		return message.NewMapped().WithOrigin("testingOrigin").WithContext("testingContext").AddUpdate(u)
+		return *message.NewMapped().WithOrigin("testingOrigin").WithContext("testingContext").AddUpdate(u)
 	}()
-	mappedAlarmValue := func() *message.Mapped {
+	mappedAlarmValue := func() message.Mapped {
 		v := message.NewValue().WithPath("testingPath").WithUuid(uuid.Must(uuid.NewUUID())).WithValue(message.Alarm{State: false, Message: "testingAlarm"})
 		s := message.NewSource().WithLabel("testingLabel").WithType("testingType")
-		u := message.NewUpdate().WithSource(s).WithTimestamp(now).AddValue(v)
+		u := message.NewUpdate().WithSource(*s).WithTimestamp(now).AddValue(v)
 		u.Timestamp = u.Timestamp.Add(-time.Duration(u.Timestamp.Nanosecond())) // resolution of time in postgresql is lower
-		return message.NewMapped().WithOrigin("testingOrigin").WithContext("testingContext").AddUpdate(u)
+		return *message.NewMapped().WithOrigin("testingOrigin").WithContext("testingContext").AddUpdate(u)
 	}()
 
 	BeforeEach(func() {
@@ -56,7 +56,7 @@ var _ = Describe("Test database", Ordered, func() {
 	)
 
 	DescribeTable("Write mapped",
-		func(input *message.Mapped, expected *message.Mapped) {
+		func(input message.Mapped, expected message.Mapped) {
 			db.WriteMapped(input)
 
 			mappedSelectQuery := `SELECT "time", "collector", "type", "context", "path", "value", "uuid", "origin" FROM "mapped_data" WHERE "uuid" = $1`

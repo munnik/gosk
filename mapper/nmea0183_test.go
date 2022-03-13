@@ -49,7 +49,7 @@ var _ = Describe("DoMap nmea0183", func() {
 			}(),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					message.NewSource().WithLabel("testingCollector").WithType(config.NMEA0183Type),
+					*message.NewSource().WithLabel("testingCollector").WithType(config.NMEA0183Type),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -71,7 +71,7 @@ var _ = Describe("DoMap nmea0183", func() {
 				lon := 4.60305
 				m := message.NewMapped().WithContext("vessels.urn:mrn:imo:mmsi:246581000").WithOrigin("testingContext").AddUpdate(
 					message.NewUpdate().WithSource(
-						message.NewSource().WithLabel("testingCollector").WithType(config.NMEA0183Type),
+						*message.NewSource().WithLabel("testingCollector").WithType(config.NMEA0183Type),
 					).WithTimestamp(
 						now,
 					).AddValue(

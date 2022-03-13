@@ -90,7 +90,7 @@ func (db *PostgresqlDatabase) GetConnection() *pgxpool.Pool {
 	return conn
 }
 
-func (db *PostgresqlDatabase) WriteRaw(raw *message.Raw) {
+func (db *PostgresqlDatabase) WriteRaw(raw message.Raw) {
 	for _, err := db.GetConnection().Exec(context.Background(), rawInsertQuery, raw.Timestamp, raw.Collector, raw.Value, raw.Uuid, raw.Type); err != nil; {
 		logger.GetLogger().Warn(
 			"Error on inserting the received data in the database",
@@ -105,27 +105,25 @@ func (db *PostgresqlDatabase) WriteRaw(raw *message.Raw) {
 	}
 }
 
-func (db *PostgresqlDatabase) WriteMapped(mapped *message.Mapped) {
-	for _, update := range mapped.Updates {
-		for _, value := range update.Values {
-			if str, ok := value.Value.(string); ok {
-				value.Value = strconv.Quote(str)
-			}
-			for _, err := db.GetConnection().Exec(context.Background(), mappedInsertQuery, update.Timestamp, update.Source.Label, update.Source.Type, mapped.Context, value.Path, value.Value, value.Uuid, mapped.Origin); err != nil; {
-				logger.GetLogger().Warn(
-					"Error on inserting the received data in the database",
-					zap.String("Error", err.Error()),
-					zap.String("Query", mappedInsertQuery),
-					zap.Time("Timestamp", update.Timestamp),
-					zap.String("Label", update.Source.Label),
-					zap.String("Type", update.Source.Type),
-					zap.String("Context", mapped.Context),
-					zap.String("Path", value.Path),
-					zap.Any("Value", value.Value),
-					zap.String("UUID", value.Uuid.String()),
-					zap.String("Origin", mapped.Origin),
-				)
-			}
+func (db *PostgresqlDatabase) WriteMapped(mapped message.Mapped) {
+	for _, m := range mapped.ToSingleValueMapped() {
+		if str, ok := m.Value.(string); ok {
+			m.Value = strconv.Quote(str)
+		}
+		for _, err := db.GetConnection().Exec(context.Background(), mappedInsertQuery, m.Timestamp, m.Source.Label, m.Source.Type, m.Context, m.Path, m.Value, m.Uuid, m.Origin); err != nil; {
+			logger.GetLogger().Warn(
+				"Error on inserting the received data in the database",
+				zap.String("Error", err.Error()),
+				zap.String("Query", mappedInsertQuery),
+				zap.Time("Timestamp", m.Timestamp),
+				zap.String("Label", m.Source.Label),
+				zap.String("Type", m.Source.Type),
+				zap.String("Context", m.Context),
+				zap.String("Path", m.Path),
+				zap.Any("Value", m.Value),
+				zap.String("UUID", m.Uuid.String()),
+				zap.String("Origin", m.Origin),
+			)
 		}
 	}
 }
@@ -138,28 +136,26 @@ func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...inte
 	defer rows.Close()
 
 	result := make([]message.Mapped, 0)
-	var m *message.Mapped
-
 	for rows.Next() {
-		m = message.NewMapped().AddUpdate(message.NewUpdate().AddValue(message.NewValue()))
+		m := message.NewSingleValueMapped()
 		rows.Scan(
-			&m.Updates[0].Timestamp,
-			&m.Updates[0].Source.Label,
-			&m.Updates[0].Source.Type,
-			&m.Context,
-			&m.Updates[0].Values[0].Path,
-			&m.Updates[0].Values[0].Value,
-			&m.Updates[0].Values[0].Uuid,
-			&m.Origin,
+			m.Timestamp,
+			m.Source.Label,
+			m.Source.Type,
+			m.Context,
+			m.Path,
+			m.Value,
+			m.Uuid,
+			m.Origin,
 		)
-		if m.Updates[0].Values[0].Value, err = message.Decode(m.Updates[0].Values[0].Value); err != nil {
+		if m.Value, err = message.Decode(m.Value); err != nil {
 			logger.GetLogger().Warn(
 				"Could not decode value",
 				zap.String("Error", err.Error()),
-				zap.Any("Value", m.Updates[0].Values[0].Value),
+				zap.Any("Value", m.Value),
 			)
 		}
-		result = append(result, *m)
+		result = append(result, m.ToMapped())
 	}
 
 	return result, nil

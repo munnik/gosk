@@ -171,7 +171,7 @@ var _ = Describe("DoMap Modbus", func() {
 			}(),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType),
+					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -190,7 +190,7 @@ var _ = Describe("DoMap Modbus", func() {
 			}(),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType),
+					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -209,7 +209,7 @@ var _ = Describe("DoMap Modbus", func() {
 			}(),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType),
+					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -288,7 +288,7 @@ var _ = Describe("DoMap Modbus", func() {
 			}(),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType),
+					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -307,7 +307,7 @@ var _ = Describe("DoMap Modbus", func() {
 			}(),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType),
+					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType),
 				).WithTimestamp(
 					now,
 				).AddValue(

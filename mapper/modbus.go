@@ -30,7 +30,7 @@ func (m *ModbusMapper) Map(subscriber mangos.Socket, publisher mangos.Socket) {
 func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	result := message.NewMapped().WithContext(m.config.Context).WithOrigin(m.config.Context)
 	s := message.NewSource().WithLabel(r.Collector).WithType(m.protocol)
-	u := message.NewUpdate().WithSource(s).WithTimestamp(r.Timestamp)
+	u := message.NewUpdate().WithSource(*s).WithTimestamp(r.Timestamp)
 
 	if len(r.Value) < 8 {
 		return nil, fmt.Errorf("no usefull data in %v", r.Value)

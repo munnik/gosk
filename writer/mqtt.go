@@ -74,6 +74,7 @@ func (w *MqttWriter) onRemove(key string, entry []byte) {
 
 		i := w.cache.Iterator()
 		for i.SetNext() {
+			var m message.Mapped
 			entryInfo, err := i.Value()
 			if err != nil {
 				logger.GetLogger().Warn(

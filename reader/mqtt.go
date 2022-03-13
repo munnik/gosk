@@ -86,8 +86,8 @@ func (r *MqttReader) messageReceived(c mqtt.Client, m mqtt.Message) {
 		return
 	}
 
-	b := message.NewBuffer()
-	if err := json.Unmarshal(received, b); err != nil {
+	var deltas []message.Mapped
+	if err := json.Unmarshal(received, &deltas); err != nil {
 		logger.GetLogger().Warn(
 			"Could not unmarshal buffer",
 			zap.String("Error", err.Error()),
@@ -96,7 +96,7 @@ func (r *MqttReader) messageReceived(c mqtt.Client, m mqtt.Message) {
 		return
 	}
 
-	for _, delta := range b.Deltas {
+	for _, delta := range deltas {
 		bytes, err := json.Marshal(delta)
 		if err != nil {
 			logger.GetLogger().Warn(

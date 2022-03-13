@@ -178,28 +178,16 @@ func NewJSONMappingConfig(configFilePath string) []JSONMappingConfig {
 }
 
 type MQTTConfig struct {
-	URLString string `mapstructure:"url"`
-	Username  string `mapstructure:"username"`
-	Password  string `mapstructure:"password"`
-	Interval  int    `mapstructure:"interval"` // ignored for reader
+	URLString        string `mapstructure:"url"`
+	Username         string `mapstructure:"username"`
+	Password         string `mapstructure:"password"`
+	Interval         int    `mapstructure:"interval"`         // interval to flush the cache in seconds, ignored for reader
+	HardMaxCacheSize int    `mapstructure:"hardMaxCacheSize"` // maximum size of the cache in MBs, cache will be flushed when size is reached, ignored for reader
 }
 
 func NewMQTTConfig(configFilePath string) *MQTTConfig {
 	result := MQTTConfig{}
 	readConfigFile(&result, configFilePath)
-
-	return &result
-}
-
-type CacheConfig struct {
-	Heartbeat      uint64          `mapstructure:"heartbeat"` // every heartbeat all cached values that are in the cache for at least one heartbeat will be send again, value in seconds
-	BigCacheConfig *BigCacheConfig `mapstructure:"_"`
-}
-
-func NewCacheConfig(configFilePath string) *CacheConfig {
-	result := CacheConfig{}
-	readConfigFile(&result, configFilePath)
-	readConfigFile(&result.BigCacheConfig, configFilePath, "cache")
 
 	return &result
 }

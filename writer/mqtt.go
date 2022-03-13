@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/allegro/bigcache/v3"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/google/uuid"
 	"github.com/klauspost/compress/zstd"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
@@ -23,18 +25,20 @@ const (
 type MqttWriter struct {
 	config     *config.MQTTConfig
 	mqttClient mqtt.Client
-	buffer     message.Buffer
-	timer      time.Timer
+	cache      *bigcache.BigCache
 	encoder    *zstd.Encoder
 }
 
 func NewMqttWriter(c *config.MQTTConfig) *MqttWriter {
-	var encoder, _ = zstd.NewWriter(nil)
-	return &MqttWriter{
-		config:  c,
-		buffer:  *message.NewBuffer(),
-		encoder: encoder,
-	}
+	w := &MqttWriter{config: c}
+	cacheConfig := bigcache.DefaultConfig(time.Duration(c.Interval) * time.Second)
+	cacheConfig.HardMaxCacheSize = c.HardMaxCacheSize
+	cacheConfig.OnRemove = w.onRemove
+	cache, _ := bigcache.NewBigCache(cacheConfig)
+	w.cache = cache
+	encoder, _ := zstd.NewWriter(nil)
+	w.encoder = encoder
+	return w
 }
 
 func (w *MqttWriter) createClientOptions() *mqtt.ClientOptions {
@@ -46,6 +50,65 @@ func (w *MqttWriter) createClientOptions() *mqtt.ClientOptions {
 	o.SetOrderMatters(false)
 	o.SetKeepAlive(keepAlive)
 	return o
+}
+
+// When this method is called either the interval to flush or the maximum cache size is reached
+func (w *MqttWriter) onRemove(key string, entry []byte) {
+	var m message.Mapped
+	if err := json.Unmarshal(entry, &m); err != nil {
+		logger.GetLogger().Warn(
+			"Could not unmarshal a message from the publisher",
+			zap.String("Error", err.Error()),
+		)
+		return
+	}
+
+	deltas := make([]message.Mapped, 0)
+	deltas = append(deltas, m)
+
+	i := w.cache.Iterator()
+	for i.SetNext() {
+		entryInfo, err := i.Value()
+		if err != nil {
+			logger.GetLogger().Warn(
+				"Unable to retrieve an entry from the cache",
+				zap.String("Error", err.Error()),
+			)
+			continue
+		}
+		if err := json.Unmarshal(entryInfo.Value(), &m); err != nil {
+			logger.GetLogger().Warn(
+				"Could not unmarshal a message from the publisher",
+				zap.String("Error", err.Error()),
+			)
+			continue
+		}
+		w.cache.Delete(entryInfo.Key())
+		deltas = append(deltas, m)
+	}
+
+	w.sendMqtt(deltas)
+}
+
+func (w *MqttWriter) sendMqtt(deltas []message.Mapped) {
+	bytes, err := json.Marshal(deltas)
+	if err != nil {
+		logger.GetLogger().Warn(
+			"Could not marshall the deltas",
+			zap.String("Error", err.Error()),
+		)
+		return
+	}
+	go func(context string, bytes []byte) {
+		compressed := w.encoder.EncodeAll(bytes, make([]byte, 0, len(bytes)))
+		if token := w.mqttClient.Publish(context, 1, true, compressed); token.Wait() && token.Error() != nil {
+			logger.GetLogger().Warn(
+				"Could not publish a message via MQTT",
+				zap.String("Error", token.Error().Error()),
+				zap.ByteString("Bytes", bytes),
+			)
+		}
+	}(fmt.Sprintf(writeTopic, w.config.Username), bytes)
 }
 
 func (w *MqttWriter) WriteMapped(subscriber mangos.Socket) {
@@ -70,47 +133,7 @@ func (w *MqttWriter) WriteMapped(subscriber mangos.Socket) {
 				)
 				continue
 			}
-			m := message.Mapped{}
-			if err := json.Unmarshal(received, &m); err != nil {
-				logger.GetLogger().Warn(
-					"Could not unmarshal a message from the publisher",
-					zap.String("Error", err.Error()),
-				)
-				continue
-			}
-			w.buffer.Lock().Append(m).Unlock()
+			w.cache.Set(uuid.NewString(), received)
 		}
 	}(w)
-
-	for {
-		w.timer = *time.NewTimer(time.Duration(w.config.Interval) * time.Second)
-		<-w.timer.C
-		w.sendMqtt()
-	}
-}
-
-func (w *MqttWriter) sendMqtt() error {
-	w.buffer.Lock()
-	defer w.buffer.Unlock()
-	if len(w.buffer.Deltas) == 0 {
-		return nil
-	}
-	bytes, err := json.Marshal(w.buffer)
-	if err != nil {
-		return err
-	}
-	w.buffer.Empty()
-
-	go func(context string, bytes []byte) {
-		compressed := w.encoder.EncodeAll(bytes, make([]byte, 0, len(bytes)))
-		if token := w.mqttClient.Publish(context, 1, true, compressed); token.Wait() && token.Error() != nil {
-			logger.GetLogger().Warn(
-				"Could not publish a message via MQTT",
-				zap.String("Error", token.Error().Error()),
-				zap.ByteString("Bytes", bytes),
-			)
-		}
-	}(fmt.Sprintf(writeTopic, w.config.Username), bytes)
-
-	return nil
 }

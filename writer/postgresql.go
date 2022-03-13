@@ -20,9 +20,8 @@ func NewPostgresqlWriter(c *config.PostgresqlConfig) *PostgresqlWriter {
 }
 
 func (w *PostgresqlWriter) WriteRaw(subscriber mangos.Socket) {
-	raw := &message.Raw{}
-
 	for {
+		raw := &message.Raw{}
 		received, err := subscriber.Recv()
 		if err != nil {
 			logger.GetLogger().Warn(
@@ -44,9 +43,8 @@ func (w *PostgresqlWriter) WriteRaw(subscriber mangos.Socket) {
 }
 
 func (w *PostgresqlWriter) WriteMapped(subscriber mangos.Socket) {
-	mapped := &message.Mapped{}
-
 	for {
+		mapped := &message.Mapped{}
 		received, err := subscriber.Recv()
 		if err != nil {
 			logger.GetLogger().Warn(

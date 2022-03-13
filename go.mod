@@ -10,6 +10,7 @@ require (
 	github.com/fgrosse/zaptest v1.1.0
 	github.com/go-chi/chi/v5 v5.0.7
 	github.com/goburrow/serial v0.1.0
+	github.com/gobwas/ws v1.1.0
 	github.com/golang-migrate/migrate/v4 v4.15.1
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/websocket v1.5.0
@@ -33,7 +34,6 @@ require (
 	github.com/fsnotify/fsnotify v1.5.1 // indirect
 	github.com/gobwas/httphead v0.1.0 // indirect
 	github.com/gobwas/pool v0.2.1 // indirect
-	github.com/gobwas/ws v1.1.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect

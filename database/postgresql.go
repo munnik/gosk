@@ -139,14 +139,14 @@ func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...inte
 	for rows.Next() {
 		m := message.NewSingleValueMapped()
 		rows.Scan(
-			m.Timestamp,
-			m.Source.Label,
-			m.Source.Type,
-			m.Context,
-			m.Path,
-			m.Value,
-			m.Uuid,
-			m.Origin,
+			&m.Timestamp,
+			&m.Source.Label,
+			&m.Source.Type,
+			&m.Context,
+			&m.Path,
+			&m.Value,
+			&m.Uuid,
+			&m.Origin,
 		)
 		if m.Value, err = message.Decode(m.Value); err != nil {
 			logger.GetLogger().Warn(

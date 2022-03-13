@@ -1,6 +1,6 @@
 ---
 context: "vessels.urn:mrn:imo:mmsi:244620991" # if the data itself doesn't provide a context then this context is used
-protocol: "sygo"
+protocol: "csv"
 mappings:
   - beginsWith: "01,"
     expression: "floatValues[0] / 100.0"

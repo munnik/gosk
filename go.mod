@@ -8,11 +8,10 @@ require (
 	github.com/antonmedv/expr v1.9.0
 	github.com/eclipse/paho.mqtt.golang v1.3.5
 	github.com/fgrosse/zaptest v1.1.0
+	github.com/go-chi/chi/v5 v5.0.7
 	github.com/goburrow/serial v0.1.0
 	github.com/golang-migrate/migrate/v4 v4.15.1
 	github.com/google/uuid v1.3.0
-	github.com/gorilla/handlers v1.5.1
-	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/jackc/pgx/v4 v4.15.0
 	github.com/klauspost/compress v1.15.1
@@ -31,7 +30,6 @@ require (
 	github.com/BertoldVdb/go-ais v0.1.0 // indirect
 	github.com/Microsoft/go-winio v0.5.2 // indirect
 	github.com/adrianmo/go-nmea v1.7.0 // indirect
-	github.com/felixge/httpsnoop v1.0.2 // indirect
 	github.com/fsnotify/fsnotify v1.5.1 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect

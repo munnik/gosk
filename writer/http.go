@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/Jeffail/gabs/v2"
-	"github.com/gorilla/handlers"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/database"
 	"github.com/munnik/gosk/logger"
@@ -59,15 +59,14 @@ func (w *HTTPWriter) WriteMapped(subscriber mangos.Socket) {
 	go w.readFromDatabase()
 	go w.update(subscriber)
 
-	router := mux.NewRouter()
+	router := chi.NewRouter()
+	router.Use(middleware.Compress(5))
 
-	// handle route using handler function
-	// router.PathPrefix("/signalk/v3/api/").Handler(http.StripPrefix("/signalk/v3/api/", w))
-	router.PathPrefix(SignalKAPIPath).Handler(w)
-	router.HandleFunc(SignalKPath, w.serveEndpoints).Methods("GET")
+	router.Get(SignalKAPIPath+"*", w.serveFullDataModel)
+	router.Get(SignalKPath, w.serveEndpoints)
 
 	// listen to port
-	err := http.ListenAndServe(fmt.Sprintf("%s", w.config.URL.Host), handlers.CompressHandler(router))
+	err := http.ListenAndServe(fmt.Sprintf("%s", w.config.URL.Host), router)
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not listen and serve",
@@ -82,13 +81,12 @@ func (w *HTTPWriter) serveEndpoints(rw http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(rw, endpoints, w.config.URL.Hostname(), w.config.URL.Port(), w.config.URL.Hostname(), w.config.URL.Port(), w.config.Version)
 }
 
-func (w *HTTPWriter) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
+func (w *HTTPWriter) serveFullDataModel(rw http.ResponseWriter, r *http.Request) {
 	w.wg.Wait()
 
 	mapped, err := w.bc.ReadMapped("")
 	if err != nil {
-		rw.WriteHeader(400)
-		fmt.Printf("Error occurred while retrieving data, please see the server logs for more details")
+		http.NotFound(rw, r)
 		return
 	}
 
@@ -117,8 +115,7 @@ func (w *HTTPWriter) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	}
 	result, err := jsonObj.JSONPointer(searchPath)
 	if err != nil {
-		rw.WriteHeader(400)
-		fmt.Printf("Error occurred while retrieving data, please see the server logs for more details")
+		http.NotFound(rw, r)
 		return
 	}
 	rw.Header().Set("Content-Type", "application/json")

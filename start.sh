@@ -21,4 +21,9 @@ sleep 1
 ./gosk write database raw -s "tcp://127.0.0.1:6000"  --config "config/writer/postgresql.yaml" &
 ./gosk write database mapped -s "tcp://127.0.0.1:6010"  --config "config/writer/postgresql.yaml" &
 
-./gosk write http -s "tcp://127.0.0.1:6010"  --config "config/writer/http.yaml" &
+./gosk write mqtt -s "tcp://127.0.0.1:6010"  --config "config/writer/mqtt.yaml" &
+./gosk read mqtt -p "tcp://127.0.0.1:6020"  --config "config/reader/mqtt.yaml" &
+
+sleep 1
+
+./gosk write signalk -s "tcp://127.0.0.1:6020"  --config "config/writer/signalk.yaml" &

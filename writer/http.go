@@ -1,11 +1,13 @@
 package writer
 
 import (
+	"embed"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 	"sync"
+	"text/template"
 	"time"
 
 	"github.com/Jeffail/gabs/v2"
@@ -20,22 +22,12 @@ import (
 )
 
 const (
-	endpoints = `{
-  "endpoints": {
-    "v3": {
-      "version": "3.0.0",
-      "signalk-http": "http://%s:%s/signalk/v3/api/",
-      "signalk-ws": "ws://%s:%s/signalk/v3/stream"
-    }
-  },
-  "server": {
-    "id": "gosk",
-    "version": "%s"
-  }
-}`
 	SignalKPath    = "/signalk"
 	SignalKAPIPath = "/signalk/v3/api/"
 )
+
+//go:embed templates/*
+var fs embed.FS
 
 type HTTPWriter struct {
 	config *config.SignalKConfig
@@ -77,8 +69,21 @@ func (w *HTTPWriter) WriteMapped(subscriber mangos.Socket) {
 }
 
 func (w *HTTPWriter) serveEndpoints(rw http.ResponseWriter, r *http.Request) {
+	t, err := template.ParseFS(fs, "templates/endpoints.json")
+	if err != nil {
+		http.NotFound(rw, r)
+		return
+	}
+
 	rw.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(rw, endpoints, w.config.URL.Hostname(), w.config.URL.Port(), w.config.URL.Hostname(), w.config.URL.Port(), w.config.Version)
+	data := struct {
+		Host    string
+		Version string
+	}{
+		Host:    r.Host,
+		Version: w.config.Version,
+	}
+	t.Execute(rw, data)
 }
 
 func (w *HTTPWriter) serveFullDataModel(rw http.ResponseWriter, r *http.Request) {

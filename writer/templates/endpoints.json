@@ -1,0 +1,13 @@
+{
+  "endpoints": {
+    "v3": {
+      "version": "3.0.0",
+      "signalk-http": "http://{{ .Host }}/signalk/v3/api/",
+      "signalk-ws": "ws://{{ .Host }}/signalk/v3/stream"
+    }
+  },
+  "server": {
+    "id": "gosk",
+    "version": "{{ .Version }}"
+  }
+}

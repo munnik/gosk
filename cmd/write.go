@@ -56,7 +56,7 @@ var (
 		Run:   doWriteMQTT,
 	}
 	writeSignalKCmd = &cobra.Command{
-		Use:   "http",
+		Use:   "signalk",
 		Short: "SignalK HTTP",
 		Long:  `Starts a HTTP server that publishes SignalK full models`,
 		Run:   doWriteSignalK,
@@ -65,16 +65,22 @@ var (
 
 func init() {
 	rootCmd.AddCommand(writeCmd)
-	writeCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
-	writeCmd.MarkFlagRequired("subscribeURL")
 
 	writeCmd.AddCommand(writeDatabaseCmd)
 	writeDatabaseCmd.AddCommand(writeDatabaseRawCmd)
+	writeDatabaseRawCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
+	writeDatabaseRawCmd.MarkFlagRequired("subscribeURL")
 	writeDatabaseCmd.AddCommand(writeDatabaseMappedCmd)
+	writeDatabaseMappedCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
+	writeDatabaseMappedCmd.MarkFlagRequired("subscribeURL")
 
 	writeCmd.AddCommand(writeMQTTCmd)
+	writeMQTTCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
+	writeMQTTCmd.MarkFlagRequired("subscribeURL")
 
 	writeCmd.AddCommand(writeSignalKCmd)
+	writeSignalKCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
+	writeSignalKCmd.MarkFlagRequired("subscribeURL")
 }
 
 func doWriteDatabaseRaw(cmd *cobra.Command, args []string) {

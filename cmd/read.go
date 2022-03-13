@@ -39,10 +39,10 @@ var (
 
 func init() {
 	rootCmd.AddCommand(readCmd)
-	readCmd.Flags().StringVarP(&publishURL, "publishURL", "p", "", "Nanomsg URL, the URL is used to publish the data on. It listens for connections.")
-	readCmd.MarkFlagRequired("publishURL")
 
 	readCmd.AddCommand(mqttReadCmd)
+	mqttReadCmd.Flags().StringVarP(&publishURL, "publishURL", "p", "", "Nanomsg URL, the URL is used to publish the data on. It listens for connections.")
+	mqttReadCmd.MarkFlagRequired("publishURL")
 }
 
 func doMQTTRead(cmd *cobra.Command, args []string) {

@@ -32,58 +32,52 @@ var (
 		Short: "Write messages to a storage or remote location",
 		Long:  `Write messages to a storage or remote location`,
 	}
-	databaseCmd = &cobra.Command{
+	writeDatabaseCmd = &cobra.Command{
 		Use:   "database",
 		Short: "Store messages in the timeseries database",
 		Long:  `Store messages in the timeseries database`,
 	}
-	rawDatabaseCmd = &cobra.Command{
+	writeDatabaseRawCmd = &cobra.Command{
 		Use:   "raw",
 		Short: "Store raw messages in the timeseries database",
 		Long:  `Store raw messages in the timeseries database`,
-		Run:   rawDatabase,
+		Run:   doWriteDatabaseRaw,
 	}
-	mappedDatabaseCmd = &cobra.Command{
+	writeDatabaseMappedCmd = &cobra.Command{
 		Use:   "mapped",
 		Short: "Store mapped messages in the timeseries database",
 		Long:  `Store mapped messages in the timeseries database`,
-		Run:   mappedDatabase,
+		Run:   doWriteDatabaseMapped,
 	}
-	mqttWriteCmd = &cobra.Command{
+	writeMQTTCmd = &cobra.Command{
 		Use:   "mqtt",
 		Short: "Write messages to a broker",
 		Long:  `Write messages to a broker`,
-		Run:   writeMQTT,
+		Run:   doWriteMQTT,
 	}
-	signalKHTTPCmd = &cobra.Command{
+	writeSignalKCmd = &cobra.Command{
 		Use:   "http",
 		Short: "SignalK HTTP",
 		Long:  `Starts a HTTP server that publishes SignalK full models`,
-		Run:   serveSignalKHTTP,
+		Run:   doWriteSignalK,
 	}
 )
 
 func init() {
 	rootCmd.AddCommand(writeCmd)
+	writeCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
+	writeCmd.MarkFlagRequired("subscribeURL")
 
-	writeCmd.AddCommand(databaseCmd)
-	databaseCmd.AddCommand(rawDatabaseCmd)
-	rawDatabaseCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
-	rawDatabaseCmd.MarkFlagRequired("subscribeURL")
-	databaseCmd.AddCommand(mappedDatabaseCmd)
-	mappedDatabaseCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
-	mappedDatabaseCmd.MarkFlagRequired("subscribeURL")
+	writeCmd.AddCommand(writeDatabaseCmd)
+	writeDatabaseCmd.AddCommand(writeDatabaseRawCmd)
+	writeDatabaseCmd.AddCommand(writeDatabaseMappedCmd)
 
-	writeCmd.AddCommand(mqttWriteCmd)
-	mqttWriteCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
-	mqttWriteCmd.MarkFlagRequired("subscribeURL")
+	writeCmd.AddCommand(writeMQTTCmd)
 
-	writeCmd.AddCommand(signalKHTTPCmd)
-	signalKHTTPCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
-	signalKHTTPCmd.MarkFlagRequired("subscribeURL")
+	writeCmd.AddCommand(writeSignalKCmd)
 }
 
-func rawDatabase(cmd *cobra.Command, args []string) {
+func doWriteDatabaseRaw(cmd *cobra.Command, args []string) {
 	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
@@ -97,7 +91,7 @@ func rawDatabase(cmd *cobra.Command, args []string) {
 	w.WriteRaw(subscriber)
 }
 
-func mappedDatabase(cmd *cobra.Command, args []string) {
+func doWriteDatabaseMapped(cmd *cobra.Command, args []string) {
 	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
@@ -111,7 +105,7 @@ func mappedDatabase(cmd *cobra.Command, args []string) {
 	w.WriteMapped(subscriber)
 }
 
-func writeMQTT(cmd *cobra.Command, args []string) {
+func doWriteMQTT(cmd *cobra.Command, args []string) {
 	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
@@ -125,7 +119,7 @@ func writeMQTT(cmd *cobra.Command, args []string) {
 	w.WriteMapped(subscriber)
 }
 
-func serveSignalKHTTP(cmd *cobra.Command, args []string) {
+func doWriteSignalK(cmd *cobra.Command, args []string) {
 	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
@@ -135,6 +129,6 @@ func serveSignalKHTTP(cmd *cobra.Command, args []string) {
 		)
 	}
 	c := config.NewSignalKConfig(cfgFile).WithVersion(version)
-	a := writer.NewHTTPWriter(c)
-	a.WriteMapped(subscriber)
+	s := writer.NewSignalKWriter(c)
+	s.WriteMapped(subscriber)
 }

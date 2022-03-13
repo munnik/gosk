@@ -28,7 +28,7 @@ var (
 		Use:   "proxy",
 		Short: "Proxy for Nanomsg",
 		Long:  `This proxy can connect to multiple publishers and serve multiple subscribers`,
-		Run:   proxy,
+		Run:   doProxy,
 	}
 	proxySubscribeURLs []string
 )
@@ -40,7 +40,7 @@ func init() {
 	proxyCmd.Flags().StringSliceVarP(&proxySubscribeURLs, "subscribeURL", "s", []string{}, "Nanomsg URL, the URL is used to listen for subscribed data.")
 }
 
-func proxy(cmd *cobra.Command, args []string) {
+func doProxy(cmd *cobra.Command, args []string) {
 	proxy := nanomsg.NewProxy(publishURL)
 	defer proxy.Close()
 	var wg sync.WaitGroup

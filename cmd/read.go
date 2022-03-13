@@ -33,6 +33,7 @@ var (
 		Use:   "mqtt",
 		Short: "Read messages from a broker",
 		Long:  `Read messages from a broker`,
+		Run:   doMQTTRead,
 	}
 )
 
@@ -44,7 +45,7 @@ func init() {
 	readCmd.AddCommand(mqttReadCmd)
 }
 
-func readMQTT(cmd *cobra.Command, args []string) {
+func doMQTTRead(cmd *cobra.Command, args []string) {
 	c := config.NewMQTTConfig(cfgFile)
 	r := reader.NewMqttReader(c)
 	r.ReadMapped(nanomsg.NewPub(publishURL))

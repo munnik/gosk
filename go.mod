@@ -10,7 +10,6 @@ require (
 	github.com/fgrosse/zaptest v1.1.0
 	github.com/go-chi/chi/v5 v5.0.7
 	github.com/goburrow/serial v0.1.0
-	github.com/gobwas/ws v1.1.0
 	github.com/golang-migrate/migrate/v4 v4.15.1
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/websocket v1.5.0
@@ -25,6 +24,7 @@ require (
 	github.com/spf13/viper v1.10.1
 	go.nanomsg.org/mangos/v3 v3.3.0
 	go.uber.org/zap v1.21.0
+	nhooyr.io/websocket v1.8.7
 )
 
 require (
@@ -32,8 +32,8 @@ require (
 	github.com/Microsoft/go-winio v0.5.2 // indirect
 	github.com/adrianmo/go-nmea v1.7.0 // indirect
 	github.com/fsnotify/fsnotify v1.5.1 // indirect
-	github.com/gobwas/httphead v0.1.0 // indirect
-	github.com/gobwas/pool v0.2.1 // indirect
+	github.com/go-chi/chi v1.5.4 // indirect
+	github.com/gobwas/ws v1.1.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect

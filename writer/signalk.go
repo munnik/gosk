@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/go-chi/chi/middleware"
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/database"
 	"github.com/munnik/gosk/logger"
@@ -23,18 +23,20 @@ const (
 )
 
 type SignalKWriter struct {
-	config *config.SignalKConfig
-	db     *database.PostgresqlDatabase
-	bc     *database.BigCache
-	wg     *sync.WaitGroup
+	config           *config.SignalKConfig
+	database         *database.PostgresqlDatabase
+	cache            *database.BigCache
+	wg               *sync.WaitGroup
+	websocketClients []websocketClient
 }
 
 func NewSignalKWriter(c *config.SignalKConfig) *SignalKWriter {
 	return &SignalKWriter{
-		config: c,
-		db:     database.NewPostgresqlDatabase(c.PostgresqlConfig),
-		bc:     database.NewBigCache(c.BigCacheConfig),
-		wg:     &sync.WaitGroup{},
+		config:           c,
+		database:         database.NewPostgresqlDatabase(c.PostgresqlConfig),
+		cache:            database.NewBigCache(c.BigCacheConfig),
+		wg:               &sync.WaitGroup{},
+		websocketClients: make([]websocketClient, 0),
 	}
 }
 

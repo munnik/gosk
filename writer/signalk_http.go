@@ -1,9 +1,8 @@
 package writer
 
 import (
-	"embed"
+	"encoding/json"
 	"fmt"
-	"html/template"
 	"net/http"
 	"strings"
 	"time"
@@ -14,35 +13,35 @@ import (
 	"go.uber.org/zap"
 )
 
-//go:embed templates/*
-var fs embed.FS
+type endpoint struct {
+	Version     string `json:"version"`
+	SignalKHTTP string `json:"signalk-http"`
+	SignalKWS   string `json:"signalk-ws"`
+}
+type server struct {
+	Id      string `json:"id"`
+	Version string `json:"version"`
+}
+type endpoints struct {
+	Endpoints map[string]endpoint `json:"endpoints"`
+	Server    server              `json:"server"`
+}
 
 func (w *SignalKWriter) serveEndpoints(rw http.ResponseWriter, r *http.Request) {
-	t, err := template.ParseFS(fs, "templates/endpoints.json")
-	if err != nil {
-		http.NotFound(rw, r)
-		return
+	e := endpoints{
+		// TODO: detect https/wss
+		Endpoints: map[string]endpoint{"v3": {Version: "3.0.0", SignalKHTTP: "http://" + r.Host + SignalKHTTPPath, SignalKWS: "ws://" + r.Host + SignalKWSPath}},
+		Server:    server{Id: "gosk", Version: w.config.Version},
 	}
-
+	result, _ := json.Marshal(e)
 	rw.Header().Set("Content-Type", "application/json")
-	data := struct {
-		Host     string
-		Version  string
-		HTTPPath string
-		WSPath   string
-	}{
-		Host:     r.Host,
-		Version:  w.config.Version,
-		HTTPPath: SignalKHTTPPath,
-		WSPath:   SignalKWSPath,
-	}
-	t.Execute(rw, data)
+	rw.Write(result)
 }
 
 func (w *SignalKWriter) serveFullDataModel(rw http.ResponseWriter, r *http.Request) {
 	w.wg.Wait()
 
-	mapped, err := w.bc.ReadMapped("")
+	mapped, err := w.cache.ReadMapped("")
 	if err != nil {
 		http.NotFound(rw, r)
 		return
@@ -105,7 +104,7 @@ func (w *SignalKWriter) readFromDatabase() {
 			"time" > $1
 		;
 	`
-	mapped, err := w.db.ReadMapped(appendToQuery, time.Now().Add(-time.Second*time.Duration(w.config.BigCacheConfig.LifeWindow)))
+	mapped, err := w.database.ReadMapped(appendToQuery, time.Now().Add(-time.Second*time.Duration(w.config.BigCacheConfig.LifeWindow)))
 	if err != nil {
 		logger.GetLogger().Warn(
 			"Could not retrieve all mapped data from database",
@@ -113,10 +112,10 @@ func (w *SignalKWriter) readFromDatabase() {
 		)
 		return
 	}
-	w.bc.WriteMapped(mapped...)
+	w.cache.WriteMapped(mapped...)
 	w.wg.Done()
 }
 
 func (w *SignalKWriter) updateFullDataModel(mapped message.Mapped) {
-	w.bc.WriteMapped(mapped)
+	w.cache.WriteMapped(mapped)
 }

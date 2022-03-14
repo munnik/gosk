@@ -19,6 +19,9 @@ var _ = Describe("Test database", Ordered, func() {
 
 	now := time.Now()
 
+	f := false
+	m := "testingAlarm"
+
 	mappedStringValue := func() message.Mapped {
 		v := message.NewValue().WithPath("testingPath").WithValue("testValue")
 		s := message.NewSource().WithLabel("testingLabel").WithType("testingType").WithUuid(uuid.New())
@@ -27,7 +30,7 @@ var _ = Describe("Test database", Ordered, func() {
 		return *message.NewMapped().WithOrigin("testingOrigin").WithContext("testingContext").AddUpdate(u)
 	}()
 	mappedAlarmValue := func() message.Mapped {
-		v := message.NewValue().WithPath("testingPath").WithValue(message.Alarm{State: false, Message: "testingAlarm"})
+		v := message.NewValue().WithPath("testingPath").WithValue(message.Alarm{State: &f, Message: &m})
 		s := message.NewSource().WithLabel("testingLabel").WithType("testingType").WithUuid(uuid.New())
 		u := message.NewUpdate().WithSource(*s).WithTimestamp(now).AddValue(v)
 		u.Timestamp = u.Timestamp.Add(-time.Duration(u.Timestamp.Nanosecond())) // resolution of time in postgresql is lower

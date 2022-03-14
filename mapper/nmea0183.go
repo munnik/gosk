@@ -46,7 +46,12 @@ func (m *Nmea0183Mapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	if v, ok := sentence.(nmea.MMSI); ok {
 		if mmsi, err := v.GetMMSI(); err == nil {
 			result.WithContext(fmt.Sprintf("vessels.urn:mrn:imo:mmsi:%s", mmsi))
-			u.AddValue(message.NewValue().WithPath("mmsi").WithValue(mmsi))
+			u.AddValue(message.NewValue().WithPath("").WithValue(message.VesselInfo{MMSI: &mmsi}))
+		}
+	}
+	if v, ok := sentence.(nmea.VesselName); ok {
+		if vesselName, err := v.GetVesselName(); err == nil {
+			u.AddValue(message.NewValue().WithPath("").WithValue(message.VesselInfo{Name: &vesselName}))
 		}
 	}
 
@@ -119,11 +124,6 @@ func (m *Nmea0183Mapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	if v, ok := sentence.(nmea.SpeedThroughWater); ok {
 		if speedThroughWater, err := v.GetSpeedThroughWater(); err == nil {
 			u.AddValue(message.NewValue().WithPath("navigation.speedThroughWater").WithValue(speedThroughWater))
-		}
-	}
-	if v, ok := sentence.(nmea.VesselName); ok {
-		if vesselName, err := v.GetVesselName(); err == nil {
-			u.AddValue(message.NewValue().WithPath("name").WithValue(vesselName))
 		}
 	}
 	if v, ok := sentence.(nmea.CallSign); ok {
@@ -216,7 +216,7 @@ func (m *Nmea0183Mapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		if err != nil {
 			active = true
 		}
-		u.AddValue(message.NewValue().WithPath("notifications.ais").WithValue(message.Alarm{State: active, Message: description}))
+		u.AddValue(message.NewValue().WithPath("notifications.ais").WithValue(message.Alarm{State: &active, Message: &description}))
 	}
 
 	if len(u.Values) == 0 {

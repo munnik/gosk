@@ -115,6 +115,10 @@ var _ = Describe("DoMap Modbus", func() {
 		config.NewModbusMappingsConfig("modbus_test.yaml"),
 	)
 	now := time.Now()
+	f := false
+	m1 := "The fuel level is too high"
+	m2 := "The fuel level is too low"
+	m3 := "The bilge level is too high"
 
 	DescribeTable(
 		"Coils",
@@ -213,21 +217,21 @@ var _ = Describe("DoMap Modbus", func() {
 				).WithTimestamp(
 					now,
 				).AddValue(
-					message.NewValue().WithPath("notifications.tanks.fuel.portAft").WithValue(message.Alarm{State: false, Message: "The fuel level is too high"}),
+					message.NewValue().WithPath("notifications.tanks.fuel.portAft").WithValue(message.Alarm{State: &f, Message: &m1}),
 				).AddValue(
-					message.NewValue().WithPath("notifications.tanks.fuel.portAft").WithValue(message.Alarm{State: false, Message: "The fuel level is too low"}),
+					message.NewValue().WithPath("notifications.tanks.fuel.portAft").WithValue(message.Alarm{State: &f, Message: &m2}),
 				).AddValue(
-					message.NewValue().WithPath("notifications.tanks.fuel.starboardAft").WithValue(message.Alarm{State: false, Message: "The fuel level is too high"}),
+					message.NewValue().WithPath("notifications.tanks.fuel.starboardAft").WithValue(message.Alarm{State: &f, Message: &m1}),
 				).AddValue(
-					message.NewValue().WithPath("notifications.tanks.fuel.starboardAft").WithValue(message.Alarm{State: false, Message: "The fuel level is too low"}),
+					message.NewValue().WithPath("notifications.tanks.fuel.starboardAft").WithValue(message.Alarm{State: &f, Message: &m2}),
 				).AddValue(
-					message.NewValue().WithPath("notifications.bilge.engineRoomForward").WithValue(message.Alarm{State: false, Message: "The bilge level is too high"}),
+					message.NewValue().WithPath("notifications.bilge.engineRoomForward").WithValue(message.Alarm{State: &f, Message: &m3}),
 				).AddValue(
-					message.NewValue().WithPath("notifications.bilge.hold1").WithValue(message.Alarm{State: false, Message: "The bilge level is too high"}),
+					message.NewValue().WithPath("notifications.bilge.hold1").WithValue(message.Alarm{State: &f, Message: &m3}),
 				).AddValue(
-					message.NewValue().WithPath("notifications.bilge.hold2").WithValue(message.Alarm{State: false, Message: "The bilge level is too high"}),
+					message.NewValue().WithPath("notifications.bilge.hold2").WithValue(message.Alarm{State: &f, Message: &m3}),
 				).AddValue(
-					message.NewValue().WithPath("notifications.bilge.engineRoomAft").WithValue(message.Alarm{State: false, Message: "The bilge level is too high"}),
+					message.NewValue().WithPath("notifications.bilge.engineRoomAft").WithValue(message.Alarm{State: &f, Message: &m3}),
 				),
 			),
 			false,

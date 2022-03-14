@@ -16,6 +16,8 @@ var _ = Describe("DoMap nmea0183", func() {
 		config.MapperConfig{Context: "testingContext"},
 	)
 	now := time.Now()
+	m := "AIS: Antenna VSWR exceeds limit"
+	f := false
 
 	DescribeTable("Messages",
 		func(m *Nmea0183Mapper, input *message.Raw, expected *message.Mapped, expectError bool) {
@@ -53,7 +55,7 @@ var _ = Describe("DoMap nmea0183", func() {
 				).WithTimestamp(
 					now,
 				).AddValue(
-					message.NewValue().WithPath("notifications.ais").WithValue(message.Alarm{State: false, Message: "AIS: Antenna VSWR exceeds limit"}),
+					message.NewValue().WithPath("notifications.ais").WithValue(message.Alarm{State: &f, Message: &m}),
 				),
 			),
 			false,

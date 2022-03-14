@@ -7,6 +7,8 @@ import (
 )
 
 var _ = Describe("Value", func() {
+	f := false
+	t := true
 	DescribeTable(
 		"Equals",
 		func(left *Value, right *Value, expected bool) {
@@ -23,18 +25,18 @@ var _ = Describe("Value", func() {
 			true,
 		),
 		Entry("with alarm and int",
-			NewValue().WithValue(Alarm{State: false}).WithPath("testpath"),
+			NewValue().WithValue(Alarm{State: &f}).WithPath("testpath"),
 			NewValue().WithValue(42).WithPath("testpath"),
 			false,
 		),
 		Entry("with alarms",
-			NewValue().WithValue(Alarm{State: false}).WithPath("testpath"),
-			NewValue().WithValue(Alarm{State: false}).WithPath("testpath"),
+			NewValue().WithValue(Alarm{State: &f}).WithPath("testpath"),
+			NewValue().WithValue(Alarm{State: &f}).WithPath("testpath"),
 			true,
 		),
 		Entry("with different alarms",
-			NewValue().WithValue(Alarm{State: false}).WithPath("testpath"),
-			NewValue().WithValue(Alarm{State: true}).WithPath("testpath"),
+			NewValue().WithValue(Alarm{State: &f}).WithPath("testpath"),
+			NewValue().WithValue(Alarm{State: &t}).WithPath("testpath"),
 			false,
 		),
 		Entry("with different paths",

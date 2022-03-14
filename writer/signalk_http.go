@@ -30,7 +30,7 @@ type endpoints struct {
 func (w *SignalKWriter) serveEndpoints(rw http.ResponseWriter, r *http.Request) {
 	e := endpoints{
 		// TODO: detect https/wss
-		Endpoints: map[string]endpoint{"v3": {Version: "3.0.0", SignalKHTTP: "http://" + r.Host + SignalKHTTPPath, SignalKWS: "ws://" + r.Host + SignalKWSPath}},
+		Endpoints: map[string]endpoint{"v1": {Version: w.config.Version, SignalKHTTP: "http://" + r.Host + SignalKHTTPPath, SignalKWS: "ws://" + r.Host + SignalKWSPath}},
 		Server:    server{Id: "gosk", Version: w.config.Version},
 	}
 	result, _ := json.Marshal(e)
@@ -48,19 +48,25 @@ func (w *SignalKWriter) serveFullDataModel(rw http.ResponseWriter, r *http.Reque
 	}
 
 	jsonObj := gabs.New()
-	jsonObj.Set("1.5.0", "version")
+	jsonObj.Set(w.config.Version, "version")
 	jsonObj.Set(w.config.SelfContext, "self")
 
 	var jsonPath []string
 	for _, m := range mapped {
 		for _, sm := range m.ToSingleValueMapped() {
 			jsonPath = strings.SplitN(sm.Context, ".", 2)
-			jsonPath = append(jsonPath, strings.Split(sm.Path, ".")...)
 
-			if jsonPath[len(jsonPath)-1] == "name" || jsonPath[len(jsonPath)-1] == "mmsi" {
-				jsonObj.Set(sm.Value, jsonPath...)
+			if sm.Path == "" {
+				// if path is empty don't include source and timestamp
+				if vm, ok := sm.Value.(map[string]interface{}); ok {
+					for key, value := range vm {
+						jsonObj.Set(value, append(jsonPath, key)...)
+					}
+				}
 				continue
 			}
+
+			jsonPath = append(jsonPath, strings.Split(sm.Path, ".")...)
 
 			jsonObj.Set(sm.Value, append(jsonPath, "value")...)
 			jsonObj.Set(sm.Timestamp, append(jsonPath, "timestamp")...)

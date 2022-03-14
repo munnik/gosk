@@ -6,6 +6,11 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
+type VesselInfo struct {
+	MMSI *string `json:"mmsi,omitempty"`
+	Name *string `json:"name,omitempty"`
+}
+
 type Position struct {
 	Altitude  *float64 `json:"altitude,omitempty"`
 	Latitude  *float64 `json:"latitude,omitempty"`
@@ -19,8 +24,8 @@ type Length struct {
 }
 
 type Alarm struct {
-	State   bool   `json:"state"`
-	Message string `json:"message,omitempty"`
+	State   *bool   `json:"state,omitempty"`
+	Message *string `json:"message,omitempty"`
 }
 
 func Decode(input interface{}) (interface{}, error) {
@@ -39,6 +44,12 @@ func Decode(input interface{}) (interface{}, error) {
 	metadata = mapstructure.Metadata{}
 	if err := mapstructure.DecodeMetadata(input, &p, &metadata); err == nil && len(metadata.Unused) == 0 {
 		return p, nil
+	}
+
+	v := VesselInfo{}
+	metadata = mapstructure.Metadata{}
+	if err := mapstructure.DecodeMetadata(input, &v, &metadata); err == nil && len(metadata.Unused) == 0 {
+		return v, nil
 	}
 
 	l := Length{}

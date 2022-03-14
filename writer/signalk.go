@@ -18,8 +18,8 @@ import (
 
 const (
 	SignalKEndpointsPath = "/signalk"
-	SignalKHTTPPath      = "/signalk/v3/api/"
-	SignalKWSPath        = "/signalk/v3/stream"
+	SignalKHTTPPath      = "/signalk/v1/api/"
+	SignalKWSPath        = "/signalk/v1/stream"
 )
 
 type SignalKWriter struct {

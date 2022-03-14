@@ -58,9 +58,12 @@ func (w *SignalKWriter) serveFullDataModel(rw http.ResponseWriter, r *http.Reque
 
 			if sm.Path == "" {
 				// if path is empty don't include source and timestamp
-				if vm, ok := sm.Value.(map[string]interface{}); ok {
-					for key, value := range vm {
-						jsonObj.Set(value, append(jsonPath, key)...)
+				if vesselInfo, ok := sm.Value.(message.VesselInfo); ok {
+					if vesselInfo.MMSI != nil {
+						jsonObj.Set(vesselInfo.MMSI, append(jsonPath, "mmsi")...)
+					}
+					if vesselInfo.Name != nil {
+						jsonObj.Set(vesselInfo.Name, append(jsonPath, "name")...)
 					}
 				}
 				continue

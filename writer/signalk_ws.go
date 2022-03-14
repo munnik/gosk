@@ -21,6 +21,7 @@ type hello struct {
 }
 
 type websocketClient struct {
+	host   string
 	deltas chan message.Mapped
 }
 
@@ -48,24 +49,30 @@ func (w *SignalKWriter) serveWebsocket(rw http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	client := websocketClient{deltas: make(chan message.Mapped)}
-	w.websocketClients = append(w.websocketClients, client)
+	client := websocketClient{
+		deltas: make(chan message.Mapped),
+		host:   r.RemoteAddr,
+	}
+	w.addClient(client)
+	defer w.removeClient(client)
+
 	for {
 		err = wsjson.Write(ctx, c, <-client.deltas)
 		if err != nil {
 			logger.GetLogger().Warn(
-				"Error while writing delta message",
+				"Error while writing delta message to the client, closing the connection",
 				zap.String("Error", err.Error()),
+				zap.String("Client address", r.RemoteAddr),
 			)
+			c.Close(websocket.StatusGoingAway, "error while writing")
+			return
 		}
 	}
-
-	// c.Close(websocket.StatusNormalClosure, "")
 }
 
 func (w *SignalKWriter) updateWebsocket(message message.Mapped) {
-	for _, client := range w.websocketClients {
-		client.deltas <- message
+	for _, c := range w.getClients() {
+		c.deltas <- message
 	}
 }
 

@@ -48,6 +48,16 @@ func (c *BigCache) WriteMapped(mappedList ...message.Mapped) []message.Mapped {
 	changes := make([]message.SingleValueMapped, 0)
 	for _, mapped := range mappedList {
 		for _, m := range mapped.ToSingleValueMapped() {
+			if originalBytes, err := c.mappedCache.Get(m.Context + "." + m.Path); err == nil {
+				var original message.SingleValueMapped
+				if err := json.Unmarshal(originalBytes, &original); err == nil {
+					if original.Equals(m) || m.Timestamp.Before(original.Timestamp) {
+						continue
+					}
+				}
+				m = original.Merge(m)
+			}
+			changes = append(changes, m)
 			bytes, err := json.Marshal(m)
 			if err != nil {
 				logger.GetLogger().Warn(
@@ -56,15 +66,6 @@ func (c *BigCache) WriteMapped(mappedList ...message.Mapped) []message.Mapped {
 				)
 				continue
 			}
-			if originalBytes, err := c.mappedCache.Get(m.Context + "." + m.Path); err == nil {
-				var original message.SingleValueMapped
-				if err := json.Unmarshal(originalBytes, &original); err == nil {
-					if original.Equals(m) || m.Timestamp.Before(original.Timestamp) {
-						continue
-					}
-				}
-			}
-			changes = append(changes, m)
 			c.mappedCache.Set(m.Context+"."+m.Path, bytes)
 		}
 	}

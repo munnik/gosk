@@ -6,9 +6,29 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
+type Merger interface {
+	// Merges left with right, if both left and right have the same property the value of the right property will be returned
+	Merge(right Merger) (Merger, error)
+}
+
 type VesselInfo struct {
 	MMSI *string `json:"mmsi,omitempty"`
 	Name *string `json:"name,omitempty"`
+}
+
+func (left VesselInfo) Merge(right Merger) (Merger, error) {
+	var err error
+	if right, ok := right.(VesselInfo); !ok {
+		err = fmt.Errorf("right has type %T but should be type %T", right, left)
+	} else {
+		if right.MMSI != nil {
+			left.MMSI = right.MMSI
+		}
+		if right.Name != nil {
+			left.Name = right.Name
+		}
+	}
+	return left, err
 }
 
 type Position struct {
@@ -17,15 +37,66 @@ type Position struct {
 	Longitude *float64 `json:"longitude,omitempty"`
 }
 
+func (left Position) Merge(right Merger) (Merger, error) {
+	var err error
+	if right, ok := right.(Position); !ok {
+		err = fmt.Errorf("right has type %T but should be type %T", right, left)
+	} else {
+		if right.Altitude != nil {
+			left.Altitude = right.Altitude
+		}
+		if right.Latitude != nil {
+			left.Latitude = right.Latitude
+		}
+		if right.Longitude != nil {
+			left.Longitude = right.Longitude
+		}
+	}
+	return left, err
+}
+
 type Length struct {
 	Overall   *float64 `json:"overall,omitempty"`
 	Hull      *float64 `json:"hull,omitempty"`
 	Waterline *float64 `json:"waterline,omitempty"`
 }
 
+func (left Length) Merge(right Merger) (Merger, error) {
+	var err error
+	if right, ok := right.(Length); !ok {
+		err = fmt.Errorf("right has type %T but should be type %T", right, left)
+	} else {
+		if right.Overall != nil {
+			left.Overall = right.Overall
+		}
+		if right.Hull != nil {
+			left.Hull = right.Hull
+		}
+		if right.Waterline != nil {
+			left.Waterline = right.Waterline
+		}
+	}
+	return left, err
+}
+
 type Alarm struct {
 	State   *bool   `json:"state,omitempty"`
 	Message *string `json:"message,omitempty"`
+}
+
+func (left Alarm) Merge(right Merger) (Merger, error) {
+	var err error
+	if right, ok := right.(Alarm); !ok {
+		err = fmt.Errorf("right has type %T but should be type %T", right, left)
+	} else {
+		if right.State != nil {
+			left.State = right.State
+		}
+		if right.Message != nil {
+			left.Message = right.Message
+		}
+	}
+	return left, err
 }
 
 func Decode(input interface{}) (interface{}, error) {

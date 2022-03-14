@@ -1,6 +1,8 @@
 package message
 
 import (
+	"encoding/json"
+	"fmt"
 	"time"
 )
 
@@ -100,4 +102,87 @@ func (s SingleValueMapped) ToMapped() Mapped {
 
 func (s SingleValueMapped) Equals(other SingleValueMapped) bool {
 	return s.Context == other.Context && s.Path == other.Path && s.Value == other.Value
+}
+
+// Merges left with right, if both left and right have the same property the value of the right property will be returned
+func (left SingleValueMapped) Merge(right SingleValueMapped) SingleValueMapped {
+	leftMerger, ok := left.Value.(Merger)
+	if !ok {
+		return right
+	}
+	rightMerger, ok := right.Value.(Merger)
+	if !ok {
+		return right
+	}
+
+	result, err := leftMerger.Merge(rightMerger)
+	if err != nil {
+		return right
+	}
+
+	return SingleValueMapped{
+		Context:   right.Context,
+		Origin:    right.Origin,
+		Source:    right.Source,
+		Timestamp: right.Timestamp,
+		Path:      right.Path,
+		Value:     result,
+	}
+}
+
+func (s *SingleValueMapped) UnmarshalJSON(data []byte) error {
+	var err error
+	var j map[string]interface{}
+	if err = json.Unmarshal(data, &j); err != nil {
+		return err
+	}
+	for _, key := range []string{"context", "origin", "source", "timestamp", "path", "value"} {
+		if _, ok := j[key]; !ok {
+			return fmt.Errorf("the key '%v' is missing in the json message %+v", key, j)
+		}
+	}
+
+	str, ok := j["context"].(string)
+	if !ok {
+		return fmt.Errorf("can't convert %v to a string", j["context"])
+	}
+	s.Context = str
+
+	str, ok = j["origin"].(string)
+	if !ok {
+		return fmt.Errorf("can't convert %v to a string", j["origin"])
+	}
+	s.Origin = str
+
+	var bytes []byte
+	if bytes, err = json.Marshal(j["source"]); err != nil {
+		return fmt.Errorf("can't convert %v to a message.Source", j["source"])
+
+	}
+	if err = json.Unmarshal(bytes, &s.Source); err != nil {
+		return fmt.Errorf("can't convert %v to a message.Source", j["source"])
+	}
+
+	str, ok = j["timestamp"].(string)
+	if !ok {
+		return fmt.Errorf("can't convert %v to a time.Time", j["timestamp"])
+	}
+	t, err := time.Parse(time.RFC3339Nano, str)
+	if err != nil {
+		return fmt.Errorf("can't convert %v to a time.Time", j["timestamp"])
+	}
+	s.Timestamp = t
+
+	str, ok = j["path"].(string)
+	if !ok {
+		return fmt.Errorf("can't convert %v to a string", j["path"])
+	}
+	s.Path = str
+
+	if decoded, err := Decode(j["value"]); err == nil {
+		s.Value = decoded
+		return nil
+	}
+
+	return fmt.Errorf("don't know how to unmarshal %v", string(data))
 }

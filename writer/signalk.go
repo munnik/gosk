@@ -27,7 +27,8 @@ type SignalKWriter struct {
 	database         *database.PostgresqlDatabase
 	cache            *database.BigCache
 	wg               *sync.WaitGroup
-	websocketClients []websocketClient
+	mu               sync.Mutex
+	websocketClients map[string]websocketClient
 }
 
 func NewSignalKWriter(c *config.SignalKConfig) *SignalKWriter {
@@ -36,7 +37,7 @@ func NewSignalKWriter(c *config.SignalKConfig) *SignalKWriter {
 		database:         database.NewPostgresqlDatabase(c.PostgresqlConfig),
 		cache:            database.NewBigCache(c.BigCacheConfig),
 		wg:               &sync.WaitGroup{},
-		websocketClients: make([]websocketClient, 0),
+		websocketClients: make(map[string]websocketClient, 0),
 	}
 }
 
@@ -86,4 +87,27 @@ func (w *SignalKWriter) receive(subscriber mangos.Socket) {
 		go w.updateFullDataModel(mapped)
 		go w.updateWebsocket(mapped)
 	}
+}
+
+func (s *SignalKWriter) addClient(c websocketClient) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.websocketClients[c.host] = c
+}
+
+func (s *SignalKWriter) removeClient(c websocketClient) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.websocketClients, c.host)
+	// close(c.deltas)
+}
+
+func (s *SignalKWriter) getClients() []websocketClient {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result := make([]websocketClient, 0, len(s.websocketClients))
+	for _, c := range s.websocketClients {
+		result = append(result, c)
+	}
+	return result
 }

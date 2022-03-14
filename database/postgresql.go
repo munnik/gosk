@@ -110,7 +110,7 @@ func (db *PostgresqlDatabase) WriteMapped(mapped message.Mapped) {
 		if str, ok := m.Value.(string); ok {
 			m.Value = strconv.Quote(str)
 		}
-		for _, err := db.GetConnection().Exec(context.Background(), mappedInsertQuery, m.Timestamp, m.Source.Label, m.Source.Type, m.Context, m.Path, m.Value, m.Uuid, m.Origin); err != nil; {
+		for _, err := db.GetConnection().Exec(context.Background(), mappedInsertQuery, m.Timestamp, m.Source.Label, m.Source.Type, m.Context, m.Path, m.Value, m.Source.Uuid, m.Origin); err != nil; {
 			logger.GetLogger().Warn(
 				"Error on inserting the received data in the database",
 				zap.String("Error", err.Error()),
@@ -121,7 +121,7 @@ func (db *PostgresqlDatabase) WriteMapped(mapped message.Mapped) {
 				zap.String("Context", m.Context),
 				zap.String("Path", m.Path),
 				zap.Any("Value", m.Value),
-				zap.String("UUID", m.Uuid.String()),
+				zap.String("UUID", m.Source.Uuid.String()),
 				zap.String("Origin", m.Origin),
 			)
 		}
@@ -145,7 +145,7 @@ func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...inte
 			&m.Context,
 			&m.Path,
 			&m.Value,
-			&m.Uuid,
+			&m.Source.Uuid,
 			&m.Origin,
 		)
 		if m.Value, err = message.Decode(m.Value); err != nil {

@@ -2,8 +2,6 @@ package message
 
 import (
 	"time"
-
-	"github.com/google/uuid"
 )
 
 type Mapped struct {
@@ -73,7 +71,6 @@ func (m Mapped) ToSingleValueMapped() []SingleValueMapped {
 				Source:    u.Source,
 				Timestamp: u.Timestamp,
 				Path:      v.Path,
-				Uuid:      v.Uuid,
 				Value:     v.Value,
 			})
 		}
@@ -87,7 +84,6 @@ type SingleValueMapped struct {
 	Source    Source      `json:"source"`
 	Timestamp time.Time   `json:"timestamp"`
 	Path      string      `json:"path"`
-	Uuid      uuid.UUID   `json:"uuid"`
 	Value     interface{} `json:"value"`
 }
 
@@ -96,7 +92,7 @@ func NewSingleValueMapped() *SingleValueMapped {
 }
 
 func (s SingleValueMapped) ToMapped() Mapped {
-	v := NewValue().WithPath(s.Path).WithUuid(s.Uuid).WithValue(s.Value)
+	v := NewValue().WithPath(s.Path).WithValue(s.Value)
 	u := NewUpdate().WithSource(s.Source).WithTimestamp(s.Timestamp).AddValue(v)
 	m := NewMapped().WithContext(s.Context).WithOrigin(s.Origin).AddUpdate(u)
 	return *m

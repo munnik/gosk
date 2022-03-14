@@ -50,11 +50,11 @@ var _ = Describe("DoMap json", func() {
 			}(),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingCollector").WithType(config.JSONType),
+					*message.NewSource().WithLabel("testingCollector").WithType(config.JSONType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
-					message.NewValue().WithPath("propulsion.mainEngine.drive.power").WithUuid(uuid.Nil).WithValue("8409.6"),
+					message.NewValue().WithPath("propulsion.mainEngine.drive.power").WithValue("8409.6"),
 				),
 			),
 			false,

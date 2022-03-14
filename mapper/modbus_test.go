@@ -171,11 +171,11 @@ var _ = Describe("DoMap Modbus", func() {
 			}(),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType),
+					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
-					message.NewValue().WithPath("testingPath").WithUuid(uuid.Nil).WithValue(false),
+					message.NewValue().WithPath("testingPath").WithValue(false),
 				),
 			),
 			false,
@@ -190,11 +190,11 @@ var _ = Describe("DoMap Modbus", func() {
 			}(),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType),
+					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
-					message.NewValue().WithPath("testingPath").WithUuid(uuid.Nil).WithValue(true),
+					message.NewValue().WithPath("testingPath").WithValue(true),
 				),
 			),
 			false,
@@ -209,25 +209,25 @@ var _ = Describe("DoMap Modbus", func() {
 			}(),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType),
+					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
-					message.NewValue().WithPath("notifications.tanks.fuel.portAft").WithUuid(uuid.Nil).WithValue(message.Alarm{State: false, Message: "The fuel level is too high"}),
+					message.NewValue().WithPath("notifications.tanks.fuel.portAft").WithValue(message.Alarm{State: false, Message: "The fuel level is too high"}),
 				).AddValue(
-					message.NewValue().WithPath("notifications.tanks.fuel.portAft").WithUuid(uuid.Nil).WithValue(message.Alarm{State: false, Message: "The fuel level is too low"}),
+					message.NewValue().WithPath("notifications.tanks.fuel.portAft").WithValue(message.Alarm{State: false, Message: "The fuel level is too low"}),
 				).AddValue(
-					message.NewValue().WithPath("notifications.tanks.fuel.starboardAft").WithUuid(uuid.Nil).WithValue(message.Alarm{State: false, Message: "The fuel level is too high"}),
+					message.NewValue().WithPath("notifications.tanks.fuel.starboardAft").WithValue(message.Alarm{State: false, Message: "The fuel level is too high"}),
 				).AddValue(
-					message.NewValue().WithPath("notifications.tanks.fuel.starboardAft").WithUuid(uuid.Nil).WithValue(message.Alarm{State: false, Message: "The fuel level is too low"}),
+					message.NewValue().WithPath("notifications.tanks.fuel.starboardAft").WithValue(message.Alarm{State: false, Message: "The fuel level is too low"}),
 				).AddValue(
-					message.NewValue().WithPath("notifications.bilge.engineRoomForward").WithUuid(uuid.Nil).WithValue(message.Alarm{State: false, Message: "The bilge level is too high"}),
+					message.NewValue().WithPath("notifications.bilge.engineRoomForward").WithValue(message.Alarm{State: false, Message: "The bilge level is too high"}),
 				).AddValue(
-					message.NewValue().WithPath("notifications.bilge.hold1").WithUuid(uuid.Nil).WithValue(message.Alarm{State: false, Message: "The bilge level is too high"}),
+					message.NewValue().WithPath("notifications.bilge.hold1").WithValue(message.Alarm{State: false, Message: "The bilge level is too high"}),
 				).AddValue(
-					message.NewValue().WithPath("notifications.bilge.hold2").WithUuid(uuid.Nil).WithValue(message.Alarm{State: false, Message: "The bilge level is too high"}),
+					message.NewValue().WithPath("notifications.bilge.hold2").WithValue(message.Alarm{State: false, Message: "The bilge level is too high"}),
 				).AddValue(
-					message.NewValue().WithPath("notifications.bilge.engineRoomAft").WithUuid(uuid.Nil).WithValue(message.Alarm{State: false, Message: "The bilge level is too high"}),
+					message.NewValue().WithPath("notifications.bilge.engineRoomAft").WithValue(message.Alarm{State: false, Message: "The bilge level is too high"}),
 				),
 			),
 			false,
@@ -288,11 +288,11 @@ var _ = Describe("DoMap Modbus", func() {
 			}(),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType),
+					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
-					message.NewValue().WithPath("propulsion.mainEngine.fuel.rate").WithUuid(uuid.Nil).WithValue(-1.9444444444444323e-08),
+					message.NewValue().WithPath("propulsion.mainEngine.fuel.rate").WithValue(-1.9444444444444323e-08),
 				),
 			),
 			false,
@@ -307,11 +307,11 @@ var _ = Describe("DoMap Modbus", func() {
 			}(),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType),
+					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
-					message.NewValue().WithPath("testingPath").WithUuid(uuid.Nil).WithValue(261243882),
+					message.NewValue().WithPath("testingPath").WithValue(261243882),
 				),
 			),
 			false,

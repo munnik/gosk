@@ -3,13 +3,10 @@ package message
 import (
 	"encoding/json"
 	"fmt"
-
-	"github.com/google/uuid"
 )
 
 type Value struct {
 	Path  string      `json:"path"`
-	Uuid  uuid.UUID   `json:"uuid"`
 	Value interface{} `json:"value"`
 }
 
@@ -27,26 +24,13 @@ func (v *Value) WithValue(val interface{}) *Value {
 	return v
 }
 
-func (v *Value) WithUuid(u uuid.UUID) *Value {
-	v.Uuid = u
-	return v
-}
-
-func (v Value) MarshalJSON() ([]byte, error) {
-	var result map[string]interface{} = make(map[string]interface{})
-	result["path"] = v.Path
-	result["uuid"] = v.Uuid.String()
-	result["value"] = v.Value
-	return json.Marshal(&result)
-}
-
 func (v *Value) UnmarshalJSON(data []byte) error {
 	var err error
 	var j map[string]interface{}
 	if err = json.Unmarshal(data, &j); err != nil {
 		return err
 	}
-	for _, key := range []string{"path", "uuid", "value"} {
+	for _, key := range []string{"path", "value"} {
 		if _, ok := j[key]; !ok {
 			return fmt.Errorf("the key '%v' is missing in the json message %+v", key, j)
 		}
@@ -57,14 +41,6 @@ func (v *Value) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("can't convert %v to a string", j["path"])
 	}
 	v.Path = s
-
-	s, ok = j["uuid"].(string)
-	if !ok {
-		return fmt.Errorf("can't convert %v to a string", j["path"])
-	}
-	if v.Uuid, err = uuid.Parse(s); err != nil {
-		return err
-	}
 
 	if decoded, err := Decode(j["value"]); err == nil {
 		v.Value = decoded

@@ -10,17 +10,17 @@ import (
 )
 
 var _ = Describe("Update", func() {
-	u1 := NewUpdate().WithSource(*NewSource().WithLabel("testsource").WithType("test")).WithTimestamp(time.Now())
-	u1.AddValue(NewValue().WithPath("testpath").WithUuid(uuid.New()).WithValue(42))
-	u2 := NewUpdate().WithSource(*NewSource().WithLabel("testsource").WithType("test")).WithTimestamp(time.Now())
-	u2.AddValue(NewValue().WithPath("testpath").WithUuid(uuid.New()).WithValue(42))
-	u2.AddValue(NewValue().WithPath("testpathpath").WithUuid(uuid.New()).WithValue(false))
-	u3 := NewUpdate().WithSource(*NewSource().WithLabel("testsource").WithType("test")).WithTimestamp(time.Now())
-	u3.AddValue(NewValue().WithPath("testpathpath").WithUuid(uuid.New()).WithValue(false))
-	u3.AddValue(NewValue().WithPath("testpath").WithUuid(uuid.New()).WithValue(42))
-	u4 := NewUpdate().WithSource(*NewSource().WithLabel("testsourcesource").WithType("test")).WithTimestamp(time.Now())
-	u4.AddValue(NewValue().WithPath("testpathpath").WithUuid(uuid.New()).WithValue(false))
-	u4.AddValue(NewValue().WithPath("testpath").WithUuid(uuid.New()).WithValue(42))
+	u1 := NewUpdate().WithSource(*NewSource().WithLabel("testsource").WithType("test").WithUuid(uuid.New())).WithTimestamp(time.Now())
+	u1.AddValue(NewValue().WithPath("testpath").WithValue(42))
+	u2 := NewUpdate().WithSource(*NewSource().WithLabel("testsource").WithType("test").WithUuid(uuid.New())).WithTimestamp(time.Now())
+	u2.AddValue(NewValue().WithPath("testpath").WithValue(42))
+	u2.AddValue(NewValue().WithPath("testpathpath").WithValue(false))
+	u3 := NewUpdate().WithSource(*NewSource().WithLabel("testsource").WithType("test").WithUuid(uuid.New())).WithTimestamp(time.Now())
+	u3.AddValue(NewValue().WithPath("testpathpath").WithValue(false))
+	u3.AddValue(NewValue().WithPath("testpath").WithValue(42))
+	u4 := NewUpdate().WithSource(*NewSource().WithLabel("testsourcesource").WithType("test").WithUuid(uuid.New())).WithTimestamp(time.Now())
+	u4.AddValue(NewValue().WithPath("testpathpath").WithValue(false))
+	u4.AddValue(NewValue().WithPath("testpath").WithValue(42))
 	DescribeTable(
 		"Equals",
 		func(left *Update, right *Update, expected bool) {

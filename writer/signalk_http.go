@@ -66,6 +66,7 @@ func (w *SignalKWriter) serveFullDataModel(rw http.ResponseWriter, r *http.Reque
 			jsonObj.Set(sm.Timestamp, append(jsonPath, "timestamp")...)
 			jsonObj.Set(sm.Source.Label, append(jsonPath, "source", "label")...)
 			jsonObj.Set(sm.Source.Type, append(jsonPath, "source", "type")...)
+			jsonObj.Set(sm.Source.Uuid, append(jsonPath, "source", "uuid")...)
 		}
 	}
 

@@ -30,7 +30,7 @@ func (m *CSVMapper) Map(subscriber mangos.Socket, publisher mangos.Socket) {
 
 func (m *CSVMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	result := message.NewMapped().WithContext(m.config.Context).WithOrigin(m.config.Context)
-	s := message.NewSource().WithLabel(r.Collector).WithType(m.protocol)
+	s := message.NewSource().WithLabel(r.Collector).WithType(m.protocol).WithUuid(r.Uuid)
 	u := message.NewUpdate().WithSource(*s).WithTimestamp(r.Timestamp)
 
 	// Reuse this vm instance between runs
@@ -87,7 +87,7 @@ func (m *CSVMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 			)
 			continue
 		}
-		u.AddValue(message.NewValue().WithUuid(r.Uuid).WithPath(cmc.Path).WithValue(output))
+		u.AddValue(message.NewValue().WithPath(cmc.Path).WithValue(output))
 	}
 
 	if len(u.Values) == 0 {

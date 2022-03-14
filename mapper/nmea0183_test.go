@@ -49,11 +49,11 @@ var _ = Describe("DoMap nmea0183", func() {
 			}(),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingCollector").WithType(config.NMEA0183Type),
+					*message.NewSource().WithLabel("testingCollector").WithType(config.NMEA0183Type).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
-					message.NewValue().WithPath("notifications.ais").WithUuid(uuid.Nil).WithValue(message.Alarm{State: false, Message: "AIS: Antenna VSWR exceeds limit"}),
+					message.NewValue().WithPath("notifications.ais").WithValue(message.Alarm{State: false, Message: "AIS: Antenna VSWR exceeds limit"}),
 				),
 			),
 			false,
@@ -71,23 +71,23 @@ var _ = Describe("DoMap nmea0183", func() {
 				lon := 4.60305
 				m := message.NewMapped().WithContext("vessels.urn:mrn:imo:mmsi:246581000").WithOrigin("testingContext").AddUpdate(
 					message.NewUpdate().WithSource(
-						*message.NewSource().WithLabel("testingCollector").WithType(config.NMEA0183Type),
+						*message.NewSource().WithLabel("testingCollector").WithType(config.NMEA0183Type).WithUuid(uuid.Nil),
 					).WithTimestamp(
 						now,
 					).AddValue(
-						message.NewValue().WithPath("mmsi").WithUuid(uuid.Nil).WithValue("246581000"),
+						message.NewValue().WithPath("mmsi").WithValue("246581000"),
 					).AddValue(
-						message.NewValue().WithPath("navigation.rateOfTurn").WithUuid(uuid.Nil).WithValue(0.0),
+						message.NewValue().WithPath("navigation.rateOfTurn").WithValue(0.0),
 					).AddValue(
-						message.NewValue().WithPath("navigation.courseOverGroundTrue").WithUuid(uuid.Nil).WithValue(1.8675022996339325),
+						message.NewValue().WithPath("navigation.courseOverGroundTrue").WithValue(1.8675022996339325),
 					).AddValue(
-						message.NewValue().WithPath("navigation.headingTrue").WithUuid(uuid.Nil).WithValue(1.9198621771937625),
+						message.NewValue().WithPath("navigation.headingTrue").WithValue(1.9198621771937625),
 					).AddValue(
-						message.NewValue().WithPath("navigation.state").WithUuid(uuid.Nil).WithValue("motoring"),
+						message.NewValue().WithPath("navigation.state").WithValue("motoring"),
 					).AddValue(
-						message.NewValue().WithPath("navigation.position").WithUuid(uuid.Nil).WithValue(message.Position{Latitude: &lat, Longitude: &lon}),
+						message.NewValue().WithPath("navigation.position").WithValue(message.Position{Latitude: &lat, Longitude: &lon}),
 					).AddValue(
-						message.NewValue().WithPath("navigation.speedOverGround").WithUuid(uuid.Nil).WithValue(4.475662799999999),
+						message.NewValue().WithPath("navigation.speedOverGround").WithValue(4.475662799999999),
 					),
 				)
 				return m

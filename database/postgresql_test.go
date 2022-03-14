@@ -20,15 +20,15 @@ var _ = Describe("Test database", Ordered, func() {
 	now := time.Now()
 
 	mappedStringValue := func() message.Mapped {
-		v := message.NewValue().WithPath("testingPath").WithUuid(uuid.Must(uuid.NewUUID())).WithValue("testValue")
-		s := message.NewSource().WithLabel("testingLabel").WithType("testingType")
+		v := message.NewValue().WithPath("testingPath").WithValue("testValue")
+		s := message.NewSource().WithLabel("testingLabel").WithType("testingType").WithUuid(uuid.New())
 		u := message.NewUpdate().WithSource(*s).WithTimestamp(now).AddValue(v)
 		u.Timestamp = u.Timestamp.Add(-time.Duration(u.Timestamp.Nanosecond())) // resolution of time in postgresql is lower
 		return *message.NewMapped().WithOrigin("testingOrigin").WithContext("testingContext").AddUpdate(u)
 	}()
 	mappedAlarmValue := func() message.Mapped {
-		v := message.NewValue().WithPath("testingPath").WithUuid(uuid.Must(uuid.NewUUID())).WithValue(message.Alarm{State: false, Message: "testingAlarm"})
-		s := message.NewSource().WithLabel("testingLabel").WithType("testingType")
+		v := message.NewValue().WithPath("testingPath").WithValue(message.Alarm{State: false, Message: "testingAlarm"})
+		s := message.NewSource().WithLabel("testingLabel").WithType("testingType").WithUuid(uuid.New())
 		u := message.NewUpdate().WithSource(*s).WithTimestamp(now).AddValue(v)
 		u.Timestamp = u.Timestamp.Add(-time.Duration(u.Timestamp.Nanosecond())) // resolution of time in postgresql is lower
 		return *message.NewMapped().WithOrigin("testingOrigin").WithContext("testingContext").AddUpdate(u)
@@ -61,7 +61,7 @@ var _ = Describe("Test database", Ordered, func() {
 
 			mappedSelectQuery := `SELECT "time", "collector", "type", "context", "path", "value", "uuid", "origin" FROM "mapped_data" WHERE "uuid" = $1`
 			var written *message.Mapped
-			rows, err := db.GetConnection().Query(context.Background(), mappedSelectQuery, input.Updates[0].Values[0].Uuid)
+			rows, err := db.GetConnection().Query(context.Background(), mappedSelectQuery, input.Updates[0].Source.Uuid)
 			Expect(err).ShouldNot(HaveOccurred())
 			defer rows.Close()
 			rowCount := 0
@@ -77,7 +77,7 @@ var _ = Describe("Test database", Ordered, func() {
 					&written.Context,
 					&written.Updates[0].Values[0].Path,
 					&written.Updates[0].Values[0].Value,
-					&written.Updates[0].Values[0].Uuid,
+					&written.Updates[0].Source.Uuid,
 					&written.Origin,
 				)
 			}

@@ -1,7 +1,6 @@
 package message_test
 
 import (
-	"github.com/google/uuid"
 	. "github.com/munnik/gosk/message"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -14,33 +13,33 @@ var _ = Describe("Value", func() {
 			Expect(left.Equals(*right)).To(Equal(expected))
 		},
 		Entry("with ints",
-			NewValue().WithValue(42).WithPath("testpath").WithUuid(uuid.New()),
-			NewValue().WithValue(42).WithPath("testpath").WithUuid(uuid.New()),
+			NewValue().WithValue(42).WithPath("testpath"),
+			NewValue().WithValue(42).WithPath("testpath"),
 			true,
 		),
 		Entry("with bools",
-			NewValue().WithValue(false).WithPath("testpath").WithUuid(uuid.New()),
-			NewValue().WithValue(false).WithPath("testpath").WithUuid(uuid.New()),
+			NewValue().WithValue(false).WithPath("testpath"),
+			NewValue().WithValue(false).WithPath("testpath"),
 			true,
 		),
 		Entry("with alarm and int",
-			NewValue().WithValue(Alarm{State: false}).WithPath("testpath").WithUuid(uuid.New()),
-			NewValue().WithValue(42).WithPath("testpath").WithUuid(uuid.New()),
+			NewValue().WithValue(Alarm{State: false}).WithPath("testpath"),
+			NewValue().WithValue(42).WithPath("testpath"),
 			false,
 		),
 		Entry("with alarms",
-			NewValue().WithValue(Alarm{State: false}).WithPath("testpath").WithUuid(uuid.New()),
-			NewValue().WithValue(Alarm{State: false}).WithPath("testpath").WithUuid(uuid.New()),
+			NewValue().WithValue(Alarm{State: false}).WithPath("testpath"),
+			NewValue().WithValue(Alarm{State: false}).WithPath("testpath"),
 			true,
 		),
 		Entry("with different alarms",
-			NewValue().WithValue(Alarm{State: false}).WithPath("testpath").WithUuid(uuid.New()),
-			NewValue().WithValue(Alarm{State: true}).WithPath("testpath").WithUuid(uuid.New()),
+			NewValue().WithValue(Alarm{State: false}).WithPath("testpath"),
+			NewValue().WithValue(Alarm{State: true}).WithPath("testpath"),
 			false,
 		),
 		Entry("with different paths",
-			NewValue().WithValue(false).WithPath("testpath").WithUuid(uuid.New()),
-			NewValue().WithValue(false).WithPath("testpathpath").WithUuid(uuid.New()),
+			NewValue().WithValue(false).WithPath("testpath"),
+			NewValue().WithValue(false).WithPath("testpathpath"),
 			false,
 		),
 	)

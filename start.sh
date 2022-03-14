@@ -9,7 +9,7 @@ pkill gosk
 sleep 1
 
 ./gosk map -p "tcp://127.0.0.1:6011" -s "tcp://127.0.0.1:6001" --config "config/mapper/c32.yaml" &
-./gosk map -p "tcp://127.0.0.1:6012" -s "tcp://127.0.0.1:6002" --config "config/mapper/ais.yaml" &
+./gosk map -p "tcp://127.0.0.1:6012" -s "tcp://127.0.0.1:6002" --config "config/mapper/zmg.yaml" &> /dev/null &
 
 sleep 1
 

@@ -53,16 +53,19 @@ func (w *SignalKWriter) serveFullDataModel(rw http.ResponseWriter, r *http.Reque
 
 	var jsonPath []string
 	for _, m := range mapped {
-		for _, u := range m.Updates {
-			for _, v := range u.Values {
-				jsonPath = strings.SplitN(m.Context, ".", 2)
-				jsonPath = append(jsonPath, strings.Split(v.Path, ".")...)
+		for _, sm := range m.ToSingleValueMapped() {
+			jsonPath = strings.SplitN(sm.Context, ".", 2)
+			jsonPath = append(jsonPath, strings.Split(sm.Path, ".")...)
 
-				jsonObj.Set(v.Value, append(jsonPath, "value")...)
-				jsonObj.Set(u.Timestamp, append(jsonPath, "timestamp")...)
-				jsonObj.Set(u.Source.Label, append(jsonPath, "source", "label")...)
-				jsonObj.Set(u.Source.Type, append(jsonPath, "source", "type")...)
+			if jsonPath[len(jsonPath)-1] == "name" || jsonPath[len(jsonPath)-1] == "mmsi" {
+				jsonObj.Set(sm.Value, jsonPath...)
+				continue
 			}
+
+			jsonObj.Set(sm.Value, append(jsonPath, "value")...)
+			jsonObj.Set(sm.Timestamp, append(jsonPath, "timestamp")...)
+			jsonObj.Set(sm.Source.Label, append(jsonPath, "source", "label")...)
+			jsonObj.Set(sm.Source.Type, append(jsonPath, "source", "type")...)
 		}
 	}
 

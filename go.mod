@@ -57,9 +57,9 @@ require (
 	github.com/subosito/gotenv v1.2.0 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.8.0 // indirect
-	golang.org/x/crypto v0.0.0-20220313003712-b769efc7c000 // indirect
+	golang.org/x/crypto v0.0.0-20220315160706-3147a52a75dd // indirect
 	golang.org/x/net v0.0.0-20220225172249-27dd8689420f // indirect
-	golang.org/x/sys v0.0.0-20220310020820-b874c991c1a5 // indirect
+	golang.org/x/sys v0.0.0-20220319134239-a9b59b0215f8 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	gopkg.in/ini.v1 v1.66.4 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect

@@ -43,6 +43,20 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	for i := range registerData {
 		registerData[i] = binary.BigEndian.Uint16(r.Value[7+i*2 : 9+i*2])
 	}
+	var env = map[string]interface{}{}
+	if functionCode == config.Coils || functionCode == config.DiscreteInputs {
+		coilsMap := make(map[int]bool, 0)
+		for i, coil := range RegistersToCoils(registerData, numberOfCoilsOrRegisters) {
+			coilsMap[int(address)+i] = coil
+		}
+		env["coils"] = coilsMap
+	} else if functionCode == config.HoldingRegisters || functionCode == config.InputRegisters {
+		registersMap := make(map[int]uint16, 0)
+		for i, register := range registerData {
+			registersMap[int(address)+i] = register
+		}
+		env["registers"] = registersMap
+	}
 
 	// Reuse this vm instance between runs
 	vm := vm.VM{}
@@ -56,10 +70,6 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		}
 
 		// the raw message contains data that can be mapped with this register mapping
-		var env = map[string]interface{}{
-			"registers": []uint16{},
-			"coils":     []bool{},
-		}
 		if mmc.CompiledExpression == nil {
 			// TODO: each iteration the CompiledExpression is nil
 			var err error
@@ -74,11 +84,6 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		}
 
 		// the compiled program exists, let's run it
-		if mmc.FunctionCode == config.Coils || mmc.FunctionCode == config.DiscreteInputs {
-			env["coils"] = RegistersToCoils(registerData[(mmc.Address-address)/16 : (mmc.Address-address)/16+(mmc.NumberOfCoilsOrRegisters-1)/16+1])[:mmc.NumberOfCoilsOrRegisters]
-		} else if mmc.FunctionCode == config.HoldingRegisters || mmc.FunctionCode == config.InputRegisters {
-			env["registers"] = registerData[mmc.Address-address : mmc.Address-address+mmc.NumberOfCoilsOrRegisters]
-		}
 		output, err := vm.Run(mmc.CompiledExpression, env)
 		if err != nil {
 			logger.GetLogger().Warn(
@@ -106,7 +111,7 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	return result.AddUpdate(u), nil
 }
 
-func RegistersToCoils(registers []uint16) []bool {
+func RegistersToCoils(registers []uint16, numberOfCoils uint16) []bool {
 	result := make([]bool, 0, len(registers)*16)
 	for _, r := range registers {
 		result = append(result,
@@ -128,5 +133,5 @@ func RegistersToCoils(registers []uint16) []bool {
 			r&1 == 1,
 		)
 	}
-	return result
+	return result[:int(numberOfCoils)]
 }

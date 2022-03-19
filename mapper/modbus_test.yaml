@@ -5,65 +5,71 @@ mappings:
     functionCode: 4
     address: 22
     numberOfCoilsOrRegisters: 2
-    expression: "(registers[0] * 256 * 256) + registers[1]"
+    expression: "(registers[22] * 256 * 256) + registers[23]"
     path: "testingPath"
   - slave: 1
     functionCode: 2
     address: 40
     numberOfCoilsOrRegisters: 2
-    expression: "coils[0] && coils[1]"
+    expression: "coils[40] && coils[41]"
     path: "testingPath"
   - slave: 1
     functionCode: 3
     address: 52
     numberOfCoilsOrRegisters: 1
-    expression: "(registers[0] - 4000) * 0.00000000138888888888888"
+    expression: "(registers[52] - 4000) * 0.00000000138888888888888"
     path: "propulsion.mainEngine.fuel.rate"
   - slave: 2
     functionCode: 2
     address: 800
     numberOfCoilsOrRegisters: 1
-    expression: '{"state": not coils[0],"message":"The fuel level is too high"}'
+    expression: '{"state": not coils[800],"message":"The fuel level is too high"}'
     path: "notifications.tanks.fuel.portAft"
   - slave: 2
     functionCode: 2
     address: 801
     numberOfCoilsOrRegisters: 1
-    expression: '{"state": not coils[0],"message":"The fuel level is too low"}'
+    expression: '{"state": not coils[801],"message":"The fuel level is too low"}'
     path: "notifications.tanks.fuel.portAft"
   - slave: 2
     functionCode: 2
     address: 802
     numberOfCoilsOrRegisters: 1
-    expression: '{"state": not coils[0],"message":"The fuel level is too high"}'
+    expression: '{"state": not coils[802],"message":"The fuel level is too high"}'
     path: "notifications.tanks.fuel.starboardAft"
   - slave: 2
     functionCode: 2
     address: 803
     numberOfCoilsOrRegisters: 1
-    expression: '{"state": not coils[0],"message":"The fuel level is too low"}'
+    expression: '{"state": not coils[803],"message":"The fuel level is too low"}'
     path: "notifications.tanks.fuel.starboardAft"
   - slave: 2
     functionCode: 2
     address: 804
     numberOfCoilsOrRegisters: 1
-    expression: '{"state": not coils[0],"message":"The bilge level is too high"}'
+    expression: '{"state": not coils[804],"message":"The bilge level is too high"}'
     path: "notifications.bilge.engineRoomForward"
   - slave: 2
     functionCode: 2
     address: 805
     numberOfCoilsOrRegisters: 1
-    expression: '{"state": not coils[0],"message":"The bilge level is too high"}'
+    expression: '{"state": not coils[805],"message":"The bilge level is too high"}'
     path: "notifications.bilge.hold1"
   - slave: 2
     functionCode: 2
     address: 806
     numberOfCoilsOrRegisters: 1
-    expression: '{"state": not coils[0],"message":"The bilge level is too high"}'
+    expression: '{"state": not coils[806],"message":"The bilge level is too high"}'
     path: "notifications.bilge.hold2"
   - slave: 2
     functionCode: 2
     address: 807
     numberOfCoilsOrRegisters: 1
-    expression: '{"state": not coils[0],"message":"The bilge level is too high"}'
+    expression: '{"state": not coils[807],"message":"The bilge level is too high"}'
     path: "notifications.bilge.engineRoomAft"
+  - slave: 2
+    functionCode: 2
+    address: 808
+    numberOfCoilsOrRegisters: 1
+    expression: '{"state": !coils[808],"message":"The battery voltage is too low"}'
+    path: "notifications.electrical.batteries.main.voltage"

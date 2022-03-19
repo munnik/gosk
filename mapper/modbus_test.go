@@ -14,47 +14,20 @@ import (
 var _ = Describe("Helper functions", func() {
 	DescribeTable(
 		"RegistersToCoils",
-		func(input []uint16, expected []bool) {
-			result := RegistersToCoils(input)
+		func(input []uint16, numberOfCoils uint16, expected []bool) {
+			result := RegistersToCoils(input, numberOfCoils)
 			Expect(result).To(Equal(expected))
 		},
-		Entry("One register with value 0x0000", []uint16{0x0000}, []bool{
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
+		Entry("One register with value 0x0000 and number of coils 2", []uint16{0x0000}, uint16(2), []bool{
 			false,
 			false,
 		}),
-		Entry("One register with value 0x0001", []uint16{0x0001}, []bool{
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
+		Entry("One register with value 0x0001 and number of coils 3", []uint16{0x8002}, uint16(3), []bool{
 			true,
+			false,
+			false,
 		}),
-		Entry("Three registers with value 0x45a3 0x7812 0x0001", []uint16{0x45a3, 0x7812, 0x0001}, []bool{
+		Entry("Three registers with value 0x45a3 0x7812 0x0001 and number of coils 47", []uint16{0x45a3, 0x7812, 0x0001}, uint16(47), []bool{
 			false,
 			true,
 			false,
@@ -104,7 +77,6 @@ var _ = Describe("Helper functions", func() {
 			false,
 			false,
 			false,
-			true,
 		}),
 	)
 })
@@ -119,6 +91,7 @@ var _ = Describe("DoMap Modbus", func() {
 	m1 := "The fuel level is too high"
 	m2 := "The fuel level is too low"
 	m3 := "The bilge level is too high"
+	m4 := "The battery voltage is too low"
 
 	DescribeTable(
 		"Coils",
@@ -168,7 +141,7 @@ var _ = Describe("DoMap Modbus", func() {
 		Entry("With value all coils set to false",
 			mapper,
 			func() *message.Raw {
-				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{1, 0, 2, 0, 40, 0, 2, 0, 0})
+				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x01, 0x00, 0x02, 0x00, 0x28, 0x00, 0x02, 0x00, 0x00})
 				m.Uuid = uuid.Nil
 				m.Timestamp = now
 				return m
@@ -187,7 +160,7 @@ var _ = Describe("DoMap Modbus", func() {
 		Entry("With value all coils set to true",
 			mapper,
 			func() *message.Raw {
-				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{1, 0, 2, 0, 40, 0, 2, 192, 0})
+				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x01, 0x00, 0x02, 0x00, 0x28, 0x00, 0x02, 0xc0, 0x00})
 				m.Uuid = uuid.Nil
 				m.Timestamp = now
 				return m
@@ -206,7 +179,7 @@ var _ = Describe("DoMap Modbus", func() {
 		Entry("With real data",
 			mapper,
 			func() *message.Raw {
-				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{2, 0, 2, 3, 32, 0, 8, 255, 0})
+				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x02, 0x00, 0x02, 0x03, 0x20, 0x00, 0x09, 0xff, 0x80})
 				m.Uuid = uuid.Nil
 				m.Timestamp = now
 				return m
@@ -232,6 +205,8 @@ var _ = Describe("DoMap Modbus", func() {
 					message.NewValue().WithPath("notifications.bilge.hold2").WithValue(message.Alarm{State: &f, Message: &m3}),
 				).AddValue(
 					message.NewValue().WithPath("notifications.bilge.engineRoomAft").WithValue(message.Alarm{State: &f, Message: &m3}),
+				).AddValue(
+					message.NewValue().WithPath("notifications.electrical.batteries.main.voltage").WithValue(message.Alarm{State: &f, Message: &m4}),
 				),
 			),
 			false,
@@ -304,7 +279,7 @@ var _ = Describe("DoMap Modbus", func() {
 		Entry("With two registers",
 			mapper,
 			func() *message.Raw {
-				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{1, 0, 4, 0, 22, 0, 2, 15, 146, 67, 234})
+				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x01, 0x00, 0x04, 0x00, 0x16, 0x00, 0x02, 0x0f, 0x92, 0x43, 0xea})
 				m.Uuid = uuid.Nil
 				m.Timestamp = now
 				return m

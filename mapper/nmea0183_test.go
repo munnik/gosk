@@ -71,13 +71,14 @@ var _ = Describe("DoMap nmea0183", func() {
 			func() *message.Mapped {
 				lat := 51.892
 				lon := 4.60305
+				mmsi := "246581000"
 				m := message.NewMapped().WithContext("vessels.urn:mrn:imo:mmsi:246581000").WithOrigin("testingContext").AddUpdate(
 					message.NewUpdate().WithSource(
 						*message.NewSource().WithLabel("testingCollector").WithType(config.NMEA0183Type).WithUuid(uuid.Nil),
 					).WithTimestamp(
 						now,
 					).AddValue(
-						message.NewValue().WithPath("mmsi").WithValue("246581000"),
+						message.NewValue().WithPath("").WithValue(message.VesselInfo{MMSI: &mmsi}),
 					).AddValue(
 						message.NewValue().WithPath("navigation.rateOfTurn").WithValue(0.0),
 					).AddValue(

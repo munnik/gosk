@@ -27,3 +27,21 @@ CREATE TRIGGER "update_mmsi_trigger"
 AFTER
 INSERT ON "mapped_data" FOR EACH ROW
     WHEN (NEW."path" = 'mmsi') EXECUTE PROCEDURE "update_mmsi"();
+CREATE OR REPLACE FUNCTION "update_callsignvhf"() RETURNS TRIGGER AS $$ BEGIN
+INSERT INTO "static_data" ("context", "callsignvhf")
+VALUES (NEW."context", NEW."value") ON CONFLICT("context") DO
+UPDATE
+SET "callsignvhf" = NEW."value";
+RETURN NEW;
+END;
+$$ LANGUAGE 'plpgsql';
+DROP TRIGGER "update_callsignvhf_trigger" ON "mapped_data";
+CREATE TRIGGER "update_callsignvhf_trigger"
+AFTER
+INSERT ON "mapped_data" FOR EACH ROW
+    WHEN (NEW."path" = 'communication.callsignVhf') EXECUTE PROCEDURE "update_callsignvhf"();
+UPDATE "static_data"
+SET "callsignvhf" = "value"
+FROM "mapped_data"
+WHERE "static_data"."context" = "mapped_data"."context"
+    AND "mapped_data"."path" = 'communication.callsignVhf';

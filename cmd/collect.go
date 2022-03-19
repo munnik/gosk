@@ -48,10 +48,10 @@ func doCollect(cmd *cobra.Command, args []string) {
 	var reader collector.Collector
 	switch c.Protocol {
 	case config.CSVType, config.NMEA0183Type, config.JSONType:
-		reader, err = collector.NewLineReader(c)
+		reader, err = collector.NewLineCollector(c)
 	case config.ModbusType:
 		rgc := config.NewRegisterGroupsConfig(cfgFile)
-		reader, err = collector.NewModbusReader(c, rgc)
+		reader, err = collector.NewModbusCollector(c, rgc)
 	default:
 		logger.GetLogger().Fatal(
 			"Not a supported protocol",

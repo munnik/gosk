@@ -18,12 +18,12 @@ import (
 const MaximumNumberOfRegisters = 125
 const MaximumNumberOfCoils = 2000
 
-type ModbusReader struct {
+type ModbusCollector struct {
 	config               *config.CollectorConfig
 	registerGroupsConfig []config.RegisterGroupConfig
 }
 
-func NewModbusReader(c *config.CollectorConfig, rgcs []config.RegisterGroupConfig) (*ModbusReader, error) {
+func NewModbusCollector(c *config.CollectorConfig, rgcs []config.RegisterGroupConfig) (*ModbusCollector, error) {
 	for _, rgc := range rgcs {
 		if rgc.FunctionCode == config.Coils || rgc.FunctionCode == config.DiscreteInputs {
 			if rgc.NumberOfCoilsRegisters > MaximumNumberOfCoils {
@@ -35,10 +35,10 @@ func NewModbusReader(c *config.CollectorConfig, rgcs []config.RegisterGroupConfi
 			}
 		}
 	}
-	return &ModbusReader{config: c, registerGroupsConfig: rgcs}, nil
+	return &ModbusCollector{config: c, registerGroupsConfig: rgcs}, nil
 }
 
-func (r *ModbusReader) Collect(publisher mangos.Socket) {
+func (r *ModbusCollector) Collect(publisher mangos.Socket) {
 	stream := make(chan []byte, 1)
 	defer close(stream)
 	go func() {
@@ -55,7 +55,7 @@ func (r *ModbusReader) Collect(publisher mangos.Socket) {
 	process(stream, r.config.Name, r.config.Protocol, publisher)
 }
 
-func (m *ModbusReader) receive(stream chan<- []byte) error {
+func (m *ModbusCollector) receive(stream chan<- []byte) error {
 	client, err := m.createClient()
 	if err != nil {
 		return err
@@ -92,7 +92,7 @@ func (m *ModbusReader) receive(stream chan<- []byte) error {
 	return nil
 }
 
-func (m ModbusReader) createClient() (*ModbusClient, error) {
+func (m ModbusCollector) createClient() (*ModbusClient, error) {
 	client, err := modbus.NewClient(&modbus.ClientConfiguration{
 		URL:      m.config.URL.String(),
 		Speed:    uint(m.config.BaudRate),
@@ -200,14 +200,14 @@ func RegistersToBytes(rgc config.RegisterGroupConfig, values []uint16) []byte {
 	return bytes
 }
 
-func StartBytes(slave uint8, functionCode uint16, address uint16, numberOfRegisters uint16) []byte {
+func StartBytes(slave uint8, functionCode uint16, address uint16, numberOfCoilsOrRegisters uint16) []byte {
 	bytes := []byte{byte(slave)}
 	out := make([]byte, 2)
 	binary.BigEndian.PutUint16(out, functionCode)
 	bytes = append(bytes, out...)
 	binary.BigEndian.PutUint16(out, address)
 	bytes = append(bytes, out...)
-	binary.BigEndian.PutUint16(out, numberOfRegisters)
+	binary.BigEndian.PutUint16(out, numberOfCoilsOrRegisters)
 	bytes = append(bytes, out...)
 	return bytes
 }

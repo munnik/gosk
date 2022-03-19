@@ -15,16 +15,16 @@ import (
 	"go.uber.org/zap"
 )
 
-// LineReader reads lines from the connection and sends it on the mangos socket
-type LineReader struct {
+// LineCollector reads lines from the connection and sends it on the mangos socket
+type LineCollector struct {
 	config *config.CollectorConfig
 }
 
-func NewLineReader(c *config.CollectorConfig) (*LineReader, error) {
-	return &LineReader{config: c}, nil
+func NewLineCollector(c *config.CollectorConfig) (*LineCollector, error) {
+	return &LineCollector{config: c}, nil
 }
 
-func (r *LineReader) Collect(publisher mangos.Socket) {
+func (r *LineCollector) Collect(publisher mangos.Socket) {
 	stream := make(chan []byte, 1)
 	defer close(stream)
 	go func() {
@@ -41,7 +41,7 @@ func (r *LineReader) Collect(publisher mangos.Socket) {
 	process(stream, r.config.Name, r.config.Protocol, publisher)
 }
 
-func (l *LineReader) receive(stream chan<- []byte) error {
+func (l *LineCollector) receive(stream chan<- []byte) error {
 	reader, err := l.createReader()
 	if err != nil {
 		return err
@@ -49,7 +49,7 @@ func (l *LineReader) receive(stream chan<- []byte) error {
 	return l.scan(reader, stream)
 }
 
-func (l LineReader) createReader() (io.Reader, error) {
+func (l LineCollector) createReader() (io.Reader, error) {
 	var reader io.Reader
 	var err error
 	for {
@@ -82,7 +82,7 @@ func (l LineReader) createReader() (io.Reader, error) {
 	return reader, nil
 }
 
-func (l LineReader) createNetworkReader() (io.Reader, error) {
+func (l LineCollector) createNetworkReader() (io.Reader, error) {
 	if l.config.Listen {
 		if l.config.URL.Scheme == "tcp" {
 			listener, err := net.Listen(l.config.URL.Scheme, fmt.Sprintf("%s:%s", l.config.URL.Hostname(), l.config.URL.Port()))
@@ -112,7 +112,7 @@ func (l LineReader) createNetworkReader() (io.Reader, error) {
 	return nil, nil
 }
 
-func (l LineReader) createFileReader() (io.Reader, error) {
+func (l LineCollector) createFileReader() (io.Reader, error) {
 	fi, err := os.Stat(l.config.URL.Path)
 	if err != nil {
 		return nil, fmt.Errorf("unable to stat the file %v, the error that occurred was %v", l.config.URL.Path, err)
@@ -139,7 +139,7 @@ func (l LineReader) createFileReader() (io.Reader, error) {
 	return reader, nil
 }
 
-func (l LineReader) scan(reader io.Reader, stream chan<- []byte) error {
+func (l LineCollector) scan(reader io.Reader, stream chan<- []byte) error {
 	scanner := bufio.NewScanner(reader)
 	for scanner.Scan() {
 		stream <- scanner.Bytes()

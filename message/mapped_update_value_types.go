@@ -16,6 +16,11 @@ type VesselInfo struct {
 	Name *string `json:"name,omitempty"`
 }
 
+type VesselType struct {
+	Id   *int    `json:"id,omitempty"`
+	Name *string `json:"name,omitempty"`
+}
+
 func (left VesselInfo) Merge(right Merger) (Merger, error) {
 	var err error
 	if right, ok := right.(VesselInfo); !ok {

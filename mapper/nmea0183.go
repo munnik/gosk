@@ -54,6 +54,11 @@ func (m *Nmea0183Mapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 			u.AddValue(message.NewValue().WithPath("").WithValue(message.VesselInfo{Name: &vesselName}))
 		}
 	}
+	if v, ok := sentence.(nmea.VesselType); ok {
+		if vesselType, err := v.GetVesselType(); err == nil {
+			u.AddValue(message.NewValue().WithPath("design.aisShipType").WithValue(message.VesselType{Name: &vesselType}))
+		}
+	}
 
 	if v, ok := sentence.(nmea.DepthBelowSurface); ok {
 		if depthBelowSurface, err := v.GetDepthBelowSurface(); err == nil {

@@ -21,7 +21,7 @@ CREATE OR REPLACE FUNCTION "update_length"() RETURNS TRIGGER AS $$ BEGIN
 INSERT INTO "static_data" ("context", "length")
 VALUES (NEW."context", (NEW."value"->'overall')::DOUBLE PRECISION) ON CONFLICT("context") DO
 UPDATE
-SET "length" = (NEW."value">'overall')::DOUBLE PRECISION;
+SET "length" = (NEW."value"->'overall')::DOUBLE PRECISION;
 RETURN NEW;
 END;
 $$ LANGUAGE 'plpgsql';

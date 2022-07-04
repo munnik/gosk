@@ -67,6 +67,8 @@ func doMap(cmd *cobra.Command, args []string) {
 		m, err = mapper.NewModbusMapper(c, rmc)
 	case config.NMEA0183Type:
 		m, err = mapper.NewNmea0183Mapper(c)
+	case config.CanBusType:
+		m, err = mapper.NewCanBusMapper(c)
 	default:
 		logger.GetLogger().Fatal(
 			"Not a supported protocol",

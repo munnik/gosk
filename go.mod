@@ -6,6 +6,7 @@ require (
 	github.com/Jeffail/gabs v1.4.0
 	github.com/allegro/bigcache/v3 v3.0.2
 	github.com/antonmedv/expr v1.9.0
+	github.com/brutella/can v0.0.2
 	github.com/eclipse/paho.mqtt.golang v1.3.5
 	github.com/fgrosse/zaptest v1.1.0
 	github.com/go-chi/chi/v5 v5.0.7

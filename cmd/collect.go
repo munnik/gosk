@@ -52,6 +52,8 @@ func doCollect(cmd *cobra.Command, args []string) {
 	case config.ModbusType:
 		rgc := config.NewRegisterGroupsConfig(cfgFile)
 		reader, err = collector.NewModbusCollector(c, rgc)
+	case config.CanBusType:
+		reader, err = collector.NewCanBusCollector(c)
 	default:
 		logger.GetLogger().Fatal(
 			"Not a supported protocol",

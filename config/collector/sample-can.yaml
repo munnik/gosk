@@ -1,0 +1,4 @@
+---
+name: "CanBus"
+protocol: "canbus"
+url: "sock://vcan0"

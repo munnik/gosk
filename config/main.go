@@ -22,6 +22,8 @@ const (
 	// JSONType is used to identify the data as json messages
 	JSONType = "json"
 
+	CanBusType = "canbus"
+
 	ParityMap string = "NOE" // None, Odd, Even
 )
 

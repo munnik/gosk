@@ -23,6 +23,7 @@ require (
 	github.com/simonvetter/modbus v1.5.0
 	github.com/spf13/cobra v1.4.0
 	github.com/spf13/viper v1.10.1
+	go.einride.tech/can v0.2.2
 	go.nanomsg.org/mangos/v3 v3.3.0
 	go.uber.org/zap v1.21.0
 	nhooyr.io/websocket v1.8.7

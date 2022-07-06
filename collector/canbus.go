@@ -2,7 +2,6 @@ package collector
 
 import (
 	"encoding/binary"
-	"fmt"
 
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
@@ -50,7 +49,7 @@ func (r *CanBusCollector) receive(stream chan<- []byte) error {
 
 func handleCanFrameStream(stream chan<- []byte) can.HandlerFunc {
 	return func(frm can.Frame) {
-		fmt.Println("frame")
+		// fmt.Println(frm)
 		bytes := FrameToBytes(frm)
 		stream <- bytes
 

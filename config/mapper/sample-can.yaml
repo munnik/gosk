@@ -1,3 +1,18 @@
 ---
 context: "vessels.urn:mrn:imo:mmsi:244770688" # if the data itself doesn't provide a context then this context is used
 protocol: "canbus"
+dbcFile: "/home/albert/Documents/FuelEssence/TelMA_ID0x100.dbc"
+mappings:
+  - name: "Temperature"
+    origin: "TelMA_Data"
+    expression: "value + 273.15"
+    path: "environment/outside/temperature"
+  - name: "RPM"
+    origin: "TelMA_Data"
+    expression: "value / 60"
+    path: "propulsion/main/revolutions"
+  - name: "Torque"
+    origin: "TelMA_Data"
+    expression: "value"
+    path: "propulsion/main/engineTorque"
+

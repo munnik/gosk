@@ -90,91 +90,84 @@ func NewMapperConfig(configFilePath string) MapperConfig {
 	return result
 }
 
+type MappingConfig struct {
+	Expression         string `mapstructure:"expression"`
+	CompiledExpression *vm.Program
+	Path               string `mapstructure:"path"`
+}
+
+func (m *MappingConfig) verify() {
+	if m.Path == "" {
+		logger.GetLogger().Warn(
+			"Path was not set",
+			zap.String("Register mapping", fmt.Sprintf("%+v", m)),
+		)
+	}
+	if m.Expression == "" {
+		logger.GetLogger().Warn(
+			"Expression was not set",
+			zap.String("Register mapping", fmt.Sprintf("%+v", m)),
+		)
+	}
+}
+
 type ModbusMappingsConfig struct {
+	MappingConfig            `mapstructure:",squash"`
 	Slave                    uint8  `mapstructure:"slave"`
 	FunctionCode             uint16 `mapstructure:"functionCode"`
 	Address                  uint16 `mapstructure:"address"`
 	NumberOfCoilsOrRegisters uint16 `mapstructure:"numberOfCoilsOrRegisters"`
-	Expression               string `mapstructure:"expression"`
-	CompiledExpression       *vm.Program
-	Path                     string `mapstructure:"path"`
 }
 
 func NewModbusMappingsConfig(configFilePath string) []ModbusMappingsConfig {
 	var result []ModbusMappingsConfig
 	readConfigFile(&result, configFilePath, "mappings")
-
 	for _, rmc := range result {
-		if rmc.Path == "" {
-			logger.GetLogger().Warn(
-				"Path was not set",
-				zap.String("Register mapping", fmt.Sprintf("%+v", rmc)),
-			)
-			continue
-		}
-		if rmc.Expression == "" {
-			logger.GetLogger().Warn(
-				"Expression was not set",
-				zap.String("Register mapping", fmt.Sprintf("%+v", rmc)),
-			)
-		}
+		rmc.verify()
 	}
 	return result
 }
 
 type CSVMappingConfig struct {
-	BeginsWith         string `mapstructure:"beginsWith"`
-	Expression         string `mapstructure:"expression"`
-	CompiledExpression *vm.Program
-	Path               string `mapstructure:"path"`
+	BeginsWith    string `mapstructure:"beginsWith"`
+	MappingConfig `mapstructure:",squash"`
 }
 
 func NewCSVMappingConfig(configFilePath string) []CSVMappingConfig {
 	var result []CSVMappingConfig
 	readConfigFile(&result, configFilePath, "mappings")
 
-	for _, cmc := range result {
-		if cmc.Path == "" {
-			logger.GetLogger().Warn(
-				"Path was not set",
-				zap.String("Register mapping", fmt.Sprintf("%+v", cmc)),
-			)
-			continue
-		}
-		if cmc.Expression == "" {
-			logger.GetLogger().Warn(
-				"Expression was not set",
-				zap.String("Register mapping", fmt.Sprintf("%+v", cmc)),
-			)
-		}
+	for _, rmc := range result {
+		rmc.verify()
 	}
 	return result
 }
 
 type JSONMappingConfig struct {
-	Expression         string `mapstructure:"expression"`
-	CompiledExpression *vm.Program
-	Path               string `mapstructure:"path"`
+	MappingConfig `mapstructure:",squash"`
 }
 
 func NewJSONMappingConfig(configFilePath string) []JSONMappingConfig {
 	var result []JSONMappingConfig
 	readConfigFile(&result, configFilePath, "mappings")
 
-	for _, jmc := range result {
-		if jmc.Path == "" {
-			logger.GetLogger().Warn(
-				"Path was not set",
-				zap.String("Register mapping", fmt.Sprintf("%+v", jmc)),
-			)
-			continue
-		}
-		if jmc.Expression == "" {
-			logger.GetLogger().Warn(
-				"Expression was not set",
-				zap.String("Register mapping", fmt.Sprintf("%+v", jmc)),
-			)
-		}
+	for _, rmc := range result {
+		rmc.verify()
+	}
+	return result
+}
+
+type CanBusMappingConfig struct {
+	MappingConfig `mapstructure:",squash"`
+	Name          string `mapstructure:"name"`
+	Origin        string `mapstructure:"origin"`
+}
+
+func NewCanBusMappingConfig(configFilePath string) []CanBusMappingConfig {
+	var result []CanBusMappingConfig
+	readConfigFile(&result, configFilePath, "mappings")
+	for _, rmc := range result {
+		rmc.verify()
 	}
 	return result
 }

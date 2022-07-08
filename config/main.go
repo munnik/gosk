@@ -90,6 +90,18 @@ func NewMapperConfig(configFilePath string) MapperConfig {
 	return result
 }
 
+type CanBusMapperConfig struct {
+	MapperConfig `mapstructure:",squash"`
+	DbcFile      string `mapstructure:"dbcFile"`
+}
+
+func NewCanBusMapperConfig(configFilePath string) CanBusMapperConfig {
+	result := CanBusMapperConfig{}
+	readConfigFile(&result, configFilePath)
+
+	return result
+}
+
 type MappingConfig struct {
 	Expression         string `mapstructure:"expression"`
 	CompiledExpression *vm.Program

@@ -19,15 +19,15 @@ import (
 )
 
 type CanBusMapper struct {
-	config         config.MapperConfig
+	config         config.CanBusMapperConfig
 	protocol       string
 	dbc            DBC
 	canbusMappings map[string]map[string]config.CanBusMappingConfig
 }
 
-func NewCanBusMapper(c config.MapperConfig, cmc []config.CanBusMappingConfig) (*CanBusMapper, error) {
+func NewCanBusMapper(c config.CanBusMapperConfig, cmc []config.CanBusMappingConfig) (*CanBusMapper, error) {
 	// parse DBC file and store mappings
-	dbc := readDBC("/home/albert/Documents/FuelEssence/TelMA_ID0x100.dbc")
+	dbc := readDBC(c.DbcFile)
 	mappings := make(map[string]map[string]config.CanBusMappingConfig)
 	for _, m := range cmc {
 		_, present := mappings[m.Origin]
@@ -83,9 +83,7 @@ func (m *CanBusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 					)
 					continue
 				}
-				fmt.Println(output)
 				u.AddValue(message.NewValue().WithPath(mapping.Path).WithValue(output))
-				// fmt.Println(val)
 			}
 		}
 	}

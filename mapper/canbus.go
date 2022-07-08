@@ -52,38 +52,18 @@ func (m *CanBusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	mappings, present := m.dbc[frm.ID]
 	if present {
 		// apply all mappings
+		vm := vm.VM{}
 		for _, mapping := range mappings.Signals {
 			val := extractSignal(mapping, string(mappings.Name), frm)
 			mapping, present := m.canbusMappings[val.origin][val.name]
-			// fmt.Println(mapping)
+
 			if present {
-				vm := vm.VM{}
 				var env = map[string]interface{}{}
 				env["value"] = val.value
-				if mapping.CompiledExpression == nil {
-					// TODO: each iteration the CompiledExpression is nil
-					var err error
-					if mapping.CompiledExpression, err = expr.Compile(mapping.Expression, expr.Env(env)); err != nil {
-						logger.GetLogger().Warn(
-							"Could not compile the mapping expression",
-							zap.String("Expression", mapping.Expression),
-							zap.String("Error", err.Error()),
-						)
-						continue
-					}
+				output, err := runExpr(vm, env, mapping.MappingConfig)
+				if err == nil {
+					u.AddValue(message.NewValue().WithPath(mapping.Path).WithValue(output))
 				}
-				// the compiled program exists, let's run it
-				output, err := vm.Run(mapping.CompiledExpression, env)
-				if err != nil {
-					logger.GetLogger().Warn(
-						"Could not run the mapping expression",
-						zap.String("Expression", mapping.Expression),
-						zap.String("Environment", fmt.Sprintf("%+v", env)),
-						zap.String("Error", err.Error()),
-					)
-					continue
-				}
-				u.AddValue(message.NewValue().WithPath(mapping.Path).WithValue(output))
 			}
 		}
 	}
@@ -104,6 +84,33 @@ func createFrame(r *message.Raw) can.Frame {
 		Data:   data,
 	}
 	return frm
+}
+
+func runExpr(vm vm.VM, env map[string]interface{}, mapping config.MappingConfig) (interface{}, error) {
+	if mapping.CompiledExpression == nil {
+		// TODO: each iteration the CompiledExpression is nil
+		var err error
+		if mapping.CompiledExpression, err = expr.Compile(mapping.Expression, expr.Env(env)); err != nil {
+			logger.GetLogger().Warn(
+				"Could not compile the mapping expression",
+				zap.String("Expression", mapping.Expression),
+				zap.String("Error", err.Error()),
+			)
+			return nil, err
+		}
+	}
+	// the compiled program exists, let's run it
+	output, err := vm.Run(mapping.CompiledExpression, env)
+	if err != nil {
+		logger.GetLogger().Warn(
+			"Could not run the mapping expression",
+			zap.String("Expression", mapping.Expression),
+			zap.String("Environment", fmt.Sprintf("%+v", env)),
+			zap.String("Error", err.Error()),
+		)
+		return nil, err
+	}
+	return output, nil
 }
 
 func extractSignal(mapping dbc.SignalDef, origin string, frm can.Frame) Signal {

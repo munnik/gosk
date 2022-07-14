@@ -68,7 +68,7 @@ func (m *CanBusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		}
 	}
 
-	fmt.Println(u)
+	// fmt.Println(u)
 	return result.AddUpdate(u), nil
 }
 

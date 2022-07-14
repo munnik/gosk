@@ -1,9 +1,11 @@
 package writer
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/munnik/gosk/logger"
+	"github.com/munnik/gosk/message"
 	"go.nanomsg.org/mangos/v3"
 	"go.uber.org/zap"
 )
@@ -25,7 +27,15 @@ func (w *StdOutWriter) WriteMapped(subscriber mangos.Socket) {
 			)
 			continue
 		}
-		fmt.Println(received)
+		var m message.Mapped
+		if err := json.Unmarshal(received, &m); err != nil {
+			logger.GetLogger().Warn(
+				"Could not unmarshal a message from the publisher",
+				zap.String("Error", err.Error()),
+			)
+			return
+		}
+		fmt.Println(m)
 	}
 }
 
@@ -39,6 +49,15 @@ func (w *StdOutWriter) WriteRaw(subscriber mangos.Socket) {
 			)
 			continue
 		}
-		fmt.Println(received)
+		raw := message.Raw{}
+		if err := json.Unmarshal(received, &raw); err != nil {
+			logger.GetLogger().Warn(
+				"Could not unmarshal the received data",
+				zap.ByteString("Received", received),
+				zap.String("Error", err.Error()),
+			)
+			continue
+		}
+		fmt.Println(raw)
 	}
 }

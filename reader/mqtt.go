@@ -45,7 +45,8 @@ func (r *MqttReader) createClientOptions() *mqtt.ClientOptions {
 	o.SetKeepAlive(keepAlive)
 	o.SetDefaultPublishHandler(r.messageReceived)
 	o.SetConnectionLostHandler(disconnectHandler)
-	o.SetAutoReconnect(true)
+	o.SetOnConnectHandler(r.connectHandler)
+
 	return o
 }
 
@@ -61,15 +62,6 @@ func (r *MqttReader) ReadMapped(publisher mangos.Socket) {
 		return
 	}
 	defer r.mqttClient.Disconnect(disconnectWait)
-
-	if token := r.mqttClient.Subscribe(readTopic, 1, nil); token.Wait() && token.Error() != nil {
-		logger.GetLogger().Fatal(
-			"Could not subscribe to the MQTT topic",
-			zap.String("Error", token.Error().Error()),
-			zap.String("URL", r.config.URLString),
-		)
-		return
-	}
 
 	// never exit
 	wg := new(sync.WaitGroup)
@@ -123,5 +115,20 @@ func disconnectHandler(c mqtt.Client, e error) {
 			"MQTT connection lost",
 			zap.String("Error", e.Error()),
 		)
+	}
+}
+
+func (r *MqttReader) connectHandler(c mqtt.Client) {
+	logger.GetLogger().Info(
+		"MQTT connection established",
+	)
+
+	if token := r.mqttClient.Subscribe(readTopic, 1, nil); token.Wait() && token.Error() != nil {
+		logger.GetLogger().Fatal(
+			"Could not subscribe to the MQTT topic",
+			zap.String("Error", token.Error().Error()),
+			zap.String("URL", r.config.URLString),
+		)
+		return
 	}
 }

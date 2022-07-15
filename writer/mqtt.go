@@ -51,6 +51,7 @@ func (w *MqttWriter) createClientOptions() *mqtt.ClientOptions {
 	o.SetPassword(w.config.Password)
 	o.SetOrderMatters(false)
 	o.SetKeepAlive(keepAlive)
+	o.SetConnectionLostHandler(disconnectHandler)
 	return o
 }
 
@@ -148,5 +149,14 @@ func (w *MqttWriter) WriteMapped(subscriber mangos.Socket) {
 		w.mu.Lock()
 		w.cache.Set(uuid.NewString(), received)
 		w.mu.Unlock()
+	}
+}
+
+func disconnectHandler(c mqtt.Client, e error) {
+	if e != nil {
+		logger.GetLogger().Warn(
+			"MQTT connection lost",
+			zap.String("Error", e.Error()),
+		)
 	}
 }

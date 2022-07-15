@@ -44,6 +44,8 @@ func (r *MqttReader) createClientOptions() *mqtt.ClientOptions {
 	o.SetOrderMatters(false)
 	o.SetKeepAlive(keepAlive)
 	o.SetDefaultPublishHandler(r.messageReceived)
+	o.SetConnectionLostHandler(disconnectHandler)
+	o.SetAutoReconnect(true)
 	return o
 }
 
@@ -113,5 +115,13 @@ func (r *MqttReader) messageReceived(c mqtt.Client, m mqtt.Message) {
 			)
 			continue
 		}
+	}
+}
+func disconnectHandler(c mqtt.Client, e error) {
+	if e != nil {
+		logger.GetLogger().Warn(
+			"MQTT connection lost",
+			zap.String("Error", e.Error()),
+		)
 	}
 }

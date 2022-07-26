@@ -127,6 +127,31 @@ func (t *TransferPublisher) ListenCountReply() {
 	wg.Wait()
 }
 
+func (t *TransferPublisher) sendRequest(origin string, start time.Time) {
+	message := CommandMessage{Command: QueryCmd}
+	message.Request.Origin = origin
+	message.Request.PeriodStart = start
+	message.Request.PeriodEnd = start.Add(time.Minute * 5)
+	bytes, err := json.Marshal(message)
+	if err != nil {
+		logger.GetLogger().Warn(
+			"Could not marshall the deltas",
+			zap.String("Error", err.Error()),
+		)
+		return
+	}
+	topic := fmt.Sprintf(readTopic, origin)
+	fmt.Println(topic)
+	if token := t.mqttClient.Publish(topic, 1, false, bytes); token.Wait() && token.Error() != nil {
+		logger.GetLogger().Warn(
+			"Could not publish a message via MQTT",
+			zap.String("Error", token.Error().Error()),
+			zap.ByteString("Bytes", bytes),
+		)
+	}
+
+}
+
 // query database at interval
 // ask clients via mqtt
 

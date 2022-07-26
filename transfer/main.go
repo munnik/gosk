@@ -10,10 +10,11 @@ const (
 )
 
 type TransferMessage struct {
-	Origin      string
-	PeriodStart time.Time
-	PeriodEnd   time.Time
-	DataPoints  int
+	Origin           string
+	PeriodStart      time.Time
+	PeriodEnd        time.Time
+	LocalDataPoints  int
+	RemoteDataPoints int
 }
 type CommandMessage struct {
 	Command string

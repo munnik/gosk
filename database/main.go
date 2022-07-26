@@ -15,6 +15,6 @@ type DatabaseReader interface {
 }
 
 type DatabaseCountReader interface {
-	readRawCount(where string, arguments ...interface{}) (int, error)
-	readMappedCount(where string, arguments ...interface{}) (int, error)
+	ReadRawCount(where string, arguments ...interface{}) (int, error)
+	ReadMappedCount(where string, arguments ...interface{}) (int, error)
 }

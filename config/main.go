@@ -247,14 +247,15 @@ func (c *SignalKConfig) WithVersion(version string) *SignalKConfig {
 	return c
 }
 
-type TranferConfig struct {
+type TransferConfig struct {
 	DBConfig   PostgresqlConfig `mapstructure:"_"`
 	MQTTConfig MQTTConfig       `mapstructure:"_"`
+	Origin     string           `mapstructure:"origin"`
 }
 
-func NewTranferConfig(configFilePath string) *TranferConfig {
-	result := TranferConfig{}
-	// readConfigFile(&result, configFilePath)
+func NewTranferConfig(configFilePath string) *TransferConfig {
+	result := TransferConfig{}
+	readConfigFile(&result, configFilePath)
 	readConfigFile(&result.DBConfig, configFilePath, "database")
 	readConfigFile(&result.MQTTConfig, configFilePath, "mqtt")
 

@@ -2,6 +2,7 @@ package transfer
 
 import (
 	"encoding/json"
+	"fmt"
 	"sync"
 	"time"
 
@@ -16,7 +17,8 @@ import (
 const (
 	disconnectWait = 5000 // time to wait before disconnect in ms
 	keepAlive      = 30 * time.Second
-	readTopic      = "commands"
+	readTopic      = "command/%s"
+	replyTopic     = "reply/%s"
 	appendToQuery  = `WHERE 
 						"origin" = $1 AND
 						"time" > $2 AND
@@ -27,14 +29,14 @@ const (
 
 type TransferSubscriber struct {
 	db         *database.PostgresqlDatabase
-	mqttConfig *config.MQTTConfig
+	config     *config.TransferConfig
 	mqttClient mqtt.Client
 	publisher  mangos.Socket
 }
 
-func NewTransferSubscriber(c *config.TranferConfig) *TransferSubscriber {
+func NewTransferSubscriber(c *config.TransferConfig) *TransferSubscriber {
 
-	return &TransferSubscriber{db: database.NewPostgresqlDatabase(&c.DBConfig), mqttConfig: &c.MQTTConfig}
+	return &TransferSubscriber{db: database.NewPostgresqlDatabase(&c.DBConfig), config: c}
 }
 
 func (t *TransferSubscriber) ReadCommands(publisher mangos.Socket) {
@@ -44,7 +46,7 @@ func (t *TransferSubscriber) ReadCommands(publisher mangos.Socket) {
 		logger.GetLogger().Fatal(
 			"Could not connect to the MQTT broker",
 			zap.String("Error", token.Error().Error()),
-			zap.String("URL", t.mqttConfig.URLString),
+			zap.String("URL", t.config.MQTTConfig.URLString),
 		)
 		return
 	}
@@ -58,14 +60,14 @@ func (t *TransferSubscriber) ReadCommands(publisher mangos.Socket) {
 
 func (t *TransferSubscriber) createClientOptions() *mqtt.ClientOptions {
 	o := mqtt.NewClientOptions()
-	o.AddBroker(t.mqttConfig.URLString)
+	o.AddBroker(t.config.MQTTConfig.URLString)
 	o.SetCleanSession(true) // TODO: verify
-	o.SetUsername(t.mqttConfig.Username)
-	o.SetPassword(t.mqttConfig.Password)
+	o.SetUsername(t.config.MQTTConfig.Username)
+	o.SetPassword(t.config.MQTTConfig.Password)
 	o.SetOrderMatters(false)
 	o.SetKeepAlive(keepAlive)
 	o.SetDefaultPublishHandler(t.messageReceived)
-	o.SetConnectionLostHandler(disconnectHandler)
+	o.SetConnectionLostHandler(t.disconnectHandler)
 	o.SetOnConnectHandler(t.connectHandler)
 
 	return o
@@ -75,12 +77,12 @@ func (t *TransferSubscriber) connectHandler(c mqtt.Client) {
 	logger.GetLogger().Info(
 		"MQTT connection established",
 	)
-
-	if token := t.mqttClient.Subscribe(readTopic, 1, nil); token.Wait() && token.Error() != nil {
+	topic := fmt.Sprintf(readTopic, t.config.Origin)
+	if token := t.mqttClient.Subscribe(topic, 1, nil); token.Wait() && token.Error() != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the MQTT topic",
 			zap.String("Error", token.Error().Error()),
-			zap.String("URL", t.mqttConfig.URLString),
+			zap.String("URL", t.config.MQTTConfig.URLString),
 		)
 		return
 	}
@@ -105,7 +107,7 @@ func (t *TransferSubscriber) messageReceived(c mqtt.Client, m mqtt.Message) {
 	}
 
 }
-func disconnectHandler(c mqtt.Client, e error) {
+func (t *TransferSubscriber) disconnectHandler(c mqtt.Client, e error) {
 	if e != nil {
 		logger.GetLogger().Warn(
 			"MQTT connection lost",
@@ -124,9 +126,9 @@ func (t *TransferSubscriber) sendCount(request TransferMessage) {
 		return
 	}
 	reply := TransferMessage{Origin: request.Origin,
-		PeriodStart: request.PeriodStart,
-		PeriodEnd:   request.PeriodEnd,
-		DataPoints:  count}
+		PeriodStart:     request.PeriodStart,
+		PeriodEnd:       request.PeriodEnd,
+		LocalDataPoints: count}
 	bytes, err := json.Marshal(reply)
 	if err != nil {
 		logger.GetLogger().Warn(
@@ -135,7 +137,8 @@ func (t *TransferSubscriber) sendCount(request TransferMessage) {
 		)
 		return
 	}
-	if token := t.mqttClient.Publish("reply/123", 1, true, bytes); token.Wait() && token.Error() != nil {
+	topic := fmt.Sprintf(replyTopic, t.config.Origin)
+	if token := t.mqttClient.Publish(topic, 1, true, bytes); token.Wait() && token.Error() != nil {
 		logger.GetLogger().Warn(
 			"Could not publish a message via MQTT",
 			zap.String("Error", token.Error().Error()),

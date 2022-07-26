@@ -20,9 +20,11 @@ import (
 )
 
 const (
-	rawInsertQuery    = `INSERT INTO "raw_data" ("time", "collector", "value", "uuid", "type") VALUES ($1, $2, $3, $4, $5)`
-	mappedInsertQuery = `INSERT INTO "mapped_data" ("time", "collector", "type", "context", "path", "value", "uuid", "origin") VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
-	mappedSelectQuery = `SELECT "time", "collector", "type", "context", "path", "value", "uuid", "origin" FROM "mapped_data"`
+	rawInsertQuery         = `INSERT INTO "raw_data" ("time", "collector", "value", "uuid", "type") VALUES ($1, $2, $3, $4, $5)`
+	mappedInsertQuery      = `INSERT INTO "mapped_data" ("time", "collector", "type", "context", "path", "value", "uuid", "origin") VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+	mappedSelectQuery      = `SELECT "time", "collector", "type", "context", "path", "value", "uuid", "origin" FROM "mapped_data"`
+	mappedCountSelectQuery = `SELECT count(*) FROM "mapped_data"`
+	rawCountSelectQuery    = `SELECT count(*) FROM "raw_data"`
 )
 
 //go:embed migrations/*.sql
@@ -159,6 +161,31 @@ func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...inte
 	}
 
 	return result, nil
+}
+func (db *PostgresqlDatabase) ReadMappedCount(appendToQuery string, arguments ...interface{}) (int, error) {
+	rows, err := db.GetConnection().Query(context.Background(), fmt.Sprintf("%s %s", mappedCountSelectQuery, appendToQuery), arguments...)
+	if err != nil {
+		return -1, err
+	}
+	defer rows.Close()
+	var count int
+	rows.Next()
+	rows.Scan(&count)
+
+	return count, nil
+}
+
+func (db *PostgresqlDatabase) ReadRawCount(appendToQuery string, arguments ...interface{}) (int, error) {
+	rows, err := db.GetConnection().Query(context.Background(), fmt.Sprintf("%s %s", rawCountSelectQuery, appendToQuery), arguments...)
+	if err != nil {
+		return -1, err
+	}
+	defer rows.Close()
+	var count int
+	rows.Next()
+	rows.Scan(&count)
+
+	return count, nil
 }
 
 func (db *PostgresqlDatabase) UpgradeDatabase() error {

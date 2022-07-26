@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/transfer"
@@ -40,7 +38,9 @@ func init() {
 }
 
 func doTransferPublish(cmd *cobra.Command, args []string) {
-	fmt.Println("test")
+	c := config.NewTranferConfig(cfgFile)
+	w := transfer.NewTransferPublisher(c)
+	w.ListenCountReply()
 
 }
 func doTransferSubscribe(cmd *cobra.Command, args []string) {

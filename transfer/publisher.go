@@ -75,27 +75,7 @@ func (t *TransferPublisher) messageReceived(c mqtt.Client, m mqtt.Message) {
 		return
 	}
 	if count != command.RemoteDataPoints {
-		request := message.TransferMessage{Origin: command.Origin,
-			PeriodStart: command.PeriodStart,
-			PeriodEnd:   command.PeriodEnd,
-		}
-		reply := CommandMessage{Command: RequestCmd, Request: request}
-		bytes, err := json.Marshal(reply)
-		if err != nil {
-			logger.GetLogger().Warn(
-				"Could not marshall the deltas",
-				zap.String("Error", err.Error()),
-			)
-			return
-		}
-		topic := fmt.Sprintf(readTopic, command.Origin)
-		if token := t.mqttClient.Publish(topic, 1, true, bytes); token.Wait() && token.Error() != nil {
-			logger.GetLogger().Warn(
-				"Could not publish a message via MQTT",
-				zap.String("Error", token.Error().Error()),
-				zap.ByteString("Bytes", bytes),
-			)
-		}
+		t.sendCommand(command.Origin, command.PeriodStart, command.PeriodEnd)
 	}
 	fmt.Printf("vessel: %d, server: %d\n", command.RemoteDataPoints, count)
 	t.db.UpdateRemoteDataRemotePoints(command)
@@ -128,12 +108,11 @@ func (t *TransferPublisher) ListenCountReply() {
 	wg.Wait()
 }
 func (t *TransferPublisher) SendQueries() {
-	//get list of vessels
-	// get periods to current time
 	origins, err := t.db.ReadRemoteOrigins()
 	if err != nil {
 		logger.GetLogger().Warn(err.Error())
 	}
+
 	for _, origin := range origins {
 		appendToQuery := `WHERE "origin" = $1 ORDER BY "start"`
 		periods, err := t.db.ReadRemoteData(appendToQuery, origin)
@@ -142,9 +121,22 @@ func (t *TransferPublisher) SendQueries() {
 		}
 		for _, period := range periods {
 			if period.RemoteDataPoints > period.LocalDataPoints {
+				appendToQuery := `WHERE "origin" = $1 AND "time" > $2 AND "time" < $3`
+				local, err := t.db.ReadMappedCount(appendToQuery, origin, period.PeriodStart, period.PeriodEnd)
+				if err != nil {
+					logger.GetLogger().Warn(err.Error())
+				}
+				if local > period.LocalDataPoints {
+					period.LocalDataPoints = local
+					t.db.UpdateRemoteDataLocalPoints(period)
+				} else {
+					fmt.Println("reupdate")
+					t.sendCommand(period.Origin, period.PeriodStart, period.PeriodEnd)
+				}
 				fmt.Println("incomplete")
 				fmt.Println(period)
 			}
+
 		}
 		threshold := time.Now().Add(-5 * time.Minute)
 		last := periods[len(periods)-1].PeriodEnd
@@ -155,7 +147,6 @@ func (t *TransferPublisher) SendQueries() {
 			t.sendQuery(origin, last, 5*time.Minute)
 		}
 
-		// fmt.Println(periods)
 	}
 	// start, _ := time.Parse(time.RFC3339, "2022-01-01T00:00:00Z")
 	// t.sendQuery("vessels.urn:mrn:imo:mmsi:244770688", start, 5*time.Minute)
@@ -194,6 +185,30 @@ func (t *TransferPublisher) sendQuery(origin string, start time.Time, length tim
 	message.Request.LocalDataPoints = count
 	t.db.InsertRemoteData(message.Request)
 
+}
+
+func (t *TransferPublisher) sendCommand(origin string, start time.Time, end time.Time) {
+	request := message.TransferMessage{Origin: origin,
+		PeriodStart: start,
+		PeriodEnd:   end,
+	}
+	reply := CommandMessage{Command: RequestCmd, Request: request}
+	bytes, err := json.Marshal(reply)
+	if err != nil {
+		logger.GetLogger().Warn(
+			"Could not marshall the deltas",
+			zap.String("Error", err.Error()),
+		)
+		return
+	}
+	topic := fmt.Sprintf(readTopic, origin)
+	if token := t.mqttClient.Publish(topic, 1, true, bytes); token.Wait() && token.Error() != nil {
+		logger.GetLogger().Warn(
+			"Could not publish a message via MQTT",
+			zap.String("Error", token.Error().Error()),
+			zap.ByteString("Bytes", bytes),
+		)
+	}
 }
 
 // query database at interval

@@ -121,6 +121,8 @@ func (t *TransferPublisher) SendQueries() {
 		}
 		for _, period := range periods {
 			if period.RemoteDataPoints > period.LocalDataPoints {
+				time.Sleep(time.Second)
+				// fmt.Println("wakeup")
 				appendToQuery := `WHERE "origin" = $1 AND "time" > $2 AND "time" < $3`
 				local, err := t.db.ReadMappedCount(appendToQuery, origin, period.PeriodStart, period.PeriodEnd)
 				if err != nil {
@@ -130,11 +132,11 @@ func (t *TransferPublisher) SendQueries() {
 					period.LocalDataPoints = local
 					t.db.UpdateRemoteDataLocalPoints(period)
 				} else {
-					fmt.Println("reupdate")
+					// fmt.Println("reupdate")
 					t.sendCommand(period.Origin, period.PeriodStart, period.PeriodEnd)
 				}
-				fmt.Println("incomplete")
-				fmt.Println(period)
+				// fmt.Println("incomplete")
+				// fmt.Println(period)
 			}
 
 		}

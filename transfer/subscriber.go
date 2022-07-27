@@ -167,6 +167,7 @@ func (t *TransferSubscriber) sendMessages(request message.TransferMessage) {
 			)
 			continue
 		}
+		time.Sleep(100 * time.Millisecond) // slow down to stop db from crashing
 		if err := t.publisher.Send(bytes); err != nil {
 			logger.GetLogger().Warn(
 				"Unable to send the message using NanoMSG",

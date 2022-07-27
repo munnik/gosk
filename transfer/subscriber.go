@@ -10,6 +10,7 @@ import (
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/database"
 	"github.com/munnik/gosk/logger"
+	"github.com/munnik/gosk/message"
 	"go.nanomsg.org/mangos/v3"
 	"go.uber.org/zap"
 )
@@ -116,7 +117,7 @@ func (t *TransferSubscriber) disconnectHandler(c mqtt.Client, e error) {
 	}
 }
 
-func (t *TransferSubscriber) sendCount(request TransferMessage) {
+func (t *TransferSubscriber) sendCount(request message.TransferMessage) {
 	count, err := t.db.ReadMappedCount(appendToQuery, request.Origin, request.PeriodStart.Format(time.RFC3339), request.PeriodEnd.Format(time.RFC3339))
 	if err != nil {
 		logger.GetLogger().Warn(
@@ -125,10 +126,10 @@ func (t *TransferSubscriber) sendCount(request TransferMessage) {
 		)
 		return
 	}
-	reply := TransferMessage{Origin: request.Origin,
-		PeriodStart:     request.PeriodStart,
-		PeriodEnd:       request.PeriodEnd,
-		LocalDataPoints: count}
+	reply := message.TransferMessage{Origin: request.Origin,
+		PeriodStart:      request.PeriodStart,
+		PeriodEnd:        request.PeriodEnd,
+		RemoteDataPoints: count}
 	bytes, err := json.Marshal(reply)
 	if err != nil {
 		logger.GetLogger().Warn(
@@ -147,7 +148,7 @@ func (t *TransferSubscriber) sendCount(request TransferMessage) {
 	}
 }
 
-func (t *TransferSubscriber) sendMessages(request TransferMessage) {
+func (t *TransferSubscriber) sendMessages(request message.TransferMessage) {
 	deltas, err := t.db.ReadMapped(appendToQuery, request.Origin, request.PeriodStart.Format(time.RFC3339), request.PeriodEnd.Format(time.RFC3339))
 	if err != nil {
 		logger.GetLogger().Warn(

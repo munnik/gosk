@@ -10,6 +10,7 @@ import (
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/database"
 	"github.com/munnik/gosk/logger"
+	"github.com/munnik/gosk/message"
 	"go.uber.org/zap"
 )
 
@@ -43,7 +44,8 @@ func (t *TransferPublisher) connectHandler(c mqtt.Client) {
 	logger.GetLogger().Info(
 		"MQTT connection established",
 	)
-
+	start, _ := time.Parse(time.RFC3339, "2022-01-01T00:00:00Z")
+	t.sendQuery("vessels.urn:mrn:imo:mmsi:244770688", start, 5*time.Minute)
 	topic := fmt.Sprintf(replyTopic, "#")
 	if token := t.mqttClient.Subscribe(topic, 1, nil); token.Wait() && token.Error() != nil {
 		logger.GetLogger().Fatal(
@@ -56,7 +58,7 @@ func (t *TransferPublisher) connectHandler(c mqtt.Client) {
 }
 
 func (t *TransferPublisher) messageReceived(c mqtt.Client, m mqtt.Message) {
-	var command TransferMessage
+	var command message.TransferMessage
 	if err := json.Unmarshal(m.Payload(), &command); err != nil {
 		logger.GetLogger().Warn(
 			"Could not unmarshal buffer",
@@ -65,7 +67,6 @@ func (t *TransferPublisher) messageReceived(c mqtt.Client, m mqtt.Message) {
 		)
 		return
 	}
-	fmt.Println(m.Topic())
 	count, err := t.db.ReadMappedCount(appendToQuery, command.Origin, command.PeriodStart.Format(time.RFC3339), command.PeriodEnd.Format(time.RFC3339))
 	if err != nil {
 		logger.GetLogger().Warn(
@@ -74,8 +75,8 @@ func (t *TransferPublisher) messageReceived(c mqtt.Client, m mqtt.Message) {
 		)
 		return
 	}
-	if count != command.LocalDataPoints {
-		request := TransferMessage{Origin: command.Origin,
+	if count != command.RemoteDataPoints {
+		request := message.TransferMessage{Origin: command.Origin,
 			PeriodStart: command.PeriodStart,
 			PeriodEnd:   command.PeriodEnd,
 		}
@@ -97,7 +98,8 @@ func (t *TransferPublisher) messageReceived(c mqtt.Client, m mqtt.Message) {
 			)
 		}
 	}
-	fmt.Printf("vessel: %d, server: %d\n", command.LocalDataPoints, count)
+	fmt.Printf("vessel: %d, server: %d\n", command.RemoteDataPoints, count)
+	t.db.UpdateRemoteDataRemotePoints(command)
 
 }
 func (t *TransferPublisher) disconnectHandler(c mqtt.Client, e error) {
@@ -127,11 +129,12 @@ func (t *TransferPublisher) ListenCountReply() {
 	wg.Wait()
 }
 
-func (t *TransferPublisher) sendRequest(origin string, start time.Time) {
+func (t *TransferPublisher) sendQuery(origin string, start time.Time, length time.Duration) {
 	message := CommandMessage{Command: QueryCmd}
 	message.Request.Origin = origin
 	message.Request.PeriodStart = start
-	message.Request.PeriodEnd = start.Add(time.Minute * 5)
+	end := start.Add(length)
+	message.Request.PeriodEnd = end
 	bytes, err := json.Marshal(message)
 	if err != nil {
 		logger.GetLogger().Warn(
@@ -141,7 +144,6 @@ func (t *TransferPublisher) sendRequest(origin string, start time.Time) {
 		return
 	}
 	topic := fmt.Sprintf(readTopic, origin)
-	fmt.Println(topic)
 	if token := t.mqttClient.Publish(topic, 1, false, bytes); token.Wait() && token.Error() != nil {
 		logger.GetLogger().Warn(
 			"Could not publish a message via MQTT",
@@ -149,6 +151,17 @@ func (t *TransferPublisher) sendRequest(origin string, start time.Time) {
 			zap.ByteString("Bytes", bytes),
 		)
 	}
+
+	count, err := t.db.ReadMappedCount(appendToQuery, origin, start, end)
+	if err != nil {
+		logger.GetLogger().Warn(
+			"Could not retrieve count of mapped data from database",
+			zap.String("Error", err.Error()),
+		)
+		return
+	}
+	message.Request.LocalDataPoints = count
+	t.db.InsertRemoteData(message.Request)
 
 }
 

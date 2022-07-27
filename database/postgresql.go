@@ -10,6 +10,7 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
+	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/log/zapadapter"
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -261,13 +262,17 @@ func (db *PostgresqlDatabase) ReadRemoteData(appendToQuery string, arguments ...
 	result := make([]message.TransferMessage, 0)
 	for rows.Next() {
 		m := message.TransferMessage{}
+		var local pgtype.Int4
+		var remote pgtype.Int4
 		rows.Scan(
 			&m.Origin,
 			&m.PeriodStart,
 			&m.PeriodEnd,
-			&m.LocalDataPoints,
-			&m.RemoteDataPoints,
+			&local,
+			&remote,
 		)
+		m.LocalDataPoints = int(local.Int)
+		m.RemoteDataPoints = int(remote.Int)
 		result = append(result, m)
 	}
 

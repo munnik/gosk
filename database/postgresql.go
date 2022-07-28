@@ -21,14 +21,14 @@ import (
 )
 
 const (
-	rawInsertQuery         = `INSERT INTO "raw_data" ("time", "collector", "value", "uuid", "type") VALUES ($1, $2, $3, $4, $5)`
-	mappedInsertQuery      = `INSERT INTO "mapped_data" ("time", "collector", "type", "context", "path", "value", "uuid", "origin") VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+	rawInsertQuery         = `INSERT INTO "raw_data" ("time", "collector", "value", "uuid", "type") VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`
+	mappedInsertQuery      = `INSERT INTO "mapped_data" ("time", "collector", "type", "context", "path", "value", "uuid", "origin") VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING`
 	mappedSelectQuery      = `SELECT "time", "collector", "type", "context", "path", "value", "uuid", "origin" FROM "mapped_data"`
 	mappedCountSelectQuery = `SELECT count(*) FROM "mapped_data"`
 	rawCountSelectQuery    = `SELECT count(*) FROM "raw_data"`
 	selectTransferQuery    = `SELECT "origin", "start", "end", "local", "remote" from "remote_data"`
 	selectOriginsQuery     = `SELECT DISTINCT "origin" from "remote_data";`
-	insertTransferQuery    = `INSERT INTO "remote_data" ("origin", "start", "end", "local") VALUES ($1, $2, $3, $4)`
+	insertTransferQuery    = `INSERT INTO "remote_data" ("origin", "start", "end", "local") VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`
 	updateRemoteQuery      = `UPDATE "remote_data" SET "remote" = $4 WHERE "origin" = $1 AND "start" = $2 AND "end" = $3`
 	updateLocaleQuery      = `UPDATE "remote_data" SET "local" = $4 WHERE "origin" = $1 AND "start" = $2 AND "end" = $3`
 )

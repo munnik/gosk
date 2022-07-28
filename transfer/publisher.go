@@ -53,7 +53,6 @@ func (t *TransferPublisher) connectHandler(c mqtt.Client) {
 		)
 		return
 	}
-	t.SendQueries()
 }
 
 func (t *TransferPublisher) messageReceived(c mqtt.Client, m mqtt.Message) {
@@ -77,7 +76,7 @@ func (t *TransferPublisher) messageReceived(c mqtt.Client, m mqtt.Message) {
 	if count != command.RemoteDataPoints {
 		t.sendCommand(command.Origin, command.PeriodStart, command.PeriodEnd)
 	}
-	fmt.Printf("vessel: %d, server: %d\n", command.RemoteDataPoints, count)
+	// fmt.Printf("vessel: %d, server: %d\n", command.RemoteDataPoints, count)
 	t.db.UpdateRemoteDataRemotePoints(command)
 
 }
@@ -102,6 +101,14 @@ func (t *TransferPublisher) ListenCountReply() {
 		return
 	}
 	defer t.mqttClient.Disconnect(disconnectWait)
+	go func() {
+		for {
+			time.Sleep(5 * time.Minute)
+			// fmt.Println("sending queries")
+			t.SendQueries()
+			// fmt.Println("zzz")
+		}
+	}()
 	// never exit
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
@@ -119,39 +126,38 @@ func (t *TransferPublisher) SendQueries() {
 		if err != nil {
 			logger.GetLogger().Warn(err.Error())
 		}
+
 		for _, period := range periods {
+
 			if period.RemoteDataPoints > period.LocalDataPoints {
-				time.Sleep(time.Second)
-				// fmt.Println("wakeup")
 				appendToQuery := `WHERE "origin" = $1 AND "time" > $2 AND "time" < $3`
 				local, err := t.db.ReadMappedCount(appendToQuery, origin, period.PeriodStart, period.PeriodEnd)
 				if err != nil {
 					logger.GetLogger().Warn(err.Error())
 				}
 				if local > period.LocalDataPoints {
+					// extra values have come in since last check
 					period.LocalDataPoints = local
 					t.db.UpdateRemoteDataLocalPoints(period)
 				} else {
-					// fmt.Println("reupdate")
+					// ask for period to be resent
 					t.sendCommand(period.Origin, period.PeriodStart, period.PeriodEnd)
 				}
-				// fmt.Println("incomplete")
-				// fmt.Println(period)
 			}
 
 		}
 		threshold := time.Now().Add(-5 * time.Minute)
 		last := periods[len(periods)-1].PeriodEnd
-		fmt.Println(last)
-		fmt.Println(len(periods))
 		for last.Before(threshold) {
 			last = last.Add(5 * time.Minute)
 			t.sendQuery(origin, last, 5*time.Minute)
 		}
 
 	}
+	// fmt.Println("testing")
 	// start, _ := time.Parse(time.RFC3339, "2022-01-01T00:00:00Z")
 	// t.sendQuery("vessels.urn:mrn:imo:mmsi:244770688", start, 5*time.Minute)
+
 }
 func (t *TransferPublisher) sendQuery(origin string, start time.Time, length time.Duration) {
 	message := CommandMessage{Command: QueryCmd}
@@ -212,9 +218,3 @@ func (t *TransferPublisher) sendCommand(origin string, start time.Time, end time
 		)
 	}
 }
-
-// query database at interval
-// ask clients via mqtt
-
-// check for successful transfer after timeout
-// mark completed in db

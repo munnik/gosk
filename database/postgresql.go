@@ -27,7 +27,7 @@ const (
 	mappedCountSelectQuery = `SELECT count(*) FROM "mapped_data"`
 	rawCountSelectQuery    = `SELECT count(*) FROM "raw_data"`
 	selectTransferQuery    = `SELECT "origin", "start", "end", "local", "remote" from "remote_data"`
-	selectOriginsQuery     = `SELECT DISTINCT "origin" from "remote_data";`
+	selectOriginsQuery     = `SELECT DISTINCT "origin" from "mapped_data";`
 	insertTransferQuery    = `INSERT INTO "remote_data" ("origin", "start", "end", "local") VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`
 	updateRemoteQuery      = `UPDATE "remote_data" SET "remote" = $4 WHERE "origin" = $1 AND "start" = $2 AND "end" = $3`
 	updateLocaleQuery      = `UPDATE "remote_data" SET "local" = $4 WHERE "origin" = $1 AND "start" = $2 AND "end" = $3`

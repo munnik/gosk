@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	disconnectWait = 5000 // time to wait before disconnect in ms
+	disconnectWait = 5 * time.Second
 	keepAlive      = 30 * time.Second
 	readTopic      = "command/%s"
 	replyTopic     = "reply/%s"
@@ -51,7 +51,7 @@ func (t *TransferSubscriber) ReadCommands(publisher mangos.Socket) {
 		)
 		return
 	}
-	defer t.mqttClient.Disconnect(disconnectWait)
+	defer t.mqttClient.Disconnect(uint(disconnectWait.Milliseconds()))
 
 	// never exit
 	wg := new(sync.WaitGroup)

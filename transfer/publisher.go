@@ -100,13 +100,11 @@ func (t *TransferPublisher) ListenCountReply() {
 		)
 		return
 	}
-	defer t.mqttClient.Disconnect(disconnectWait)
+	defer t.mqttClient.Disconnect(uint(disconnectWait.Milliseconds()))
 	go func() {
 		for {
 			time.Sleep(5 * time.Minute)
-			// fmt.Println("sending queries")
 			t.SendQueries()
-			// fmt.Println("zzz")
 		}
 	}()
 	// never exit
@@ -154,11 +152,8 @@ func (t *TransferPublisher) SendQueries() {
 		}
 
 	}
-	// fmt.Println("testing")
-	// start, _ := time.Parse(time.RFC3339, "2022-01-01T00:00:00Z")
-	// t.sendQuery("vessels.urn:mrn:imo:mmsi:244770688", start, 5*time.Minute)
-
 }
+
 func (t *TransferPublisher) sendQuery(origin string, start time.Time, length time.Duration) {
 	message := CommandMessage{Command: QueryCmd}
 	message.Request.Origin = origin

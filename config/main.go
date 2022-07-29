@@ -247,6 +247,21 @@ func (c *SignalKConfig) WithVersion(version string) *SignalKConfig {
 	return c
 }
 
+type TransferConfig struct {
+	DBConfig   PostgresqlConfig `mapstructure:"_"`
+	MQTTConfig MQTTConfig       `mapstructure:"_"`
+	Origin     string           `mapstructure:"origin"`
+}
+
+func NewTranferConfig(configFilePath string) *TransferConfig {
+	result := TransferConfig{}
+	readConfigFile(&result, configFilePath)
+	readConfigFile(&result.DBConfig, configFilePath, "database")
+	readConfigFile(&result.MQTTConfig, configFilePath, "mqtt")
+
+	return &result
+}
+
 func readConfigFile(result interface{}, configFilePath string, subKeys ...string) interface{} {
 	viper.SetConfigFile(configFilePath)
 	if err := viper.ReadInConfig(); err != nil {

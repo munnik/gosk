@@ -20,12 +20,7 @@ const (
 	keepAlive      = 30 * time.Second
 	readTopic      = "command/%s"
 	replyTopic     = "reply/%s"
-	appendToQuery  = `WHERE 
-						"origin" = $1 AND
-						"time" > $2 AND
-						"time" < $3
-					;
-	`
+	appendToQuery  = `WHERE "origin" = $1 AND "time" > $2 AND "time" < $3;`
 )
 
 type TransferSubscriber struct {
@@ -36,7 +31,6 @@ type TransferSubscriber struct {
 }
 
 func NewTransferSubscriber(c *config.TransferConfig) *TransferSubscriber {
-
 	return &TransferSubscriber{db: database.NewPostgresqlDatabase(&c.DBConfig), config: c}
 }
 
@@ -88,6 +82,7 @@ func (t *TransferSubscriber) connectHandler(c mqtt.Client) {
 		return
 	}
 }
+
 func (t *TransferSubscriber) messageReceived(c mqtt.Client, m mqtt.Message) {
 	var command CommandMessage
 	if err := json.Unmarshal(m.Payload(), &command); err != nil {
@@ -178,5 +173,3 @@ func (t *TransferSubscriber) sendMessages(request message.TransferMessage) {
 		}
 	}
 }
-
-// send data via nanomessages to normal readers

@@ -19,7 +19,7 @@ changelog:
       - "^test:"
 nfpms:
   - maintainer: "Fuel Essence <info@fuelessence.com>"
-  - builds:
+    builds:
       - "gosk"
     license: "Apache 2.0"
     formats:

@@ -190,7 +190,7 @@ func (w *LWEWriter) createTagBlock(raw message.Raw) []byte {
 		if w.lineCount >= 1000 {
 			w.lineCount = 0
 		}
-		tagBlock += "l:" + fmt.Sprint(w.lineCount) + ","
+		tagBlock += "n:" + fmt.Sprint(w.lineCount) + ","
 		w.lineCount += 1
 		w.mu.Unlock()
 	}

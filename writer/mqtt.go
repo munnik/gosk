@@ -115,7 +115,7 @@ func (w *MqttWriter) sendMQTT(deltas []message.Mapped) {
 	}
 	go func(context string, bytes []byte) {
 		compressed := w.encoder.EncodeAll(bytes, make([]byte, 0, len(bytes)))
-		if token := w.mqttClient.Publish(context, 1, true, compressed); token.Wait() && token.Error() != nil {
+		if token := w.mqttClient.Publish(context, 0, true, compressed); token.Wait() && token.Error() != nil {
 			logger.GetLogger().Warn(
 				"Could not publish a message via MQTT",
 				zap.String("Error", token.Error().Error()),

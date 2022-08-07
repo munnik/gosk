@@ -13,72 +13,107 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	MISCAddress = "239.192.0.1"
+	MISCPort    = 60001
+	TGTDAddress = "239.192.0.2"
+	TGTDPort    = 60002
+	SATDAddress = "239.192.0.3"
+	SATDPort    = 60003
+	NAVDAddress = "239.192.0.4"
+	NAVDPort    = 60004
+	VDRDAddress = "239.192.0.5"
+	VDRDPort    = 60005
+	RCOMAddress = "239.192.0.6"
+	RCOMPort    = 60006
+	TIMEAddress = "239.192.0.7"
+	TIMEPort    = 60007
+	PROPAddress = "239.192.0.8"
+	PROPPort    = 60008
+	USR1Address = "239.192.0.9"
+	USR1Port    = 60009
+	USR2Address = "239.192.0.10"
+	USR2Port    = 60010
+	USR3Address = "239.192.0.11"
+	USR3Port    = 60011
+	USR4Address = "239.192.0.12"
+	USR4Port    = 60012
+	USR5Address = "239.192.0.13"
+	USR5Port    = 60013
+	USR6Address = "239.192.0.14"
+	USR6Port    = 60014
+	USR7Address = "239.192.0.15"
+	USR7Port    = 60015
+	USR8Address = "239.192.0.16"
+	USR8Port    = 60016
+)
+
 var talkerMulticastMap = map[string]*net.UDPAddr{
-	"AG": {IP: net.ParseIP("239.192.0.4"), Port: 60004},
-	"AI": {IP: net.ParseIP("239.192.0.2"), Port: 60002},
-	"AP": {IP: net.ParseIP("239.192.0.4"), Port: 60004},
-	"BI": {IP: net.ParseIP("239.192.0.1"), Port: 60001},
-	"BN": {IP: net.ParseIP("239.192.0.5"), Port: 60005},
-	"CD": {IP: net.ParseIP("239.192.0.6"), Port: 60006},
-	"CR": {IP: net.ParseIP("239.192.0.6"), Port: 60006},
-	"CS": {IP: net.ParseIP("239.192.0.6"), Port: 60006},
-	"CT": {IP: net.ParseIP("239.192.0.6"), Port: 60006},
-	"CV": {IP: net.ParseIP("239.192.0.6"), Port: 60006},
-	"CX": {IP: net.ParseIP("239.192.0.6"), Port: 60006},
-	"DF": {IP: net.ParseIP("239.192.0.4"), Port: 60004},
-	"DU": {IP: net.ParseIP("239.192.0.1"), Port: 60001},
-	"EC": {IP: net.ParseIP("239.192.0.4"), Port: 60004},
-	"EI": {IP: net.ParseIP("239.192.0.4"), Port: 60004},
-	"EP": {IP: net.ParseIP("239.192.0.6"), Port: 60006},
-	"ER": {IP: net.ParseIP("239.192.0.1"), Port: 60001},
-	"FD": {IP: net.ParseIP("239.192.0.5"), Port: 60005},
-	"FE": {IP: net.ParseIP("239.192.0.5"), Port: 60005},
-	"FR": {IP: net.ParseIP("239.192.0.5"), Port: 60005},
-	"FS": {IP: net.ParseIP("239.192.0.5"), Port: 60005},
-	"GA": {IP: net.ParseIP("239.192.0.4"), Port: 60004},
-	"GL": {IP: net.ParseIP("239.192.0.4"), Port: 60004},
-	"GN": {IP: net.ParseIP("239.192.0.4"), Port: 60004},
-	"GP": {IP: net.ParseIP("239.192.0.4"), Port: 60004},
-	"HC": {IP: net.ParseIP("239.192.0.4"), Port: 60004},
-	"HD": {IP: net.ParseIP("239.192.0.5"), Port: 60005},
-	"HE": {IP: net.ParseIP("239.192.0.3"), Port: 60003},
-	"HF": {IP: net.ParseIP("239.192.0.4"), Port: 60004},
-	"HN": {IP: net.ParseIP("239.192.0.3"), Port: 60003},
-	"HS": {IP: net.ParseIP("239.192.0.5"), Port: 60005},
-	"II": {IP: net.ParseIP("239.192.0.1"), Port: 60001},
-	"IN": {IP: net.ParseIP("239.192.0.4"), Port: 60004},
-	"LC": {IP: net.ParseIP("239.192.0.4"), Port: 60004},
-	"NL": {IP: net.ParseIP("239.192.0.1"), Port: 60001},
-	"RA": {IP: net.ParseIP("239.192.0.2"), Port: 60002},
-	"RC": {IP: net.ParseIP("239.192.0.1"), Port: 60001},
-	"SD": {IP: net.ParseIP("239.192.0.4"), Port: 60004},
-	"SG": {IP: net.ParseIP("239.192.0.1"), Port: 60001},
-	"SI": {IP: net.ParseIP("239.192.0.1"), Port: 60001},
-	"SS": {IP: net.ParseIP("239.192.0.1"), Port: 60001},
-	"TI": {IP: net.ParseIP("239.192.0.3"), Port: 60003},
-	"U0": {IP: net.ParseIP("239.192.0.1"), Port: 60001},
-	"U1": {IP: net.ParseIP("239.192.0.1"), Port: 60001},
-	"U2": {IP: net.ParseIP("239.192.0.1"), Port: 60001},
-	"U3": {IP: net.ParseIP("239.192.0.1"), Port: 60001},
-	"U4": {IP: net.ParseIP("239.192.0.1"), Port: 60001},
-	"U5": {IP: net.ParseIP("239.192.0.1"), Port: 60001},
-	"U6": {IP: net.ParseIP("239.192.0.1"), Port: 60001},
-	"U7": {IP: net.ParseIP("239.192.0.1"), Port: 60001},
-	"U8": {IP: net.ParseIP("239.192.0.1"), Port: 60001},
-	"U9": {IP: net.ParseIP("239.192.0.1"), Port: 60001},
-	"UP": {IP: net.ParseIP("239.192.0.1"), Port: 60001},
-	"VD": {IP: net.ParseIP("239.192.0.4"), Port: 60004},
-	"VM": {IP: net.ParseIP("239.192.0.4"), Port: 60004},
-	"VR": {IP: net.ParseIP("239.192.0.1"), Port: 60001},
-	"VW": {IP: net.ParseIP("239.192.0.4"), Port: 60004},
-	"WD": {IP: net.ParseIP("239.192.0.5"), Port: 60005},
-	"WI": {IP: net.ParseIP("239.192.0.4"), Port: 60004},
-	"WL": {IP: net.ParseIP("239.192.0.5"), Port: 60005},
-	"YX": {IP: net.ParseIP("239.192.0.1"), Port: 60001},
-	"ZA": {IP: net.ParseIP("239.192.0.7"), Port: 60007},
-	"ZC": {IP: net.ParseIP("239.192.0.7"), Port: 60007},
-	"ZQ": {IP: net.ParseIP("239.192.0.7"), Port: 60007},
-	"ZV": {IP: net.ParseIP("239.192.0.7"), Port: 60007},
+	"AG": {IP: net.ParseIP(NAVDAddress), Port: NAVDPort},
+	"AI": {IP: net.ParseIP(TGTDAddress), Port: TGTDPort},
+	"AP": {IP: net.ParseIP(NAVDAddress), Port: NAVDPort},
+	"BI": {IP: net.ParseIP(MISCAddress), Port: MISCPort},
+	"BN": {IP: net.ParseIP(VDRDAddress), Port: VDRDPort},
+	"CD": {IP: net.ParseIP(RCOMAddress), Port: RCOMPort},
+	"CR": {IP: net.ParseIP(RCOMAddress), Port: RCOMPort},
+	"CS": {IP: net.ParseIP(RCOMAddress), Port: RCOMPort},
+	"CT": {IP: net.ParseIP(RCOMAddress), Port: RCOMPort},
+	"CV": {IP: net.ParseIP(RCOMAddress), Port: RCOMPort},
+	"CX": {IP: net.ParseIP(RCOMAddress), Port: RCOMPort},
+	"DF": {IP: net.ParseIP(NAVDAddress), Port: NAVDPort},
+	"DU": {IP: net.ParseIP(MISCAddress), Port: MISCPort},
+	"EC": {IP: net.ParseIP(NAVDAddress), Port: NAVDPort},
+	"EI": {IP: net.ParseIP(NAVDAddress), Port: NAVDPort},
+	"EP": {IP: net.ParseIP(RCOMAddress), Port: RCOMPort},
+	"ER": {IP: net.ParseIP(MISCAddress), Port: MISCPort},
+	"FD": {IP: net.ParseIP(VDRDAddress), Port: VDRDPort},
+	"FE": {IP: net.ParseIP(VDRDAddress), Port: VDRDPort},
+	"FR": {IP: net.ParseIP(VDRDAddress), Port: VDRDPort},
+	"FS": {IP: net.ParseIP(VDRDAddress), Port: VDRDPort},
+	"GA": {IP: net.ParseIP(NAVDAddress), Port: NAVDPort},
+	"GL": {IP: net.ParseIP(NAVDAddress), Port: NAVDPort},
+	"GN": {IP: net.ParseIP(NAVDAddress), Port: NAVDPort},
+	"GP": {IP: net.ParseIP(NAVDAddress), Port: NAVDPort},
+	"HC": {IP: net.ParseIP(NAVDAddress), Port: NAVDPort},
+	"HD": {IP: net.ParseIP(VDRDAddress), Port: VDRDPort},
+	"HE": {IP: net.ParseIP(SATDAddress), Port: SATDPort},
+	"HF": {IP: net.ParseIP(NAVDAddress), Port: NAVDPort},
+	"HN": {IP: net.ParseIP(SATDAddress), Port: SATDPort},
+	"HS": {IP: net.ParseIP(VDRDAddress), Port: VDRDPort},
+	"II": {IP: net.ParseIP(MISCAddress), Port: MISCPort},
+	"IN": {IP: net.ParseIP(NAVDAddress), Port: NAVDPort},
+	"LC": {IP: net.ParseIP(NAVDAddress), Port: NAVDPort},
+	"NL": {IP: net.ParseIP(MISCAddress), Port: MISCPort},
+	"RA": {IP: net.ParseIP(TGTDAddress), Port: TGTDPort},
+	"RC": {IP: net.ParseIP(MISCAddress), Port: MISCPort},
+	"SD": {IP: net.ParseIP(NAVDAddress), Port: NAVDPort},
+	"SG": {IP: net.ParseIP(MISCAddress), Port: MISCPort},
+	"SI": {IP: net.ParseIP(MISCAddress), Port: MISCPort},
+	"SS": {IP: net.ParseIP(MISCAddress), Port: MISCPort},
+	"TI": {IP: net.ParseIP(SATDAddress), Port: SATDPort},
+	"U0": {IP: net.ParseIP(MISCAddress), Port: MISCPort},
+	"U1": {IP: net.ParseIP(MISCAddress), Port: MISCPort},
+	"U2": {IP: net.ParseIP(MISCAddress), Port: MISCPort},
+	"U3": {IP: net.ParseIP(MISCAddress), Port: MISCPort},
+	"U4": {IP: net.ParseIP(MISCAddress), Port: MISCPort},
+	"U5": {IP: net.ParseIP(MISCAddress), Port: MISCPort},
+	"U6": {IP: net.ParseIP(MISCAddress), Port: MISCPort},
+	"U7": {IP: net.ParseIP(MISCAddress), Port: MISCPort},
+	"U8": {IP: net.ParseIP(MISCAddress), Port: MISCPort},
+	"U9": {IP: net.ParseIP(MISCAddress), Port: MISCPort},
+	"UP": {IP: net.ParseIP(MISCAddress), Port: MISCPort},
+	"VD": {IP: net.ParseIP(NAVDAddress), Port: NAVDPort},
+	"VM": {IP: net.ParseIP(NAVDAddress), Port: NAVDPort},
+	"VR": {IP: net.ParseIP(MISCAddress), Port: MISCPort},
+	"VW": {IP: net.ParseIP(NAVDAddress), Port: NAVDPort},
+	"WD": {IP: net.ParseIP(VDRDAddress), Port: VDRDPort},
+	"WI": {IP: net.ParseIP(NAVDAddress), Port: NAVDPort},
+	"WL": {IP: net.ParseIP(VDRDAddress), Port: VDRDPort},
+	"YX": {IP: net.ParseIP(MISCAddress), Port: MISCPort},
+	"ZA": {IP: net.ParseIP(TIMEAddress), Port: TIMEPort},
+	"ZC": {IP: net.ParseIP(TIMEAddress), Port: TIMEPort},
+	"ZQ": {IP: net.ParseIP(TIMEAddress), Port: TIMEPort},
+	"ZV": {IP: net.ParseIP(TIMEAddress), Port: TIMEPort},
 }
 
 type LWEWriter struct {

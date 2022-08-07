@@ -157,6 +157,10 @@ func (w *LWEWriter) WriteRaw(subscriber mangos.Socket) {
 }
 
 func (w *LWEWriter) multicast(raw message.Raw) {
+	if raw.Type != config.NMEA0183Type {
+		return // ignore non nmea0183 messages
+	}
+
 	talkerID := string(raw.Value)[:2]
 	if _, ok := talkerMulticastMap[talkerID]; !ok {
 		return

@@ -18,23 +18,20 @@ import (
 const (
 	disconnectWait = 5 * time.Second
 	keepAlive      = 30 * time.Second
-	readTopic      = "command/%s"
-	replyTopic     = "reply/%s"
-	appendToQuery  = `WHERE "origin" = $1 AND "time" > $2 AND "time" < $3;`
 )
 
-type TransferSubscriber struct {
+type TransferResponder struct {
 	db         *database.PostgresqlDatabase
 	config     *config.TransferConfig
 	mqttClient mqtt.Client
 	publisher  mangos.Socket
 }
 
-func NewTransferSubscriber(c *config.TransferConfig) *TransferSubscriber {
-	return &TransferSubscriber{db: database.NewPostgresqlDatabase(&c.DBConfig), config: c}
+func NewTransferResponder(c *config.TransferConfig) *TransferResponder {
+	return &TransferResponder{db: database.NewPostgresqlDatabase(&c.PostgresqlConfig), config: c}
 }
 
-func (t *TransferSubscriber) ReadCommands(publisher mangos.Socket) {
+func (t *TransferResponder) ReadCommands(publisher mangos.Socket) {
 	t.publisher = publisher
 	t.mqttClient = mqtt.NewClient(t.createClientOptions())
 	if token := t.mqttClient.Connect(); token.Wait() && token.Error() != nil {
@@ -53,7 +50,7 @@ func (t *TransferSubscriber) ReadCommands(publisher mangos.Socket) {
 	wg.Wait()
 }
 
-func (t *TransferSubscriber) createClientOptions() *mqtt.ClientOptions {
+func (t *TransferResponder) createClientOptions() *mqtt.ClientOptions {
 	o := mqtt.NewClientOptions()
 	o.AddBroker(t.config.MQTTConfig.URLString)
 	o.SetCleanSession(true) // TODO: verify
@@ -68,11 +65,11 @@ func (t *TransferSubscriber) createClientOptions() *mqtt.ClientOptions {
 	return o
 }
 
-func (t *TransferSubscriber) connectHandler(c mqtt.Client) {
+func (t *TransferResponder) connectHandler(c mqtt.Client) {
 	logger.GetLogger().Info(
 		"MQTT connection established",
 	)
-	topic := fmt.Sprintf(readTopic, t.config.Origin)
+	topic := fmt.Sprintf(countData, t.config.Origin)
 	if token := t.mqttClient.Subscribe(topic, 1, nil); token.Wait() && token.Error() != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the MQTT topic",
@@ -83,7 +80,7 @@ func (t *TransferSubscriber) connectHandler(c mqtt.Client) {
 	}
 }
 
-func (t *TransferSubscriber) messageReceived(c mqtt.Client, m mqtt.Message) {
+func (t *TransferResponder) messageReceived(c mqtt.Client, m mqtt.Message) {
 	var command CommandMessage
 	if err := json.Unmarshal(m.Payload(), &command); err != nil {
 		logger.GetLogger().Warn(
@@ -95,15 +92,15 @@ func (t *TransferSubscriber) messageReceived(c mqtt.Client, m mqtt.Message) {
 	}
 
 	switch command.Command {
-	case QueryCmd:
-		t.sendCount(command.Request)
+	case requestCountCmd:
+		t.respondWithCount(command.Request)
 
-	case RequestCmd:
-		t.sendMessages(command.Request)
+	case requestDataCmd:
+		t.injectData(command.Request)
 	}
 
 }
-func (t *TransferSubscriber) disconnectHandler(c mqtt.Client, e error) {
+func (t *TransferResponder) disconnectHandler(c mqtt.Client, e error) {
 	if e != nil {
 		logger.GetLogger().Warn(
 			"MQTT connection lost",
@@ -112,8 +109,8 @@ func (t *TransferSubscriber) disconnectHandler(c mqtt.Client, e error) {
 	}
 }
 
-func (t *TransferSubscriber) sendCount(request message.TransferMessage) {
-	count, err := t.db.ReadMappedCount(appendToQuery, request.Origin, request.PeriodStart.Format(time.RFC3339), request.PeriodEnd.Format(time.RFC3339))
+func (t *TransferResponder) respondWithCount(request message.TransferRequest) {
+	count, err := t.db.ReadMappedCount(betweenIntervalWhereClause, request.Origin, request.PeriodStart.Format(time.RFC3339), request.PeriodEnd.Format(time.RFC3339))
 	if err != nil {
 		logger.GetLogger().Warn(
 			"Could not retrieve count of mapped data from database",
@@ -121,10 +118,12 @@ func (t *TransferSubscriber) sendCount(request message.TransferMessage) {
 		)
 		return
 	}
-	reply := message.TransferMessage{Origin: request.Origin,
+	reply := message.TransferRequest{
+		Origin:           request.Origin,
 		PeriodStart:      request.PeriodStart,
 		PeriodEnd:        request.PeriodEnd,
-		RemoteDataPoints: count}
+		RemoteDataPoints: count,
+	}
 	bytes, err := json.Marshal(reply)
 	if err != nil {
 		logger.GetLogger().Warn(
@@ -143,8 +142,8 @@ func (t *TransferSubscriber) sendCount(request message.TransferMessage) {
 	}
 }
 
-func (t *TransferSubscriber) sendMessages(request message.TransferMessage) {
-	deltas, err := t.db.ReadMapped(appendToQuery, request.Origin, request.PeriodStart.Format(time.RFC3339), request.PeriodEnd.Format(time.RFC3339))
+func (t *TransferResponder) injectData(request message.TransferRequest) {
+	deltas, err := t.db.ReadMapped(betweenIntervalWhereClause, request.Origin, request.PeriodStart.Format(time.RFC3339), request.PeriodEnd.Format(time.RFC3339))
 	if err != nil {
 		logger.GetLogger().Warn(
 			"Could not retrieve count of mapped data from database",

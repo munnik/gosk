@@ -14,18 +14,17 @@ import (
 	"go.uber.org/zap"
 )
 
-type TransferPublisher struct {
+type TransferRequester struct {
 	db         *database.PostgresqlDatabase
 	mqttConfig *config.MQTTConfig
 	mqttClient mqtt.Client
 }
 
-func NewTransferPublisher(c *config.TransferConfig) *TransferPublisher {
-
-	return &TransferPublisher{db: database.NewPostgresqlDatabase(&c.DBConfig), mqttConfig: &c.MQTTConfig}
+func NewTransferRequester(c *config.TransferConfig) *TransferRequester {
+	return &TransferRequester{db: database.NewPostgresqlDatabase(&c.PostgresqlConfig), mqttConfig: &c.MQTTConfig}
 }
 
-func (t *TransferPublisher) createClientOptions() *mqtt.ClientOptions {
+func (t *TransferRequester) createClientOptions() *mqtt.ClientOptions {
 	o := mqtt.NewClientOptions()
 	o.AddBroker(t.mqttConfig.URLString)
 	o.SetCleanSession(true) // TODO: verify
@@ -40,7 +39,7 @@ func (t *TransferPublisher) createClientOptions() *mqtt.ClientOptions {
 	return o
 }
 
-func (t *TransferPublisher) connectHandler(c mqtt.Client) {
+func (t *TransferRequester) connectHandler(c mqtt.Client) {
 	logger.GetLogger().Info(
 		"MQTT connection established",
 	)
@@ -55,9 +54,9 @@ func (t *TransferPublisher) connectHandler(c mqtt.Client) {
 	}
 }
 
-func (t *TransferPublisher) messageReceived(c mqtt.Client, m mqtt.Message) {
-	var command message.TransferMessage
-	if err := json.Unmarshal(m.Payload(), &command); err != nil {
+func (t *TransferRequester) messageReceived(c mqtt.Client, m mqtt.Message) {
+	var request message.TransferRequest
+	if err := json.Unmarshal(m.Payload(), &request); err != nil {
 		logger.GetLogger().Warn(
 			"Could not unmarshal buffer",
 			zap.String("Error", err.Error()),
@@ -65,7 +64,7 @@ func (t *TransferPublisher) messageReceived(c mqtt.Client, m mqtt.Message) {
 		)
 		return
 	}
-	count, err := t.db.ReadMappedCount(appendToQuery, command.Origin, command.PeriodStart.Format(time.RFC3339), command.PeriodEnd.Format(time.RFC3339))
+	count, err := t.db.ReadMappedCount(betweenIntervalWhereClause, request.Origin, request.PeriodStart.Format(time.RFC3339), request.PeriodEnd.Format(time.RFC3339))
 	if err != nil {
 		logger.GetLogger().Warn(
 			"Could not retrieve count of mapped data from database",
@@ -73,24 +72,23 @@ func (t *TransferPublisher) messageReceived(c mqtt.Client, m mqtt.Message) {
 		)
 		return
 	}
-	if count != command.RemoteDataPoints {
-		t.sendCommand(command.Origin, command.PeriodStart, command.PeriodEnd)
+	if count != request.RemoteDataPoints {
+		t.requestData(request.Origin, request.PeriodStart, request.PeriodEnd)
 	}
 	// fmt.Printf("vessel: %d, server: %d\n", command.RemoteDataPoints, count)
-	t.db.UpdateRemoteDataRemotePoints(command)
-
+	t.db.UpdateRemoteDataRemotePoints(request)
 }
-func (t *TransferPublisher) disconnectHandler(c mqtt.Client, e error) {
+
+func (t *TransferRequester) disconnectHandler(c mqtt.Client, e error) {
 	if e != nil {
 		logger.GetLogger().Warn(
 			"MQTT connection lost",
 			zap.String("Error", e.Error()),
 		)
 	}
-
 }
 
-func (t *TransferPublisher) ListenCountReply() {
+func (t *TransferRequester) ListenCountResponse() {
 	t.mqttClient = mqtt.NewClient(t.createClientOptions())
 	if token := t.mqttClient.Connect(); token.Wait() && token.Error() != nil {
 		logger.GetLogger().Fatal(
@@ -103,8 +101,8 @@ func (t *TransferPublisher) ListenCountReply() {
 	defer t.mqttClient.Disconnect(uint(disconnectWait.Milliseconds()))
 	go func() {
 		for {
+			t.SendCountRequests()
 			time.Sleep(5 * time.Minute)
-			t.SendQueries()
 		}
 	}()
 	// never exit
@@ -112,24 +110,28 @@ func (t *TransferPublisher) ListenCountReply() {
 	wg.Add(1)
 	wg.Wait()
 }
-func (t *TransferPublisher) SendQueries() {
+
+func (t *TransferRequester) SendCountRequests() {
+	err := t.db.CreateMissingRemoteOrigins(Epoch, 5*time.Minute)
+	if err != nil {
+		logger.GetLogger().Warn(err.Error())
+		return
+	}
 	origins, err := t.db.ReadRemoteOrigins()
 	if err != nil {
 		logger.GetLogger().Warn(err.Error())
+		return
 	}
 
 	for _, origin := range origins {
-		appendToQuery := `WHERE "origin" = $1 ORDER BY "start"`
-		periods, err := t.db.ReadRemoteData(appendToQuery, origin)
+		periods, err := t.db.CreateTransferRequests(localMoreThanRemoteWhereClause, origin)
 		if err != nil {
 			logger.GetLogger().Warn(err.Error())
 		}
 
 		for _, period := range periods {
-
 			if period.RemoteDataPoints > period.LocalDataPoints {
-				appendToQuery := `WHERE "origin" = $1 AND "time" > $2 AND "time" < $3`
-				local, err := t.db.ReadMappedCount(appendToQuery, origin, period.PeriodStart, period.PeriodEnd)
+				local, err := t.db.ReadMappedCount(betweenIntervalWhereClause, origin, period.PeriodStart, period.PeriodEnd)
 				if err != nil {
 					logger.GetLogger().Warn(err.Error())
 				}
@@ -139,23 +141,27 @@ func (t *TransferPublisher) SendQueries() {
 					t.db.UpdateRemoteDataLocalPoints(period)
 				} else {
 					// ask for period to be resent
-					t.sendCommand(period.Origin, period.PeriodStart, period.PeriodEnd)
+					t.requestData(period.Origin, period.PeriodStart, period.PeriodEnd)
 				}
 			}
-
-		}
-		threshold := time.Now().Add(-5 * time.Minute)
-		last := periods[len(periods)-1].PeriodEnd
-		for last.Before(threshold) {
-			last = last.Add(5 * time.Minute)
-			t.sendQuery(origin, last, 5*time.Minute)
 		}
 
+		if len(periods) > 0 {
+			// periods already exist
+			threshold := time.Now().Add(-5 * time.Minute)
+			last := periods[len(periods)-1].PeriodEnd
+			for last.Before(threshold) {
+				last = last.Add(5 * time.Minute)
+				t.sendCountRequest(origin, last, 5*time.Minute)
+			}
+		} else {
+			t.sendCountRequest(origin, Epoch, 5*time.Minute)
+		}
 	}
 }
 
-func (t *TransferPublisher) sendQuery(origin string, start time.Time, length time.Duration) {
-	message := CommandMessage{Command: QueryCmd}
+func (t *TransferRequester) sendCountRequest(origin string, start time.Time, length time.Duration) {
+	message := CommandMessage{Command: requestCountCmd}
 	message.Request.Origin = origin
 	message.Request.PeriodStart = start
 	end := start.Add(length)
@@ -168,7 +174,7 @@ func (t *TransferPublisher) sendQuery(origin string, start time.Time, length tim
 		)
 		return
 	}
-	topic := fmt.Sprintf(readTopic, origin)
+	topic := fmt.Sprintf(countData, origin)
 	if token := t.mqttClient.Publish(topic, 1, false, bytes); token.Wait() && token.Error() != nil {
 		logger.GetLogger().Warn(
 			"Could not publish a message via MQTT",
@@ -177,7 +183,7 @@ func (t *TransferPublisher) sendQuery(origin string, start time.Time, length tim
 		)
 	}
 
-	count, err := t.db.ReadMappedCount(appendToQuery, origin, start, end)
+	count, err := t.db.ReadMappedCount(betweenIntervalWhereClause, origin, start, end)
 	if err != nil {
 		logger.GetLogger().Warn(
 			"Could not retrieve count of mapped data from database",
@@ -187,15 +193,14 @@ func (t *TransferPublisher) sendQuery(origin string, start time.Time, length tim
 	}
 	message.Request.LocalDataPoints = count
 	t.db.InsertRemoteData(message.Request)
-
 }
 
-func (t *TransferPublisher) sendCommand(origin string, start time.Time, end time.Time) {
-	request := message.TransferMessage{Origin: origin,
+func (t *TransferRequester) requestData(origin string, start time.Time, end time.Time) {
+	request := message.TransferRequest{Origin: origin,
 		PeriodStart: start,
 		PeriodEnd:   end,
 	}
-	reply := CommandMessage{Command: RequestCmd, Request: request}
+	reply := CommandMessage{Command: requestDataCmd, Request: request}
 	bytes, err := json.Marshal(reply)
 	if err != nil {
 		logger.GetLogger().Warn(
@@ -204,7 +209,7 @@ func (t *TransferPublisher) sendCommand(origin string, start time.Time, end time
 		)
 		return
 	}
-	topic := fmt.Sprintf(readTopic, origin)
+	topic := fmt.Sprintf(countData, origin)
 	if token := t.mqttClient.Publish(topic, 1, true, bytes); token.Wait() && token.Error() != nil {
 		logger.GetLogger().Warn(
 			"Could not publish a message via MQTT",

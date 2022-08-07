@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
@@ -21,16 +22,17 @@ import (
 )
 
 const (
-	rawInsertQuery         = `INSERT INTO "raw_data" ("time", "collector", "value", "uuid", "type") VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`
-	mappedInsertQuery      = `INSERT INTO "mapped_data" ("time", "collector", "type", "context", "path", "value", "uuid", "origin") VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING`
-	mappedSelectQuery      = `SELECT "time", "collector", "type", "context", "path", "value", "uuid", "origin" FROM "mapped_data"`
-	mappedCountSelectQuery = `SELECT count(*) FROM "mapped_data"`
-	rawCountSelectQuery    = `SELECT count(*) FROM "raw_data"`
-	selectTransferQuery    = `SELECT "origin", "start", "end", "local", "remote" from "remote_data"`
-	selectOriginsQuery     = `SELECT DISTINCT "origin" from "mapped_data";`
-	insertTransferQuery    = `INSERT INTO "remote_data" ("origin", "start", "end", "local") VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`
-	updateRemoteQuery      = `UPDATE "remote_data" SET "remote" = $4 WHERE "origin" = $1 AND "start" = $2 AND "end" = $3`
-	updateLocaleQuery      = `UPDATE "remote_data" SET "local" = $4 WHERE "origin" = $1 AND "start" = $2 AND "end" = $3`
+	rawInsertQuery            = `INSERT INTO "raw_data" ("time", "collector", "value", "uuid", "type") VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`
+	mappedInsertQuery         = `INSERT INTO "mapped_data" ("time", "collector", "type", "context", "path", "value", "uuid", "origin") VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING`
+	mappedSelectQuery         = `SELECT "time", "collector", "type", "context", "path", "value", "uuid", "origin" FROM "mapped_data"`
+	mappedCountSelectQuery    = `SELECT count(*) FROM "mapped_data"`
+	rawCountSelectQuery       = `SELECT count(*) FROM "raw_data"`
+	selectTransferQuery       = `SELECT "origin", "start", "end", "local", "remote" FROM "remote_data"`
+	createMissingOriginsQuery = `INSERT INTO "remote_data" ("origin", "start", "end") SELECT DISTINCT "origin", $1::timestamptz, $2::timestamptz FROM "mapped_data" ON CONFLICT DO NOTHING`
+	selectOriginsQuery        = `SELECT DISTINCT "origin" FROM "remote_data";`
+	insertTransferQuery       = `INSERT INTO "remote_data" ("origin", "start", "end", "local") VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`
+	updateRemoteQuery         = `UPDATE "remote_data" SET "remote" = $4 WHERE "origin" = $1 AND "start" = $2 AND "end" = $3`
+	updateLocaleQuery         = `UPDATE "remote_data" SET "local" = $4 WHERE "origin" = $1 AND "start" = $2 AND "end" = $3`
 )
 
 //go:embed migrations/*.sql
@@ -194,7 +196,7 @@ func (db *PostgresqlDatabase) ReadRawCount(appendToQuery string, arguments ...in
 	return count, nil
 }
 
-func (db *PostgresqlDatabase) InsertRemoteData(message message.TransferMessage) {
+func (db *PostgresqlDatabase) InsertRemoteData(message message.TransferRequest) {
 	for _, err := db.GetConnection().Exec(context.Background(), insertTransferQuery, message.Origin, message.PeriodStart, message.PeriodEnd, message.LocalDataPoints); err != nil; {
 		logger.GetLogger().Warn(
 			"Error on inserting the received data in the database",
@@ -208,7 +210,7 @@ func (db *PostgresqlDatabase) InsertRemoteData(message message.TransferMessage) 
 	}
 }
 
-func (db *PostgresqlDatabase) UpdateRemoteDataRemotePoints(message message.TransferMessage) {
+func (db *PostgresqlDatabase) UpdateRemoteDataRemotePoints(message message.TransferRequest) {
 	for _, err := db.GetConnection().Exec(context.Background(), updateRemoteQuery, message.Origin, message.PeriodStart, message.PeriodEnd, message.RemoteDataPoints); err != nil; {
 		logger.GetLogger().Warn(
 			"Error on updating the received data in the database",
@@ -222,7 +224,7 @@ func (db *PostgresqlDatabase) UpdateRemoteDataRemotePoints(message message.Trans
 	}
 }
 
-func (db *PostgresqlDatabase) UpdateRemoteDataLocalPoints(message message.TransferMessage) {
+func (db *PostgresqlDatabase) UpdateRemoteDataLocalPoints(message message.TransferRequest) {
 	for _, err := db.GetConnection().Exec(context.Background(), updateLocaleQuery, message.Origin, message.PeriodStart, message.PeriodEnd, message.LocalDataPoints); err != nil; {
 		logger.GetLogger().Warn(
 			"Error on updating the received data in the database",
@@ -236,8 +238,13 @@ func (db *PostgresqlDatabase) UpdateRemoteDataLocalPoints(message message.Transf
 	}
 }
 
+func (db *PostgresqlDatabase) CreateMissingRemoteOrigins(epoch time.Time, duration time.Duration) error {
+	_, err := db.GetConnection().Exec(context.Background(), createMissingOriginsQuery, epoch, epoch.Add(duration))
+	return err
+}
+
 func (db *PostgresqlDatabase) ReadRemoteOrigins() ([]string, error) {
-	rows, err := db.GetConnection().Query(context.Background(), fmt.Sprintf("%s;", selectOriginsQuery))
+	rows, err := db.GetConnection().Query(context.Background(), selectOriginsQuery)
 	if err != nil {
 		return nil, err
 	}
@@ -252,18 +259,18 @@ func (db *PostgresqlDatabase) ReadRemoteOrigins() ([]string, error) {
 	return result, nil
 }
 
-func (db *PostgresqlDatabase) ReadRemoteData(appendToQuery string, arguments ...interface{}) ([]message.TransferMessage, error) {
+func (db *PostgresqlDatabase) CreateTransferRequests(appendToQuery string, arguments ...interface{}) ([]message.TransferRequest, error) {
 	rows, err := db.GetConnection().Query(context.Background(), fmt.Sprintf("%s %s", selectTransferQuery, appendToQuery), arguments...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	result := make([]message.TransferMessage, 0)
+	result := make([]message.TransferRequest, 0)
+	var local pgtype.Int4
+	var remote pgtype.Int4
 	for rows.Next() {
-		m := message.TransferMessage{}
-		var local pgtype.Int4
-		var remote pgtype.Int4
+		m := message.TransferRequest{}
 		rows.Scan(
 			&m.Origin,
 			&m.PeriodStart,

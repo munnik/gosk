@@ -13,39 +13,37 @@ var (
 		Short: "transfer missing data",
 		Long:  `This can transfer missing data from clients to a central server`,
 	}
-	transferPublishCmd = &cobra.Command{
-		Use:   "publish",
-		Short: "ask clients for missing data",
-		Long:  `asks clients to send missing data to the central server`,
-		Run:   doTransferPublish,
+	transferRequestCmd = &cobra.Command{
+		Use:   "request",
+		Short: "request clients for data count and missing data",
+		Long:  `request clients for data count in a certain period and to send missing data to the central server if the data count on the central server is less`,
+		Run:   doTransferRequest,
 	}
-	transferSubscribeCmd = &cobra.Command{
-		Use:   "subscribe",
-		Short: "listen for missing data requests",
-		Long:  `listens for missing data requests from the central server`,
-		Run:   doTransferSubscribe,
+	transferRespondCmd = &cobra.Command{
+		Use:   "respond",
+		Short: "respond to data count and missing data requests",
+		Long:  `respond to data count and missing data requests`,
+		Run:   doTransferRespond,
 	}
 )
 
 func init() {
 	rootCmd.AddCommand(transferCmd)
 
-	transferCmd.AddCommand(transferPublishCmd)
-	transferCmd.AddCommand(transferSubscribeCmd)
-	transferSubscribeCmd.Flags().StringVarP(&publishURL, "publishURL", "p", "", "Nanomsg URL, the URL is used to publish the data on. It listens for connections.")
-	transferSubscribeCmd.MarkFlagRequired("publishURL")
-
+	transferCmd.AddCommand(transferRequestCmd)
+	transferCmd.AddCommand(transferRespondCmd)
+	transferRespondCmd.Flags().StringVarP(&publishURL, "publishURL", "p", "", "Nanomsg URL, the URL is used to publish the data on. It listens for connections.")
+	transferRespondCmd.MarkFlagRequired("publishURL")
 }
 
-func doTransferPublish(cmd *cobra.Command, args []string) {
-	c := config.NewTranferConfig(cfgFile)
-	w := transfer.NewTransferPublisher(c)
-	w.ListenCountReply()
-
+func doTransferRequest(cmd *cobra.Command, args []string) {
+	c := config.NewTransferConfig(cfgFile)
+	w := transfer.NewTransferRequester(c)
+	w.ListenCountResponse()
 }
-func doTransferSubscribe(cmd *cobra.Command, args []string) {
-	c := config.NewTranferConfig(cfgFile)
-	w := transfer.NewTransferSubscriber(c)
+
+func doTransferRespond(cmd *cobra.Command, args []string) {
+	c := config.NewTransferConfig(cfgFile)
+	w := transfer.NewTransferResponder(c)
 	w.ReadCommands(nanomsg.NewPub(publishURL))
-
 }

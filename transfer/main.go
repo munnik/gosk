@@ -1,14 +1,25 @@
 package transfer
 
-import "github.com/munnik/gosk/message"
+import (
+	"time"
+
+	"github.com/munnik/gosk/message"
+)
 
 const (
-	QueryCmd   = "query"
-	RequestCmd = "request"
-	Epoch      = "2022-01-01T00:00:00.000Z"
+	requestCountCmd                = "requestCount"
+	requestDataCmd                 = "requestData"
+	countData                      = "requestCount/%s"
+	replyTopic                     = "respondCount/%s"
+	betweenIntervalWhereClause     = `WHERE "origin" = $1 AND "time" BETWEEN $2 AND $3;`
+	localMoreThanRemoteWhereClause = `WHERE "origin" = $1 and "local" >= "remote"`
+)
+
+var (
+	Epoch = time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC)
 )
 
 type CommandMessage struct {
 	Command string
-	Request message.TransferMessage
+	Request message.TransferRequest
 }

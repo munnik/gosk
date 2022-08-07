@@ -2,7 +2,7 @@ package message
 
 import "time"
 
-type TransferMessage struct {
+type TransferRequest struct {
 	Origin           string
 	PeriodStart      time.Time
 	PeriodEnd        time.Time

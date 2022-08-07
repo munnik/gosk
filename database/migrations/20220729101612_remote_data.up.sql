@@ -3,6 +3,6 @@ CREATE TABLE "remote_data" (
     "start" TIMESTAMP WITH TIME ZONE NOT NULL, 
     "end" TIMESTAMP WITH TIME ZONE NOT NULL, 
     "local" INTEGER NOT NULL DEFAULT -1, 
-    "remote" INTEGER NOT NULL DEFAULT 0,
+    "remote" INTEGER NOT NULL DEFAULT 0
 );
 SELECT create_hypertable('remote_data', 'start');

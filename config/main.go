@@ -297,3 +297,17 @@ func readConfigFile(result interface{}, configFilePath string, subKeys ...string
 	}
 	return result
 }
+
+type LWEConfig struct {
+	DestinationIdentification string `mapstructure:"destination_identification"`
+	SourceIdentification      string `mapstructure:"source_identification"`
+	IncludeTimestamp          bool   `mapstructure:"include_timestamp"`
+	IncludeLineCount          bool   `mapstructure:"include_line_count"`
+}
+
+func NewLWEConfig(configFilePath string) *LWEConfig {
+	result := LWEConfig{}
+	readConfigFile(&result, configFilePath)
+
+	return &result
+}

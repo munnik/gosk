@@ -78,6 +78,12 @@ var (
 		Long:  `write mapped messages to stdout`,
 		Run:   doWriteStdOutMapped,
 	}
+	writeLWECmd = &cobra.Command{
+		Use:   "lwe",
+		Short: "Write messages to an UDP multicast group",
+		Long:  `Write messages to an UDP multicast group according to the LWE (IEC 61162-450) protocol`,
+		Run:   doWriteLWE,
+	}
 )
 
 func init() {
@@ -106,6 +112,10 @@ func init() {
 	writeStdOutCmd.AddCommand(writeStdOutMappedCmd)
 	writeStdOutMappedCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
 	writeStdOutMappedCmd.MarkFlagRequired("subscribeURL")
+
+	writeCmd.AddCommand(writeLWECmd)
+	writeLWECmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
+	writeLWECmd.MarkFlagRequired("subscribeURL")
 }
 
 func doWriteDatabaseRaw(cmd *cobra.Command, args []string) {
@@ -162,6 +172,20 @@ func doWriteSignalK(cmd *cobra.Command, args []string) {
 	c := config.NewSignalKConfig(cfgFile).WithVersion(version)
 	s := writer.NewSignalKWriter(c)
 	s.WriteMapped(subscriber)
+}
+
+func doWriteLWE(cmd *cobra.Command, args []string) {
+	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
+	if err != nil {
+		logger.GetLogger().Fatal(
+			"Could not subscribe to the URL",
+			zap.String("URL", subscribeURL),
+			zap.String("Error", err.Error()),
+		)
+	}
+	c := config.NewLWEConfig(cfgFile)
+	w := writer.NewLWEWriter(c)
+	w.WriteRaw(subscriber)
 }
 
 func doWriteStdOutMapped(cmd *cobra.Command, args []string) {

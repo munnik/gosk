@@ -12,7 +12,7 @@ const (
 	countData                      = "requestCount/%s"
 	replyTopic                     = "respondCount/%s"
 	betweenIntervalWhereClause     = `WHERE "origin" = $1 AND "time" BETWEEN $2 AND $3;`
-	localMoreThanRemoteWhereClause = `WHERE "origin" = $1 and "local" >= "remote"`
+	localMoreThanRemoteWhereClause = `WHERE "origin" = $1 ORDER BY "start"`
 )
 
 var (

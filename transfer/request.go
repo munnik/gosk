@@ -124,7 +124,7 @@ func (t *TransferRequester) SendCountRequests() {
 	}
 
 	for _, origin := range origins {
-		periods, err := t.db.CreateTransferRequests(localMoreThanRemoteWhereClause, origin)
+		periods, err := t.db.CreateTransferRequests(forOrigin, origin)
 		if err != nil {
 			logger.GetLogger().Warn(err.Error())
 		}

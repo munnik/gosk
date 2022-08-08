@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"math/rand"
 	"net/url"
 	"strings"
 	"time"
@@ -186,6 +187,7 @@ func NewCanBusMappingConfig(configFilePath string) []CanBusMappingConfig {
 
 type MQTTConfig struct {
 	URLString        string `mapstructure:"url"`
+	ClientID         string `mapstructure:"_"`
 	Username         string `mapstructure:"username"`
 	Password         string `mapstructure:"password"`
 	Interval         int    `mapstructure:"interval"`         // interval to flush the cache in seconds, ignored for reader
@@ -195,6 +197,13 @@ type MQTTConfig struct {
 func NewMQTTConfig(configFilePath string) *MQTTConfig {
 	result := MQTTConfig{}
 	readConfigFile(&result, configFilePath)
+
+	chars := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0987654321")
+	random := make([]rune, 23)
+	for i := range random {
+		random[i] = chars[rand.Intn(len(chars))]
+	}
+	result.ClientID = string(random)
 
 	return &result
 }

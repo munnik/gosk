@@ -47,6 +47,7 @@ func (w *MqttWriter) createClientOptions() *mqtt.ClientOptions {
 	o := mqtt.NewClientOptions()
 	o.AddBroker(w.config.URLString)
 	o.SetCleanSession(true) // TODO: verify
+	o.SetClientID(w.config.ClientID)
 	o.SetUsername(w.config.Username)
 	o.SetPassword(w.config.Password)
 	o.SetOrderMatters(false)

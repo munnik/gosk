@@ -39,6 +39,7 @@ func (r *MqttReader) createClientOptions() *mqtt.ClientOptions {
 	o := mqtt.NewClientOptions()
 	o.AddBroker(r.config.URLString)
 	o.SetCleanSession(true) // TODO: verify
+	o.SetClientID(r.config.ClientID)
 	o.SetUsername(r.config.Username)
 	o.SetPassword(r.config.Password)
 	o.SetOrderMatters(false)

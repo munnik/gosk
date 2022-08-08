@@ -110,7 +110,7 @@ func (t *TransferResponder) disconnectHandler(c mqtt.Client, e error) {
 }
 
 func (t *TransferResponder) respondWithCount(request message.TransferRequest) {
-	count, err := t.db.ReadMappedCount(betweenIntervalWhereClause, request.Origin, request.PeriodStart.Format(time.RFC3339), request.PeriodEnd.Format(time.RFC3339))
+	count, err := t.db.ReadMappedCount(betweenIntervalWhereClause, request.Origin, request.PeriodStart, request.PeriodEnd)
 	if err != nil {
 		logger.GetLogger().Warn(
 			"Could not retrieve count of mapped data from database",

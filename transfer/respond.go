@@ -69,7 +69,7 @@ func (t *TransferResponder) connectHandler(c mqtt.Client) {
 	logger.GetLogger().Info(
 		"MQTT connection established",
 	)
-	topic := fmt.Sprintf(countData, t.config.Origin)
+	topic := fmt.Sprintf(requestTopic, t.config.Origin)
 	if token := t.mqttClient.Subscribe(topic, 1, nil); token.Wait() && token.Error() != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the MQTT topic",
@@ -132,7 +132,7 @@ func (t *TransferResponder) respondWithCount(request message.TransferRequest) {
 		)
 		return
 	}
-	topic := fmt.Sprintf(replyTopic, t.config.Origin)
+	topic := fmt.Sprintf(respondTopic, t.config.Origin)
 	if token := t.mqttClient.Publish(topic, 0, false, bytes); token.Wait() && token.Error() != nil {
 		logger.GetLogger().Warn(
 			"Could not publish a message via MQTT",

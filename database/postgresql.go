@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
@@ -22,17 +21,15 @@ import (
 )
 
 const (
-	rawInsertQuery            = `INSERT INTO "raw_data" ("time", "collector", "value", "uuid", "type") VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`
-	mappedInsertQuery         = `INSERT INTO "mapped_data" ("time", "collector", "type", "context", "path", "value", "uuid", "origin") VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING`
-	mappedSelectQuery         = `SELECT "time", "collector", "type", "context", "path", "value", "uuid", "origin" FROM "mapped_data"`
-	mappedCountSelectQuery    = `SELECT count(*) FROM "mapped_data"`
-	rawCountSelectQuery       = `SELECT count(*) FROM "raw_data"`
-	selectTransferQuery       = `SELECT "origin", "start", "end", "local", "remote" FROM "remote_data"`
-	createMissingOriginsQuery = `INSERT INTO "remote_data" ("origin", "start", "end") SELECT DISTINCT "origin", $1::timestamptz, $2::timestamptz FROM "mapped_data" WHERE "time" BETWEEN now() - interval '1 hour' AND now() ON CONFLICT DO NOTHING`
-	selectOriginsQuery        = `SELECT DISTINCT "origin" FROM "remote_data";`
-	insertTransferQuery       = `INSERT INTO "remote_data" ("origin", "start", "end", "local") VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`
-	updateRemoteQuery         = `UPDATE "remote_data" SET "remote" = $4 WHERE "origin" = $1 AND "start" = $2 AND "end" = $3`
-	updateLocaleQuery         = `UPDATE "remote_data" SET "local" = $4 WHERE "origin" = $1 AND "start" = $2 AND "end" = $3`
+	rawInsertQuery         = `INSERT INTO "raw_data" ("time", "collector", "value", "uuid", "type") VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`
+	mappedInsertQuery      = `INSERT INTO "mapped_data" ("time", "collector", "type", "context", "path", "value", "uuid", "origin") VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING`
+	mappedSelectQuery      = `SELECT "time", "collector", "type", "context", "path", "value", "uuid", "origin" FROM "mapped_data"`
+	mappedCountSelectQuery = `SELECT count(*) FROM "mapped_data"`
+	rawCountSelectQuery    = `SELECT count(*) FROM "raw_data"`
+	selectTransferQuery    = `SELECT "origin", "start", "end", "local", "remote" FROM "remote_data"`
+	insertTransferQuery    = `INSERT INTO "remote_data" ("origin", "start", "end", "local") VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`
+	updateRemoteQuery      = `UPDATE "remote_data" SET "remote" = $4 WHERE "origin" = $1 AND "start" = $2 AND "end" = $3`
+	updateLocaleQuery      = `UPDATE "remote_data" SET "local" = $4 WHERE "origin" = $1 AND "start" = $2 AND "end" = $3`
 )
 
 //go:embed migrations/*.sql
@@ -236,27 +233,6 @@ func (db *PostgresqlDatabase) UpdateRemoteDataLocalPoints(message message.Transf
 			zap.Int("Local", message.LocalDataPoints),
 		)
 	}
-}
-
-func (db *PostgresqlDatabase) CreateMissingRemoteOrigins(epoch time.Time, duration time.Duration) error {
-	_, err := db.GetConnection().Exec(context.Background(), createMissingOriginsQuery, epoch, epoch.Add(duration))
-	return err
-}
-
-func (db *PostgresqlDatabase) ReadRemoteOrigins() ([]string, error) {
-	rows, err := db.GetConnection().Query(context.Background(), selectOriginsQuery)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	result := make([]string, 0)
-	for rows.Next() {
-		origin := ""
-		rows.Scan(&origin)
-		result = append(result, origin)
-	}
-
-	return result, nil
 }
 
 func (db *PostgresqlDatabase) CreateTransferRequests(appendToQuery string, arguments ...interface{}) ([]message.TransferRequest, error) {

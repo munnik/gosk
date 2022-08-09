@@ -18,10 +18,11 @@ type TransferRequester struct {
 	db         *database.PostgresqlDatabase
 	mqttConfig *config.MQTTConfig
 	mqttClient mqtt.Client
+	origins    []config.OriginsConfig
 }
 
 func NewTransferRequester(c *config.TransferConfig) *TransferRequester {
-	return &TransferRequester{db: database.NewPostgresqlDatabase(&c.PostgresqlConfig), mqttConfig: &c.MQTTConfig}
+	return &TransferRequester{db: database.NewPostgresqlDatabase(&c.PostgresqlConfig), mqttConfig: &c.MQTTConfig, origins: c.Origins}
 }
 
 func (t *TransferRequester) createClientOptions() *mqtt.ClientOptions {
@@ -112,22 +113,11 @@ func (t *TransferRequester) ListenCountResponse() {
 }
 
 func (t *TransferRequester) SendCountRequests() {
-	err := t.db.CreateMissingRemoteOrigins(Epoch, 5*time.Minute)
-	if err != nil {
-		logger.GetLogger().Warn(err.Error())
-		return
-	}
-	origins, err := t.db.ReadRemoteOrigins()
-	if err != nil {
-		logger.GetLogger().Warn(err.Error())
-		return
-	}
-
 	wg := new(sync.WaitGroup)
-	wg.Add(len(origins))
-	for _, origin := range origins {
-		go func(origin string) {
-			periods, err := t.db.CreateTransferRequests(forOrigin, origin)
+	wg.Add(len(t.origins))
+	for _, origin := range t.origins {
+		go func(origin string, epoch time.Time) {
+			periods, err := t.db.CreateTransferRequests(forOriginWhereClause, origin)
 			if err != nil {
 				logger.GetLogger().Warn(err.Error())
 			}
@@ -160,11 +150,11 @@ func (t *TransferRequester) SendCountRequests() {
 					time.Sleep(1 * time.Second)
 				}
 			} else {
-				t.sendCountRequest(origin, Epoch, 5*time.Minute)
+				t.sendCountRequest(origin, epoch, 5*time.Minute)
 				time.Sleep(1 * time.Second)
 			}
 			wg.Done()
-		}(origin)
+		}(origin.Origin, origin.Epoch)
 	}
 	wg.Wait()
 }

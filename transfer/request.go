@@ -102,7 +102,7 @@ func (t *TransferRequester) ListenCountResponse() {
 	go func() {
 		for {
 			t.SendCountRequests()
-			time.Sleep(5 * time.Minute)
+			time.Sleep(1 * time.Hour)
 		}
 	}()
 	// never exit
@@ -123,41 +123,50 @@ func (t *TransferRequester) SendCountRequests() {
 		return
 	}
 
+	wg := new(sync.WaitGroup)
+	wg.Add(len(origins))
 	for _, origin := range origins {
-		periods, err := t.db.CreateTransferRequests(forOrigin, origin)
-		if err != nil {
-			logger.GetLogger().Warn(err.Error())
-		}
+		go func(origin string) {
+			periods, err := t.db.CreateTransferRequests(forOrigin, origin)
+			if err != nil {
+				logger.GetLogger().Warn(err.Error())
+			}
 
-		for _, period := range periods {
-			if period.RemoteDataPoints > period.LocalDataPoints {
-				local, err := t.db.ReadMappedCount(betweenIntervalWhereClause, origin, period.PeriodStart, period.PeriodEnd)
-				if err != nil {
-					logger.GetLogger().Warn(err.Error())
-				}
-				if local > period.LocalDataPoints {
-					// extra values have come in since last check
-					period.LocalDataPoints = local
-					t.db.UpdateRemoteDataLocalPoints(period)
-				} else {
-					// ask for period to be resent
-					t.requestData(period.Origin, period.PeriodStart, period.PeriodEnd)
+			for _, period := range periods {
+				if period.RemoteDataPoints > period.LocalDataPoints {
+					local, err := t.db.ReadMappedCount(betweenIntervalWhereClause, origin, period.PeriodStart, period.PeriodEnd)
+					if err != nil {
+						logger.GetLogger().Warn(err.Error())
+					}
+					if local > period.LocalDataPoints {
+						// extra values have come in since last check
+						period.LocalDataPoints = local
+						t.db.UpdateRemoteDataLocalPoints(period)
+					} else {
+						// ask for period to be resent
+						t.requestData(period.Origin, period.PeriodStart, period.PeriodEnd)
+						time.Sleep(30 * time.Second)
+					}
 				}
 			}
-		}
 
-		if len(periods) > 0 {
-			// periods already exist
-			threshold := time.Now().Add(-5 * time.Minute)
-			last := periods[len(periods)-1].PeriodEnd
-			for last.Before(threshold) {
-				last = last.Add(5 * time.Minute)
-				t.sendCountRequest(origin, last, 5*time.Minute)
+			if len(periods) > 0 {
+				// periods already exist
+				threshold := time.Now().Add(-5 * time.Minute)
+				last := periods[len(periods)-1].PeriodEnd
+				for last.Before(threshold) {
+					last = last.Add(5 * time.Minute)
+					t.sendCountRequest(origin, last, 5*time.Minute)
+					time.Sleep(1 * time.Second)
+				}
+			} else {
+				t.sendCountRequest(origin, Epoch, 5*time.Minute)
+				time.Sleep(1 * time.Second)
 			}
-		} else {
-			t.sendCountRequest(origin, Epoch, 5*time.Minute)
-		}
+			wg.Done()
+		}(origin)
 	}
+	wg.Wait()
 }
 
 func (t *TransferRequester) sendCountRequest(origin string, start time.Time, length time.Duration) {

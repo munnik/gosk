@@ -133,7 +133,7 @@ func (t *TransferResponder) respondWithCount(request message.TransferRequest) {
 		return
 	}
 	topic := fmt.Sprintf(replyTopic, t.config.Origin)
-	if token := t.mqttClient.Publish(topic, 1, false, bytes); token.Wait() && token.Error() != nil {
+	if token := t.mqttClient.Publish(topic, 0, false, bytes); token.Wait() && token.Error() != nil {
 		logger.GetLogger().Warn(
 			"Could not publish a message via MQTT",
 			zap.String("Error", token.Error().Error()),

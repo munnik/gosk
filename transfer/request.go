@@ -174,7 +174,7 @@ func (t *TransferRequester) sendCountRequest(origin string, start time.Time, len
 		return
 	}
 	topic := fmt.Sprintf(countData, origin)
-	if token := t.mqttClient.Publish(topic, 1, false, bytes); token.Wait() && token.Error() != nil {
+	if token := t.mqttClient.Publish(topic, 0, false, bytes); token.Wait() && token.Error() != nil {
 		logger.GetLogger().Warn(
 			"Could not publish a message via MQTT",
 			zap.String("Error", token.Error().Error()),
@@ -209,7 +209,7 @@ func (t *TransferRequester) requestData(origin string, start time.Time, end time
 		return
 	}
 	topic := fmt.Sprintf(countData, origin)
-	if token := t.mqttClient.Publish(topic, 1, true, bytes); token.Wait() && token.Error() != nil {
+	if token := t.mqttClient.Publish(topic, 0, true, bytes); token.Wait() && token.Error() != nil {
 		logger.GetLogger().Warn(
 			"Could not publish a message via MQTT",
 			zap.String("Error", token.Error().Error()),

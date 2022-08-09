@@ -228,15 +228,13 @@ type SignalKConfig struct {
 	URL              *url.URL          `mapstructure:"_"`
 	Version          string            `mapstructure:"_"`
 	SelfContext      string            `mapstructure:"self_context"`
-	PostgresqlConfig *PostgresqlConfig `mapstructure:"_"`
-	BigCacheConfig   *BigCacheConfig   `mapstructure:"_"`
+	PostgresqlConfig *PostgresqlConfig `mapstructure:"database"`
+	BigCacheConfig   *BigCacheConfig   `mapstructure:"cache"`
 }
 
 func NewSignalKConfig(configFilePath string) *SignalKConfig {
 	result := SignalKConfig{Version: "undefined"}
 	readConfigFile(&result, configFilePath)
-	readConfigFile(&result.PostgresqlConfig, configFilePath, "database")
-	readConfigFile(&result.BigCacheConfig, configFilePath, "cache")
 
 	result.URL, _ = url.Parse(result.URLString)
 
@@ -254,8 +252,8 @@ type OriginsConfig struct {
 }
 
 type TransferConfig struct {
-	PostgresqlConfig PostgresqlConfig `mapstructure:"_"`
-	MQTTConfig       MQTTConfig       `mapstructure:"_"`
+	PostgresqlConfig PostgresqlConfig `mapstructure:"database"`
+	MQTTConfig       MQTTConfig       `mapstructure:"mqtt"`
 	Origin           string           `mapstructure:"origin"`
 	Origins          []OriginsConfig  `mapstructure:"origins"`
 }
@@ -263,8 +261,6 @@ type TransferConfig struct {
 func NewTransferConfig(configFilePath string) *TransferConfig {
 	result := TransferConfig{}
 	readConfigFile(&result, configFilePath)
-	readConfigFile(&result.PostgresqlConfig, configFilePath, "database")
-	readConfigFile(&result.MQTTConfig, configFilePath, "mqtt")
 
 	return &result
 }

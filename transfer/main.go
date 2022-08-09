@@ -1,19 +1,23 @@
 package transfer
 
 import (
-	"github.com/munnik/gosk/message"
+	"time"
 )
 
 const (
-	requestCountCmd            = "count"
-	requestDataCmd             = "data"
-	requestTopic               = "request/%s"
-	respondTopic               = "respond/%s"
-	betweenIntervalWhereClause = `WHERE "origin" = $1 AND "time" BETWEEN $2 AND $3;`
-	forOriginWhereClause       = `WHERE "origin" = $1 ORDER BY "start"`
+	requestCountCmd = "count"
+	requestDataCmd  = "data"
+	requestTopic    = "request/%s"
+	respondTopic    = "respond/%s"
+	periodDuration  = 5 * time.Minute
 )
 
-type CommandMessage struct {
-	Command string
-	Request message.TransferRequest
+type RequestMessage struct {
+	Command     string    `json:"command"`
+	PeriodStart time.Time `json:"period_start"`
+}
+
+type ResponseMessage struct {
+	DataPoints  int       `json:"data_points"`
+	PeriodStart time.Time `json:"period_start"`
 }

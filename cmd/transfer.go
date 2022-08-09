@@ -39,11 +39,11 @@ func init() {
 func doTransferRequest(cmd *cobra.Command, args []string) {
 	c := config.NewTransferConfig(cfgFile)
 	w := transfer.NewTransferRequester(c)
-	w.ListenCountResponse()
+	w.Run()
 }
 
 func doTransferRespond(cmd *cobra.Command, args []string) {
 	c := config.NewTransferConfig(cfgFile)
 	w := transfer.NewTransferResponder(c)
-	w.ReadCommands(nanomsg.NewPub(publishURL))
+	w.Run(nanomsg.NewPub(publishURL))
 }

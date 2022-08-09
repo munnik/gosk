@@ -3,6 +3,7 @@ package transfer
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -10,7 +11,6 @@ import (
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/database"
 	"github.com/munnik/gosk/logger"
-	"github.com/munnik/gosk/message"
 	"go.uber.org/zap"
 )
 
@@ -23,6 +23,141 @@ type TransferRequester struct {
 
 func NewTransferRequester(c *config.TransferConfig) *TransferRequester {
 	return &TransferRequester{db: database.NewPostgresqlDatabase(&c.PostgresqlConfig), mqttConfig: &c.MQTTConfig, origins: c.Origins}
+}
+
+func (t *TransferRequester) Run() {
+	// listen for responses
+	t.mqttClient = mqtt.NewClient(t.createClientOptions())
+	if token := t.mqttClient.Connect(); token.Wait() && token.Error() != nil {
+		logger.GetLogger().Fatal(
+			"Could not connect to the MQTT broker",
+			zap.String("Error", token.Error().Error()),
+			zap.String("URL", t.mqttConfig.URLString),
+		)
+		return
+	}
+	defer t.mqttClient.Disconnect(uint(disconnectWait.Milliseconds()))
+
+	// send count requests
+	go func() {
+		for {
+			t.sendCountRequests()
+			time.Sleep(1 * time.Hour)
+		}
+	}()
+
+	// send data requests
+	go func() {
+		for {
+			t.sendDataRequests()
+			time.Sleep(5 * time.Minute)
+		}
+	}()
+	// never exit
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
+	wg.Wait()
+}
+
+func (t *TransferRequester) sendCountRequests() {
+	wg := new(sync.WaitGroup)
+	wg.Add(len(t.origins))
+
+	threshold := time.Now().Add(-periodDuration)
+
+	for _, origin := range t.origins {
+		go func(origin string, epoch time.Time) {
+			completePeriods, err := t.db.SelectCompletePeriods(origin)
+			if err != nil {
+				logger.GetLogger().Warn(
+					"Could not retrieve completed periods from database",
+					zap.String("Error", err.Error()),
+				)
+				return
+			}
+			incompletePeriods, err := t.db.SelectIncompletePeriods(origin)
+			if err != nil {
+				logger.GetLogger().Warn(
+					"Could not retrieve completed periods from database",
+					zap.String("Error", err.Error()),
+				)
+				return
+			}
+
+			for period := epoch; period.Before(threshold); period = period.Add(periodDuration) {
+				if _, ok := completePeriods[period]; ok {
+					continue // no need to send a count request because the period is already complete
+				}
+				if _, ok := incompletePeriods[period]; ok {
+					continue // no need to send a count request because we already now the remote data points
+				}
+
+				t.sendMQTTCommand(origin, period, requestCountCmd)
+			}
+			wg.Done()
+		}(origin.Origin, origin.Epoch)
+	}
+	wg.Wait()
+}
+
+func (t *TransferRequester) sendDataRequests() {
+	for _, origin := range t.origins {
+		go func(origin string) {
+			incompletePeriods, err := t.db.SelectIncompletePeriods(origin)
+			if err != nil {
+				logger.GetLogger().Warn(
+					"Could not retrieve not completed periods from database",
+					zap.String("Error", err.Error()),
+				)
+				return
+			}
+			for period := range incompletePeriods {
+				localDataPoints, remoteDataPoints, err := t.db.SelectLocalAndRemoteDataPoints(origin, period, period.Add(periodDuration))
+				if err != nil {
+					logger.GetLogger().Warn(
+						"Could not retrieve local and remote data points from database",
+						zap.String("Origin", origin),
+						zap.Time("PeriodStart", period),
+						zap.Time("PeriodEnd", period.Add(periodDuration)),
+						zap.String("Error", err.Error()),
+					)
+					continue
+				}
+				t.db.UpdateLocalDataPoints(origin, period, period.Add(periodDuration), localDataPoints)
+				// check if local data points are still less after update
+				if localDataPoints < remoteDataPoints {
+					t.sendMQTTCommand(origin, period, requestDataCmd)
+				}
+			}
+		}(origin.Origin)
+	}
+}
+
+func (t *TransferRequester) responseReceived(origin string, response ResponseMessage) {
+	t.db.CreatePeriod(origin, response.PeriodStart, response.PeriodStart.Add(periodDuration), response.DataPoints)
+}
+
+func (t *TransferRequester) sendMQTTCommand(origin string, start time.Time, command string) {
+	message := RequestMessage{
+		Command:     command,
+		PeriodStart: start,
+	}
+	bytes, err := json.Marshal(message)
+	if err != nil {
+		logger.GetLogger().Warn(
+			"Could not marshall the request message",
+			zap.String("Error", err.Error()),
+		)
+		return
+	}
+	topic := fmt.Sprintf(requestTopic, origin)
+	if token := t.mqttClient.Publish(topic, 0, true, bytes); token.Wait() && token.Error() != nil {
+		logger.GetLogger().Warn(
+			"Could not publish a message via MQTT",
+			zap.String("Error", token.Error().Error()),
+			zap.ByteString("Bytes", bytes),
+		)
+	}
 }
 
 func (t *TransferRequester) createClientOptions() *mqtt.ClientOptions {
@@ -55,31 +190,6 @@ func (t *TransferRequester) connectHandler(c mqtt.Client) {
 	}
 }
 
-func (t *TransferRequester) messageReceived(c mqtt.Client, m mqtt.Message) {
-	var request message.TransferRequest
-	if err := json.Unmarshal(m.Payload(), &request); err != nil {
-		logger.GetLogger().Warn(
-			"Could not unmarshal buffer",
-			zap.String("Error", err.Error()),
-			zap.ByteString("Bytes", m.Payload()),
-		)
-		return
-	}
-	count, err := t.db.ReadMappedCount(betweenIntervalWhereClause, request.Origin, request.PeriodStart.Format(time.RFC3339), request.PeriodEnd.Format(time.RFC3339))
-	if err != nil {
-		logger.GetLogger().Warn(
-			"Could not retrieve count of mapped data from database",
-			zap.String("Error", err.Error()),
-		)
-		return
-	}
-	if count != request.RemoteDataPoints {
-		t.requestData(request.Origin, request.PeriodStart, request.PeriodEnd)
-	}
-	// fmt.Printf("vessel: %d, server: %d\n", command.RemoteDataPoints, count)
-	t.db.UpdateRemoteDataRemotePoints(request)
-}
-
 func (t *TransferRequester) disconnectHandler(c mqtt.Client, e error) {
 	if e != nil {
 		logger.GetLogger().Warn(
@@ -89,131 +199,15 @@ func (t *TransferRequester) disconnectHandler(c mqtt.Client, e error) {
 	}
 }
 
-func (t *TransferRequester) ListenCountResponse() {
-	t.mqttClient = mqtt.NewClient(t.createClientOptions())
-	if token := t.mqttClient.Connect(); token.Wait() && token.Error() != nil {
-		logger.GetLogger().Fatal(
-			"Could not connect to the MQTT broker",
-			zap.String("Error", token.Error().Error()),
-			zap.String("URL", t.mqttConfig.URLString),
-		)
-		return
-	}
-	defer t.mqttClient.Disconnect(uint(disconnectWait.Milliseconds()))
-	go func() {
-		for {
-			t.SendCountRequests()
-			time.Sleep(1 * time.Hour)
-		}
-	}()
-	// never exit
-	wg := new(sync.WaitGroup)
-	wg.Add(1)
-	wg.Wait()
-}
-
-func (t *TransferRequester) SendCountRequests() {
-	wg := new(sync.WaitGroup)
-	wg.Add(len(t.origins))
-	for _, origin := range t.origins {
-		go func(origin string, epoch time.Time) {
-			periods, err := t.db.CreateTransferRequests(forOriginWhereClause, origin)
-			if err != nil {
-				logger.GetLogger().Warn(err.Error())
-			}
-
-			for _, period := range periods {
-				if period.RemoteDataPoints > period.LocalDataPoints {
-					local, err := t.db.ReadMappedCount(betweenIntervalWhereClause, origin, period.PeriodStart, period.PeriodEnd)
-					if err != nil {
-						logger.GetLogger().Warn(err.Error())
-					}
-					if local > period.LocalDataPoints {
-						// extra values have come in since last check
-						period.LocalDataPoints = local
-						t.db.UpdateRemoteDataLocalPoints(period)
-					} else {
-						// ask for period to be resent
-						t.requestData(period.Origin, period.PeriodStart, period.PeriodEnd)
-						time.Sleep(30 * time.Second)
-					}
-				}
-			}
-
-			if len(periods) > 0 {
-				// periods already exist
-				threshold := time.Now().Add(-5 * time.Minute)
-				last := periods[len(periods)-1].PeriodEnd
-				for last.Before(threshold) {
-					last = last.Add(5 * time.Minute)
-					t.sendCountRequest(origin, last, 5*time.Minute)
-					time.Sleep(1 * time.Second)
-				}
-			} else {
-				t.sendCountRequest(origin, epoch, 5*time.Minute)
-				time.Sleep(1 * time.Second)
-			}
-			wg.Done()
-		}(origin.Origin, origin.Epoch)
-	}
-	wg.Wait()
-}
-
-func (t *TransferRequester) sendCountRequest(origin string, start time.Time, length time.Duration) {
-	message := CommandMessage{Command: requestCountCmd}
-	message.Request.Origin = origin
-	message.Request.PeriodStart = start
-	end := start.Add(length)
-	message.Request.PeriodEnd = end
-	bytes, err := json.Marshal(message)
-	if err != nil {
+func (t *TransferRequester) messageReceived(c mqtt.Client, m mqtt.Message) {
+	var response ResponseMessage
+	if err := json.Unmarshal(m.Payload(), &response); err != nil {
 		logger.GetLogger().Warn(
-			"Could not marshall the deltas",
+			"Could not unmarshal buffer",
 			zap.String("Error", err.Error()),
+			zap.ByteString("Bytes", m.Payload()),
 		)
 		return
 	}
-	topic := fmt.Sprintf(requestTopic, origin)
-	if token := t.mqttClient.Publish(topic, 0, false, bytes); token.Wait() && token.Error() != nil {
-		logger.GetLogger().Warn(
-			"Could not publish a message via MQTT",
-			zap.String("Error", token.Error().Error()),
-			zap.ByteString("Bytes", bytes),
-		)
-	}
-
-	count, err := t.db.ReadMappedCount(betweenIntervalWhereClause, origin, start, end)
-	if err != nil {
-		logger.GetLogger().Warn(
-			"Could not retrieve count of mapped data from database",
-			zap.String("Error", err.Error()),
-		)
-		return
-	}
-	message.Request.LocalDataPoints = count
-	t.db.InsertRemoteData(message.Request)
-}
-
-func (t *TransferRequester) requestData(origin string, start time.Time, end time.Time) {
-	request := message.TransferRequest{Origin: origin,
-		PeriodStart: start,
-		PeriodEnd:   end,
-	}
-	reply := CommandMessage{Command: requestDataCmd, Request: request}
-	bytes, err := json.Marshal(reply)
-	if err != nil {
-		logger.GetLogger().Warn(
-			"Could not marshall the deltas",
-			zap.String("Error", err.Error()),
-		)
-		return
-	}
-	topic := fmt.Sprintf(requestTopic, origin)
-	if token := t.mqttClient.Publish(topic, 0, true, bytes); token.Wait() && token.Error() != nil {
-		logger.GetLogger().Warn(
-			"Could not publish a message via MQTT",
-			zap.String("Error", token.Error().Error()),
-			zap.ByteString("Bytes", bytes),
-		)
-	}
+	t.responseReceived(strings.TrimPrefix(m.Topic(), fmt.Sprintf(respondTopic, "")), response)
 }

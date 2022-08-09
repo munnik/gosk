@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
-	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/log/zapadapter"
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -21,15 +21,15 @@ import (
 )
 
 const (
-	rawInsertQuery         = `INSERT INTO "raw_data" ("time", "collector", "value", "uuid", "type") VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`
-	mappedInsertQuery      = `INSERT INTO "mapped_data" ("time", "collector", "type", "context", "path", "value", "uuid", "origin") VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING`
-	mappedSelectQuery      = `SELECT "time", "collector", "type", "context", "path", "value", "uuid", "origin" FROM "mapped_data"`
-	mappedCountSelectQuery = `SELECT count(*) FROM "mapped_data"`
-	rawCountSelectQuery    = `SELECT count(*) FROM "raw_data"`
-	selectTransferQuery    = `SELECT "origin", "start", "end", "local", "remote" FROM "remote_data"`
-	insertTransferQuery    = `INSERT INTO "remote_data" ("origin", "start", "end", "local") VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`
-	updateRemoteQuery      = `UPDATE "remote_data" SET "remote" = $4 WHERE "origin" = $1 AND "start" = $2 AND "end" = $3`
-	updateLocaleQuery      = `UPDATE "remote_data" SET "local" = $4 WHERE "origin" = $1 AND "start" = $2 AND "end" = $3`
+	rawInsertQuery                 = `INSERT INTO "raw_data" ("time", "collector", "value", "uuid", "type") VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`
+	mappedInsertQuery              = `INSERT INTO "mapped_data" ("time", "collector", "type", "context", "path", "value", "uuid", "origin") VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING`
+	selectMappedQuery              = `SELECT "time", "collector", "type", "context", "path", "value", "uuid", "origin" FROM "mapped_data"`
+	selectMappedDataPointsQuery    = `SELECT count(*) FROM "mapped_data" WHERE "time" BETWEEN $1 AND $2`
+	selectCompletePeriodsQuery     = `SELECT "start" FROM "remote_data" WHERE "origin" = $1 AND "local" >= "remote"`
+	selectIncompletePeriodsQuery   = `SELECT "start" FROM "remote_data" WHERE "origin" = $1 AND "local" < "remote"`
+	insertOrUpdatePeriodQuery      = `INSERT INTO "remote_data" ("origin", "start", "end", "remote") VALUES ($1, $2, $3, $4) ON CONFLICT ("origin", "start", "end") DO UPDATE SET "remote" = $4`
+	updateLocalDataPoints          = `UPDATE "remote_data" SET "local" = $4 WHERE "origin" = $1 AND "start" = $2 AND "end" = $3`
+	selectLocalAndRemoteDataPoints = `SELECT count(mapped_data.*) AS "local", "remote" FROM "mapped_data", "remote_data" WHERE "remote_data"."origin" = $1 AND "start" = $2 AND "end" = $3 AND "mapped_data"."origin" = $1 AND "mapped_data"."time" BETWEEN $2 AND $3 GROUP BY "remote";`
 )
 
 //go:embed migrations/*.sql
@@ -136,7 +136,7 @@ func (db *PostgresqlDatabase) WriteMapped(mapped message.Mapped) {
 }
 
 func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...interface{}) ([]message.Mapped, error) {
-	rows, err := db.GetConnection().Query(context.Background(), fmt.Sprintf("%s %s", mappedSelectQuery, appendToQuery), arguments...)
+	rows, err := db.GetConnection().Query(context.Background(), fmt.Sprintf("%s %s", selectMappedQuery, appendToQuery), arguments...)
 	if err != nil {
 		return nil, err
 	}
@@ -167,8 +167,8 @@ func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...inte
 
 	return result, nil
 }
-func (db *PostgresqlDatabase) ReadMappedCount(appendToQuery string, arguments ...interface{}) (int, error) {
-	rows, err := db.GetConnection().Query(context.Background(), fmt.Sprintf("%s %s", mappedCountSelectQuery, appendToQuery), arguments...)
+func (db *PostgresqlDatabase) ReadMappedCount(start time.Time, end time.Time) (int, error) {
+	rows, err := db.GetConnection().Query(context.Background(), selectMappedDataPointsQuery, start, end)
 	if err != nil {
 		return -1, err
 	}
@@ -180,86 +180,55 @@ func (db *PostgresqlDatabase) ReadMappedCount(appendToQuery string, arguments ..
 	return count, nil
 }
 
-func (db *PostgresqlDatabase) ReadRawCount(appendToQuery string, arguments ...interface{}) (int, error) {
-	rows, err := db.GetConnection().Query(context.Background(), fmt.Sprintf("%s %s", rawCountSelectQuery, appendToQuery), arguments...)
+// Returns the start timestamp of each period that has the same or more local rows than remote
+func (db *PostgresqlDatabase) SelectCompletePeriods(origin string) (map[time.Time]struct{}, error) {
+	return db.selectPeriods(selectCompletePeriodsQuery, origin)
+}
+
+// Returns the start timestamp of each period that has the same or more local rows than remote
+func (db *PostgresqlDatabase) SelectIncompletePeriods(origin string) (map[time.Time]struct{}, error) {
+	return db.selectPeriods(selectIncompletePeriodsQuery, origin)
+}
+
+// Returns the start timestamp of each period that has the same or more local rows than remote
+func (db *PostgresqlDatabase) selectPeriods(query string, origin string) (map[time.Time]struct{}, error) {
+	result := map[time.Time]struct{}{}
+	rows, err := db.GetConnection().Query(context.Background(), query, origin)
 	if err != nil {
-		return -1, err
+		return result, err
 	}
 	defer rows.Close()
-	var count int
-	rows.Next()
-	rows.Scan(&count)
-
-	return count, nil
-}
-
-func (db *PostgresqlDatabase) InsertRemoteData(message message.TransferRequest) {
-	for _, err := db.GetConnection().Exec(context.Background(), insertTransferQuery, message.Origin, message.PeriodStart, message.PeriodEnd, message.LocalDataPoints); err != nil; {
-		logger.GetLogger().Warn(
-			"Error on inserting the received data in the database",
-			zap.String("Error", err.Error()),
-			zap.String("Query", insertTransferQuery),
-			zap.String("Origin", message.Origin),
-			zap.Time("Start", message.PeriodStart),
-			zap.Time("End", message.PeriodEnd),
-			zap.Int("Local", message.LocalDataPoints),
-		)
-	}
-}
-
-func (db *PostgresqlDatabase) UpdateRemoteDataRemotePoints(message message.TransferRequest) {
-	for _, err := db.GetConnection().Exec(context.Background(), updateRemoteQuery, message.Origin, message.PeriodStart, message.PeriodEnd, message.RemoteDataPoints); err != nil; {
-		logger.GetLogger().Warn(
-			"Error on updating the received data in the database",
-			zap.String("Error", err.Error()),
-			zap.String("Query", insertTransferQuery),
-			zap.String("Origin", message.Origin),
-			zap.Time("Start", message.PeriodStart),
-			zap.Time("End", message.PeriodEnd),
-			zap.Int("Remote", message.RemoteDataPoints),
-		)
-	}
-}
-
-func (db *PostgresqlDatabase) UpdateRemoteDataLocalPoints(message message.TransferRequest) {
-	for _, err := db.GetConnection().Exec(context.Background(), updateLocaleQuery, message.Origin, message.PeriodStart, message.PeriodEnd, message.LocalDataPoints); err != nil; {
-		logger.GetLogger().Warn(
-			"Error on updating the received data in the database",
-			zap.String("Error", err.Error()),
-			zap.String("Query", insertTransferQuery),
-			zap.String("Origin", message.Origin),
-			zap.Time("Start", message.PeriodStart),
-			zap.Time("End", message.PeriodEnd),
-			zap.Int("Local", message.LocalDataPoints),
-		)
-	}
-}
-
-func (db *PostgresqlDatabase) CreateTransferRequests(appendToQuery string, arguments ...interface{}) ([]message.TransferRequest, error) {
-	rows, err := db.GetConnection().Query(context.Background(), fmt.Sprintf("%s %s", selectTransferQuery, appendToQuery), arguments...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	result := make([]message.TransferRequest, 0)
-	var local pgtype.Int4
-	var remote pgtype.Int4
+	var completedPeriod time.Time
 	for rows.Next() {
-		m := message.TransferRequest{}
-		rows.Scan(
-			&m.Origin,
-			&m.PeriodStart,
-			&m.PeriodEnd,
-			&local,
-			&remote,
-		)
-		m.LocalDataPoints = int(local.Int)
-		m.RemoteDataPoints = int(remote.Int)
-		result = append(result, m)
+		rows.Scan(&completedPeriod)
+		result[completedPeriod] = struct{}{}
 	}
-
 	return result, nil
+}
+
+// Creates a period in the database, the default value for the local data points is -1
+func (db *PostgresqlDatabase) CreatePeriod(origin string, start time.Time, end time.Time, remote int) error {
+	_, err := db.GetConnection().Exec(context.Background(), insertOrUpdatePeriodQuery, origin, start, end, remote)
+	return err
+}
+
+// Update the local data points in the database
+func (db *PostgresqlDatabase) UpdateLocalDataPoints(origin string, start time.Time, end time.Time, dataPoints int) error {
+	_, err := db.GetConnection().Exec(context.Background(), updateLocalDataPoints, origin, start, end, dataPoints)
+	return err
+}
+
+func (db *PostgresqlDatabase) SelectLocalAndRemoteDataPoints(origin string, start time.Time, end time.Time) (int, int, error) {
+	rows, err := db.GetConnection().Query(context.Background(), selectLocalAndRemoteDataPoints, origin, start, end)
+	if err != nil {
+		return -1, -1, err
+	}
+	defer rows.Close()
+	var local int
+	var remote int
+	rows.Next()
+	rows.Scan(&local, &remote)
+	return local, remote, nil
 }
 
 func (db *PostgresqlDatabase) UpgradeDatabase() error {

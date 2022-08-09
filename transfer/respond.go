@@ -10,7 +10,6 @@ import (
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/database"
 	"github.com/munnik/gosk/logger"
-	"github.com/munnik/gosk/message"
 	"go.nanomsg.org/mangos/v3"
 	"go.uber.org/zap"
 )
@@ -31,7 +30,8 @@ func NewTransferResponder(c *config.TransferConfig) *TransferResponder {
 	return &TransferResponder{db: database.NewPostgresqlDatabase(&c.PostgresqlConfig), config: c}
 }
 
-func (t *TransferResponder) ReadCommands(publisher mangos.Socket) {
+func (t *TransferResponder) Run(publisher mangos.Socket) {
+	// listen for requests
 	t.publisher = publisher
 	t.mqttClient = mqtt.NewClient(t.createClientOptions())
 	if token := t.mqttClient.Connect(); token.Wait() && token.Error() != nil {
@@ -48,6 +48,87 @@ func (t *TransferResponder) ReadCommands(publisher mangos.Socket) {
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
 	wg.Wait()
+}
+
+func (t *TransferResponder) requestReceived(request RequestMessage) {
+	switch request.Command {
+	case requestCountCmd:
+		t.respondWithCount(request.PeriodStart)
+
+	case requestDataCmd:
+		t.injectData(request.PeriodStart)
+	default:
+		logger.GetLogger().Warn(
+			"Unknown command in request",
+			zap.String("Command", request.Command),
+		)
+	}
+}
+
+func (t *TransferResponder) respondWithCount(period time.Time) {
+	count, err := t.db.ReadMappedCount(period, period.Add(periodDuration))
+	if err != nil {
+		logger.GetLogger().Warn(
+			"Could not retrieve count of mapped data from database",
+			zap.String("Error", err.Error()),
+		)
+		return
+	}
+	response := ResponseMessage{
+		DataPoints:  count,
+		PeriodStart: period,
+	}
+	t.sendMQTTResponse(response)
+}
+
+func (t *TransferResponder) injectData(period time.Time) {
+	deltas, err := t.db.ReadMapped(`WHERE "time" BETWEEN $1 AND $2`, period, period.Add(periodDuration))
+	if err != nil {
+		logger.GetLogger().Warn(
+			"Could not retrieve count of mapped data from database",
+			zap.String("Error", err.Error()),
+		)
+		return
+	}
+
+	for _, delta := range deltas {
+		bytes, err := json.Marshal(delta)
+		if err != nil {
+			logger.GetLogger().Warn(
+				"Could not marshal delta",
+				zap.String("Error", err.Error()),
+			)
+			continue
+		}
+		time.Sleep(100 * time.Millisecond) // slow down to stop db from crashing
+		if err := t.publisher.Send(bytes); err != nil {
+			logger.GetLogger().Warn(
+				"Unable to send the message using NanoMSG",
+				zap.ByteString("Message", bytes),
+				zap.String("Error", err.Error()),
+			)
+			continue
+		}
+	}
+}
+
+func (t *TransferResponder) sendMQTTResponse(message ResponseMessage) {
+	bytes, err := json.Marshal(message)
+	if err != nil {
+		logger.GetLogger().Warn(
+			"Could not marshall the response message",
+			zap.String("Error", err.Error()),
+		)
+		return
+	}
+	topic := fmt.Sprintf(respondTopic, t.config.Origin)
+	if token := t.mqttClient.Publish(topic, 0, true, bytes); token.Wait() && token.Error() != nil {
+		logger.GetLogger().Warn(
+			"Could not publish a message via MQTT",
+			zap.String("Error", token.Error().Error()),
+			zap.ByteString("Bytes", bytes),
+		)
+	}
 }
 
 func (t *TransferResponder) createClientOptions() *mqtt.ClientOptions {
@@ -78,26 +159,6 @@ func (t *TransferResponder) connectHandler(c mqtt.Client) {
 		)
 		return
 	}
-}
-
-func (t *TransferResponder) messageReceived(c mqtt.Client, m mqtt.Message) {
-	var command CommandMessage
-	if err := json.Unmarshal(m.Payload(), &command); err != nil {
-		logger.GetLogger().Warn(
-			"Could not unmarshal buffer",
-			zap.String("Error", err.Error()),
-			zap.ByteString("Bytes", m.Payload()),
-		)
-		return
-	}
-
-	switch command.Command {
-	case requestCountCmd:
-		t.respondWithCount(command.Request)
-
-	case requestDataCmd:
-		t.injectData(command.Request)
-	}
 
 }
 func (t *TransferResponder) disconnectHandler(c mqtt.Client, e error) {
@@ -109,66 +170,15 @@ func (t *TransferResponder) disconnectHandler(c mqtt.Client, e error) {
 	}
 }
 
-func (t *TransferResponder) respondWithCount(request message.TransferRequest) {
-	count, err := t.db.ReadMappedCount(betweenIntervalWhereClause, request.Origin, request.PeriodStart, request.PeriodEnd)
-	if err != nil {
+func (t *TransferResponder) messageReceived(c mqtt.Client, m mqtt.Message) {
+	var request RequestMessage
+	if err := json.Unmarshal(m.Payload(), &request); err != nil {
 		logger.GetLogger().Warn(
-			"Could not retrieve count of mapped data from database",
+			"Could not unmarshal buffer",
 			zap.String("Error", err.Error()),
+			zap.ByteString("Bytes", m.Payload()),
 		)
 		return
 	}
-	reply := message.TransferRequest{
-		Origin:           request.Origin,
-		PeriodStart:      request.PeriodStart,
-		PeriodEnd:        request.PeriodEnd,
-		RemoteDataPoints: count,
-	}
-	bytes, err := json.Marshal(reply)
-	if err != nil {
-		logger.GetLogger().Warn(
-			"Could not marshall the deltas",
-			zap.String("Error", err.Error()),
-		)
-		return
-	}
-	topic := fmt.Sprintf(respondTopic, t.config.Origin)
-	if token := t.mqttClient.Publish(topic, 0, false, bytes); token.Wait() && token.Error() != nil {
-		logger.GetLogger().Warn(
-			"Could not publish a message via MQTT",
-			zap.String("Error", token.Error().Error()),
-			zap.ByteString("Bytes", bytes),
-		)
-	}
-}
-
-func (t *TransferResponder) injectData(request message.TransferRequest) {
-	deltas, err := t.db.ReadMapped(betweenIntervalWhereClause, request.Origin, request.PeriodStart.Format(time.RFC3339), request.PeriodEnd.Format(time.RFC3339))
-	if err != nil {
-		logger.GetLogger().Warn(
-			"Could not retrieve count of mapped data from database",
-			zap.String("Error", err.Error()),
-		)
-		return
-	}
-
-	for _, delta := range deltas {
-		bytes, err := json.Marshal(delta)
-		if err != nil {
-			logger.GetLogger().Warn(
-				"Could not marshal delta",
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
-		time.Sleep(100 * time.Millisecond) // slow down to stop db from crashing
-		if err := t.publisher.Send(bytes); err != nil {
-			logger.GetLogger().Warn(
-				"Unable to send the message using NanoMSG",
-				zap.ByteString("Message", bytes),
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
-	}
+	t.requestReceived(request)
 }

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/antonmedv/expr/vm"
+	"github.com/mitchellh/mapstructure"
 	"github.com/munnik/gosk/logger"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
@@ -247,10 +248,16 @@ func (c *SignalKConfig) WithVersion(version string) *SignalKConfig {
 	return c
 }
 
+type OriginsConfig struct {
+	Origin string    `mapstructure:"origin"`
+	Epoch  time.Time `mapstructure:"epoch"`
+}
+
 type TransferConfig struct {
 	PostgresqlConfig PostgresqlConfig `mapstructure:"_"`
 	MQTTConfig       MQTTConfig       `mapstructure:"_"`
 	Origin           string           `mapstructure:"origin"`
+	Origins          []OriginsConfig  `mapstructure:"origins"`
 }
 
 func NewTransferConfig(configFilePath string) *TransferConfig {
@@ -284,7 +291,14 @@ func readConfigFile(result interface{}, configFilePath string, subKeys ...string
 
 	var err error
 	if len(subKeys) == 0 {
-		err = viper.Unmarshal(result)
+		err = viper.Unmarshal(
+			result,
+			viper.DecodeHook(
+				mapstructure.ComposeDecodeHookFunc(
+					mapstructure.StringToTimeHookFunc(time.RFC3339),
+				),
+			),
+		)
 	} else {
 		err = viper.UnmarshalKey(subKeys[0], result)
 	}

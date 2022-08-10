@@ -17,13 +17,18 @@ import (
 const (
 	disconnectWait = 5 * time.Second
 	keepAlive      = 30 * time.Second
+	noOfWorkers    = 4
+	queueSize      = 1_000_000 // should cover almost 10 years of periods
 )
 
 type TransferResponder struct {
-	db         *database.PostgresqlDatabase
-	config     *config.TransferConfig
-	mqttClient mqtt.Client
-	publisher  mangos.Socket
+	db                     *database.PostgresqlDatabase
+	config                 *config.TransferConfig
+	mqttClient             mqtt.Client
+	publisher              mangos.Socket
+	injectWorkerChannel    chan time.Time
+	uniquePeriodsTodo      map[time.Time]struct{}
+	uniquePeriodsTodoMutex sync.Mutex
 }
 
 func NewTransferResponder(c *config.TransferConfig) *TransferResponder {
@@ -31,6 +36,10 @@ func NewTransferResponder(c *config.TransferConfig) *TransferResponder {
 }
 
 func (t *TransferResponder) Run(publisher mangos.Socket) {
+	t.injectWorkerChannel = make(chan time.Time, queueSize)
+	t.uniquePeriodsTodo = make(map[time.Time]struct{})
+	go t.startInjectDataWorkers()
+
 	// listen for requests
 	t.publisher = publisher
 	t.mqttClient = mqtt.NewClient(t.createClientOptions())
@@ -56,7 +65,14 @@ func (t *TransferResponder) requestReceived(request RequestMessage) {
 		t.respondWithCount(request.PeriodStart)
 
 	case requestDataCmd:
-		t.injectData(request.PeriodStart)
+		t.uniquePeriodsTodoMutex.Lock()
+		defer t.uniquePeriodsTodoMutex.Unlock()
+
+		// only if the period is not yet on the list, add it
+		if _, ok := t.uniquePeriodsTodo[request.PeriodStart]; !ok {
+			t.uniquePeriodsTodo[request.PeriodStart] = struct{}{}
+			t.injectWorkerChannel <- request.PeriodStart
+		}
 	default:
 		logger.GetLogger().Warn(
 			"Unknown command in request",
@@ -81,6 +97,20 @@ func (t *TransferResponder) respondWithCount(period time.Time) {
 	t.sendMQTTResponse(response)
 }
 
+func (t *TransferResponder) startInjectDataWorkers() {
+	var wg sync.WaitGroup
+	wg.Add(noOfWorkers)
+	for i := 0; i < noOfWorkers; i++ {
+		go func() {
+			for period := range t.injectWorkerChannel {
+				t.injectData(period)
+			}
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+}
+
 func (t *TransferResponder) injectData(period time.Time) {
 	deltas, err := t.db.ReadMapped(`WHERE "time" BETWEEN $1 AND $2`, period, period.Add(periodDuration))
 	if err != nil {
@@ -100,7 +130,6 @@ func (t *TransferResponder) injectData(period time.Time) {
 			)
 			continue
 		}
-		time.Sleep(100 * time.Millisecond) // slow down to stop db from crashing
 		if err := t.publisher.Send(bytes); err != nil {
 			logger.GetLogger().Warn(
 				"Unable to send the message using NanoMSG",
@@ -110,6 +139,11 @@ func (t *TransferResponder) injectData(period time.Time) {
 			continue
 		}
 	}
+
+	// after sending the period it can be removed from the list of todo periods
+	t.uniquePeriodsTodoMutex.Lock()
+	defer t.uniquePeriodsTodoMutex.Unlock()
+	delete(t.uniquePeriodsTodo, period)
 }
 
 func (t *TransferResponder) sendMQTTResponse(message ResponseMessage) {

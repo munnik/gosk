@@ -10,6 +10,7 @@ import (
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/database"
 	"github.com/munnik/gosk/logger"
+	"github.com/munnik/uniqueue"
 	"go.nanomsg.org/mangos/v3"
 	"go.uber.org/zap"
 )
@@ -22,13 +23,11 @@ const (
 )
 
 type TransferResponder struct {
-	db                     *database.PostgresqlDatabase
-	config                 *config.TransferConfig
-	mqttClient             mqtt.Client
-	publisher              mangos.Socket
-	injectWorkerChannel    chan time.Time
-	uniquePeriodsTodo      map[time.Time]struct{}
-	uniquePeriodsTodoMutex sync.Mutex
+	db                  *database.PostgresqlDatabase
+	config              *config.TransferConfig
+	mqttClient          mqtt.Client
+	publisher           mangos.Socket
+	injectWorkerChannel *uniqueue.UQ[time.Time]
 }
 
 func NewTransferResponder(c *config.TransferConfig) *TransferResponder {
@@ -36,8 +35,7 @@ func NewTransferResponder(c *config.TransferConfig) *TransferResponder {
 }
 
 func (t *TransferResponder) Run(publisher mangos.Socket) {
-	t.injectWorkerChannel = make(chan time.Time, queueSize)
-	t.uniquePeriodsTodo = make(map[time.Time]struct{})
+	t.injectWorkerChannel = uniqueue.NewUQ[time.Time](queueSize)
 	go t.startInjectDataWorkers()
 
 	// listen for requests
@@ -65,14 +63,7 @@ func (t *TransferResponder) requestReceived(request RequestMessage) {
 		t.respondWithCount(request.PeriodStart)
 
 	case requestDataCmd:
-		t.uniquePeriodsTodoMutex.Lock()
-		defer t.uniquePeriodsTodoMutex.Unlock()
-
-		// only if the period is not yet on the list, add it
-		if _, ok := t.uniquePeriodsTodo[request.PeriodStart]; !ok {
-			t.uniquePeriodsTodo[request.PeriodStart] = struct{}{}
-			t.injectWorkerChannel <- request.PeriodStart
-		}
+		t.injectWorkerChannel.Back() <- request.PeriodStart
 	default:
 		logger.GetLogger().Warn(
 			"Unknown command in request",
@@ -102,7 +93,7 @@ func (t *TransferResponder) startInjectDataWorkers() {
 	wg.Add(noOfWorkers)
 	for i := 0; i < noOfWorkers; i++ {
 		go func() {
-			for period := range t.injectWorkerChannel {
+			for period := range t.injectWorkerChannel.Front() {
 				t.injectData(period)
 			}
 			wg.Done()
@@ -141,9 +132,7 @@ func (t *TransferResponder) injectData(period time.Time) {
 	}
 
 	// after sending the period it can be removed from the list of todo periods
-	t.uniquePeriodsTodoMutex.Lock()
-	defer t.uniquePeriodsTodoMutex.Unlock()
-	delete(t.uniquePeriodsTodo, period)
+	t.injectWorkerChannel.RemoveUnique(period)
 }
 
 func (t *TransferResponder) sendMQTTResponse(message ResponseMessage) {

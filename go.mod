@@ -1,6 +1,6 @@
 module github.com/munnik/gosk
 
-go 1.17
+go 1.18
 
 require (
 	github.com/Jeffail/gabs v1.4.0
@@ -18,6 +18,7 @@ require (
 	github.com/klauspost/compress v1.15.9
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/munnik/go-nmea v1.5.0
+	github.com/munnik/uniqueue v0.0.1
 	github.com/onsi/ginkgo/v2 v2.1.2
 	github.com/onsi/gomega v1.18.1
 	github.com/simonvetter/modbus v1.5.0

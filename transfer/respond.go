@@ -57,6 +57,7 @@ func (t *TransferResponder) requestReceived(request RequestMessage) {
 
 	case requestDataCmd:
 		t.injectData(request.PeriodStart)
+
 	default:
 		logger.GetLogger().Warn(
 			"Unknown command in request",

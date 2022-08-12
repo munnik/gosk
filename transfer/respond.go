@@ -132,7 +132,7 @@ func (t *TransferResponder) injectData(period time.Time) {
 	}
 
 	// after sending the period it can be removed from the list of todo periods
-	t.injectWorkerChannel.RemoveUnique(period)
+	t.injectWorkerChannel.RemoveConstraint(period)
 }
 
 func (t *TransferResponder) sendMQTTResponse(message ResponseMessage) {

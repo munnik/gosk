@@ -50,7 +50,6 @@ func (t *TransferRequester) Run() {
 	go func() {
 		for {
 			t.sendDataRequests()
-			time.Sleep(5 * time.Minute)
 		}
 	}()
 	// never exit
@@ -108,6 +107,9 @@ func (t *TransferRequester) sendCountRequests() {
 func (t *TransferRequester) sendDataRequests() {
 	for _, origin := range t.origins {
 		go func(origin string) {
+			// wait random amount of time before processing to spread the workload
+			time.Sleep(time.Duration(rand.Intn(int(2 * time.Hour))))
+
 			incompletePeriods, err := t.db.SelectIncompletePeriods(origin)
 			if err != nil {
 				logger.GetLogger().Warn(

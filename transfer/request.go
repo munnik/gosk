@@ -3,6 +3,7 @@ package transfer
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"strings"
 	"sync"
 	"time"
@@ -42,7 +43,6 @@ func (t *TransferRequester) Run() {
 	go func() {
 		for {
 			t.sendCountRequests()
-			time.Sleep(1 * time.Hour)
 		}
 	}()
 
@@ -60,6 +60,8 @@ func (t *TransferRequester) Run() {
 }
 
 func (t *TransferRequester) sendCountRequests() {
+	rand.Seed(time.Now().UnixNano())
+
 	wg := new(sync.WaitGroup)
 	wg.Add(len(t.origins))
 
@@ -67,6 +69,9 @@ func (t *TransferRequester) sendCountRequests() {
 
 	for _, origin := range t.origins {
 		go func(origin string, epoch time.Time) {
+			// wait random amount of time before processing to spread the workload
+			time.Sleep(time.Duration(rand.Intn(int(2 * time.Hour))))
+
 			completePeriods, err := t.db.SelectCompletePeriods(origin)
 			if err != nil {
 				logger.GetLogger().Warn(

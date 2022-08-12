@@ -70,7 +70,7 @@ func (t *TransferRequester) sendCountRequests() {
 	for _, origin := range t.origins {
 		go func(origin string, epoch time.Time) {
 			// wait random amount of time before processing to spread the workload
-			time.Sleep(time.Duration(rand.Intn(2 * 60 * 60 * 1000 * 1000)))
+			time.Sleep(time.Duration(rand.Intn(int(2 * time.Hour))))
 
 			completePeriods, err := t.db.SelectCompletePeriods(origin)
 			if err != nil {

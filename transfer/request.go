@@ -69,7 +69,7 @@ func (t *TransferRequester) sendCountRequests() {
 	for _, origin := range t.origins {
 		go func(origin string, epoch time.Time) {
 			// wait random amount of time before processing to spread the workload
-			time.Sleep(time.Duration(rand.Intn(int(2 * time.Hour))))
+			time.Sleep(time.Duration(rand.Intn(int(30 * time.Minute))))
 
 			completePeriods, err := t.db.SelectCompletePeriods(origin)
 			if err != nil {
@@ -105,6 +105,8 @@ func (t *TransferRequester) sendCountRequests() {
 }
 
 func (t *TransferRequester) sendDataRequests() {
+	rand.Seed(time.Now().UnixNano())
+
 	for _, origin := range t.origins {
 		go func(origin string) {
 			// wait random amount of time before processing to spread the workload

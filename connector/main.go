@@ -15,7 +15,7 @@ const (
 
 // Connector interface
 type Connector interface {
-	Connect(publisher mangos.Socket)
+	Connect(publisher mangos.Socket, subscriber mangos.Socket)
 }
 
 func process(c <-chan []byte, connector string, protocol string, publisher mangos.Socket) {

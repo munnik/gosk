@@ -1,4 +1,4 @@
-package collector
+package connector
 
 import (
 	"bufio"
@@ -15,21 +15,31 @@ import (
 	"go.uber.org/zap"
 )
 
-// LineCollector reads lines from the connection and sends it on the mangos socket
-type LineCollector struct {
-	config *config.CollectorConfig
+// LineConnector reads lines from the connection and sends it on the mangos socket
+type LineConnector struct {
+	config *config.ConnectorConfig
 }
 
-func NewLineCollector(c *config.CollectorConfig) (*LineCollector, error) {
-	return &LineCollector{config: c}, nil
+func NewLineConnector(c *config.ConnectorConfig) (*LineConnector, error) {
+	return &LineConnector{config: c}, nil
 }
 
-func (r *LineCollector) Collect(publisher mangos.Socket) {
-	stream := make(chan []byte, 1)
-	defer close(stream)
+func (r *LineConnector) Connect(publisher mangos.Socket) {
+	readWriter, err := r.createReadWriter()
+	if err != nil {
+		logger.GetLogger().Fatal(
+			"Unable to create a readWriter",
+			zap.String("Error", err.Error()),
+		)
+		return
+	}
+
+	// receive data from the connection
+	c := make(chan []byte, receiveChannelBufferSize)
+	defer close(c)
 	go func() {
 		for {
-			if err := r.receive(stream); err != nil {
+			if err := r.scan(readWriter, c); err != nil {
 				logger.GetLogger().Warn(
 					"Error while receiving data for the stream",
 					zap.String("URL", r.config.URL.String()),
@@ -38,25 +48,17 @@ func (r *LineCollector) Collect(publisher mangos.Socket) {
 			}
 		}
 	}()
-	process(stream, r.config.Name, r.config.Protocol, publisher)
+	process(c, r.config.Name, r.config.Protocol, publisher)
 }
 
-func (l *LineCollector) receive(stream chan<- []byte) error {
-	reader, err := l.createReader()
-	if err != nil {
-		return err
-	}
-	return l.scan(reader, stream)
-}
-
-func (l LineCollector) createReader() (io.Reader, error) {
-	var reader io.Reader
+func (l LineConnector) createReadWriter() (io.ReadWriter, error) {
+	var readWriter io.ReadWriter
 	var err error
 	for {
 		if l.config.URL.Scheme == "tcp" || l.config.URL.Scheme == "udp" {
-			reader, err = l.createNetworkReader()
+			readWriter, err = l.createNetworkReadWriter()
 			if err == nil {
-				break
+				return readWriter, nil
 			}
 			logger.GetLogger().Warn(
 				"Unable to create a reader, retrying in 5 seconds",
@@ -65,9 +67,10 @@ func (l LineCollector) createReader() (io.Reader, error) {
 			)
 			time.Sleep(5 * time.Second)
 		} else if l.config.URL.Scheme == "file" {
-			reader, err = l.createFileReader()
+			readWriter, err = l.createFileReadWriter()
 			if err == nil {
-				break
+				return readWriter, nil
+
 			}
 			logger.GetLogger().Warn(
 				"Unable to create a reader, retrying in 5 seconds",
@@ -79,10 +82,9 @@ func (l LineCollector) createReader() (io.Reader, error) {
 			return nil, fmt.Errorf("unsupported connection scheme %v", l.config.URL.Scheme)
 		}
 	}
-	return reader, nil
 }
 
-func (l LineCollector) createNetworkReader() (io.Reader, error) {
+func (l LineConnector) createNetworkReadWriter() (io.ReadWriter, error) {
 	if l.config.Listen {
 		if l.config.URL.Scheme == "tcp" {
 			listener, err := net.Listen(l.config.URL.Scheme, fmt.Sprintf("%s:%s", l.config.URL.Hostname(), l.config.URL.Port()))
@@ -100,7 +102,7 @@ func (l LineCollector) createNetworkReader() (io.Reader, error) {
 				return nil, fmt.Errorf("unable to listen on %v, the error that occurred was %v", l.config.URL.String(), err)
 			}
 			// TODO: test
-			return UdpListenerReader{conn: conn}, nil
+			return UdpListenerReadWriter{conn: conn}, nil
 		}
 	} else {
 		conn, err := net.Dial(l.config.URL.Scheme, fmt.Sprintf("%s:%s", l.config.URL.Hostname(), l.config.URL.Port()))
@@ -112,15 +114,15 @@ func (l LineCollector) createNetworkReader() (io.Reader, error) {
 	return nil, nil
 }
 
-func (l LineCollector) createFileReader() (io.Reader, error) {
+func (l LineConnector) createFileReadWriter() (io.ReadWriter, error) {
 	fi, err := os.Stat(l.config.URL.Path)
 	if err != nil {
 		return nil, fmt.Errorf("unable to stat the file %v, the error that occurred was %v", l.config.URL.Path, err)
 	}
-	var reader io.Reader
+	var readWriter io.ReadWriter
 	if fi.Mode()&os.ModeCharDevice == os.ModeCharDevice {
 		// the file is a serial device
-		reader, err = serial.Open(&serial.Config{
+		readWriter, err = serial.Open(&serial.Config{
 			Address:  l.config.URL.Path,
 			BaudRate: l.config.BaudRate,
 			DataBits: l.config.DataBits,
@@ -131,15 +133,15 @@ func (l LineCollector) createFileReader() (io.Reader, error) {
 			return nil, fmt.Errorf("unable to open the port %v for reading, the error that occurred was %v", l.config.URL.Path, err)
 		}
 	} else {
-		reader, err = os.Open(l.config.URL.Path)
+		readWriter, err = os.Open(l.config.URL.Path)
 		if err != nil {
 			return nil, fmt.Errorf("unable to open the file %v for reading, the error that occurred was %v", l.config.URL.Path, err)
 		}
 	}
-	return reader, nil
+	return readWriter, nil
 }
 
-func (l LineCollector) scan(reader io.Reader, stream chan<- []byte) error {
+func (l LineConnector) scan(reader io.Reader, stream chan<- []byte) error {
 	scanner := bufio.NewScanner(reader)
 	for scanner.Scan() {
 		stream <- scanner.Bytes()
@@ -150,12 +152,16 @@ func (l LineCollector) scan(reader io.Reader, stream chan<- []byte) error {
 	return nil
 }
 
-// UdpListenerReader implements the io.Reader interface
-type UdpListenerReader struct {
+// UdpListenerReadWriter implements the io.ReadWriter interface
+type UdpListenerReadWriter struct {
 	conn net.PacketConn
 }
 
-func (u UdpListenerReader) Read(p []byte) (n int, err error) {
+func (u UdpListenerReadWriter) Read(p []byte) (n int, err error) {
 	size, _, err := u.conn.ReadFrom(p)
 	return size, err
+}
+
+func (u UdpListenerReadWriter) Write(p []byte) (n int, err error) {
+	return 0, fmt.Errorf("could not write connection is listen only")
 }

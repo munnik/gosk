@@ -40,7 +40,7 @@ func (m *Nmea0183Mapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		}
 	}
 
-	s := message.NewSource().WithLabel(r.Collector).WithType(m.protocol).WithUuid(r.Uuid)
+	s := message.NewSource().WithLabel(r.Connector).WithType(m.protocol).WithUuid(r.Uuid)
 	u := message.NewUpdate().WithSource(*s).WithTimestamp(r.Timestamp)
 
 	if v, ok := sentence.(nmea.MMSI); ok {

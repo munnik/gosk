@@ -3,8 +3,8 @@
 make
 pkill gosk
 
-./gosk collect -p "tcp://127.0.0.1:6001" --config "config/collector/c32.yaml" &
-./gosk collect -p "tcp://127.0.0.1:6002" --config "config/collector/zmg.yaml" &
+./gosk collect -p "tcp://127.0.0.1:6001" --config "config/connector/c32.yaml" &
+./gosk collect -p "tcp://127.0.0.1:6002" --config "config/connector/zmg.yaml" &
 
 sleep 1
 

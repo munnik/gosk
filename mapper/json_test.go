@@ -32,7 +32,7 @@ var _ = Describe("DoMap json", func() {
 		Entry("With empty value",
 			mapper,
 			func() *message.Raw {
-				m := message.NewRaw().WithCollector("testingCollector").WithType(config.JSONType).WithValue([]byte{})
+				m := message.NewRaw().WithConnector("testingConnector").WithType(config.JSONType).WithValue([]byte{})
 				m.Uuid = uuid.Nil
 				m.Timestamp = now
 				return m
@@ -43,14 +43,14 @@ var _ = Describe("DoMap json", func() {
 		Entry("With torque json",
 			mapper,
 			func() *message.Raw {
-				m := message.NewRaw().WithCollector("testingCollector").WithType(config.JSONType).WithValue([]byte(`{"hn":"DERR1","seq":"19218188","trq":"82.29","spd":"980","pwr":"8409.6","tmp":"26.9","sps":"1000","ax":"16","ay":"8","az":"262","dt":"20180404143809"}`))
+				m := message.NewRaw().WithConnector("testingConnector").WithType(config.JSONType).WithValue([]byte(`{"hn":"DERR1","seq":"19218188","trq":"82.29","spd":"980","pwr":"8409.6","tmp":"26.9","sps":"1000","ax":"16","ay":"8","az":"262","dt":"20180404143809"}`))
 				m.Uuid = uuid.Nil
 				m.Timestamp = now
 				return m
 			}(),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingCollector").WithType(config.JSONType).WithUuid(uuid.Nil),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(

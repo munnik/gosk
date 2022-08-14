@@ -21,9 +21,9 @@ import (
 )
 
 const (
-	rawInsertQuery                 = `INSERT INTO "raw_data" ("time", "collector", "value", "uuid", "type") VALUES ($1, $2, $3, $4, $5) ON CONFLICT ("time", "collector", "value", "uuid", "type") DO NOTHING`
-	mappedInsertQuery              = `INSERT INTO "mapped_data" ("time", "collector", "type", "context", "path", "value", "uuid", "origin") VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT ("time", "collector", "type", "context", "path", "value", "uuid", "origin") DO NOTHING`
-	selectMappedQuery              = `SELECT "time", "collector", "type", "context", "path", "value", "uuid", "origin" FROM "mapped_data"`
+	rawInsertQuery                 = `INSERT INTO "raw_data" ("time", "connector", "value", "uuid", "type") VALUES ($1, $2, $3, $4, $5) ON CONFLICT ("time", "connector", "value", "uuid", "type") DO NOTHING`
+	mappedInsertQuery              = `INSERT INTO "mapped_data" ("time", "connector", "type", "context", "path", "value", "uuid", "origin") VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT ("time", "connector", "type", "context", "path", "value", "uuid", "origin") DO NOTHING`
+	selectMappedQuery              = `SELECT "time", "connector", "type", "context", "path", "value", "uuid", "origin" FROM "mapped_data"`
 	selectMappedDataPointsQuery    = `SELECT count(*) FROM "mapped_data" WHERE "time" BETWEEN $1 AND $2`
 	selectCompletePeriodsQuery     = `SELECT "start" FROM "remote_data" WHERE "origin" = $1 AND "local" >= "remote"`
 	selectIncompletePeriodsQuery   = `SELECT "start" FROM "remote_data" WHERE "origin" = $1 AND "local" < "remote"`
@@ -98,13 +98,13 @@ func (db *PostgresqlDatabase) GetConnection() *pgxpool.Pool {
 }
 
 func (db *PostgresqlDatabase) WriteRaw(raw message.Raw) {
-	for _, err := db.GetConnection().Exec(context.Background(), rawInsertQuery, raw.Timestamp, raw.Collector, raw.Value, raw.Uuid, raw.Type); err != nil; {
+	for _, err := db.GetConnection().Exec(context.Background(), rawInsertQuery, raw.Timestamp, raw.Connector, raw.Value, raw.Uuid, raw.Type); err != nil; {
 		logger.GetLogger().Warn(
 			"Error on inserting the received data in the database",
 			zap.String("Error", err.Error()),
 			zap.String("Query", rawInsertQuery),
 			zap.Time("Timestamp", raw.Timestamp),
-			zap.String("Collector", raw.Collector),
+			zap.String("Connector", raw.Connector),
 			zap.ByteString("Value", raw.Value),
 			zap.String("UUID", raw.Uuid.String()),
 			zap.String("Type", raw.Type),

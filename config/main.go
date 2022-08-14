@@ -35,7 +35,7 @@ const (
 	InputRegisters
 )
 
-type CollectorConfig struct {
+type ConnectorConfig struct {
 	Name         string   `mapstructure:"name"`
 	URL          *url.URL `mapstructure:"_"`
 	URLString    string   `mapstructure:"url"`
@@ -48,8 +48,8 @@ type CollectorConfig struct {
 	Protocol     string   `mapstructure:"protocol"`
 }
 
-func NewCollectorConfig(configFilePath string) *CollectorConfig {
-	result := &CollectorConfig{
+func NewConnectorConfig(configFilePath string) *ConnectorConfig {
+	result := &ConnectorConfig{
 		Listen:       false,
 		BaudRate:     4800,
 		DataBits:     8,

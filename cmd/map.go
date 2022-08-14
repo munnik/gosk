@@ -80,7 +80,7 @@ func doMap(cmd *cobra.Command, args []string) {
 	}
 	if err != nil {
 		logger.GetLogger().Fatal(
-			"Error while creating the collector",
+			"Error while creating the connector",
 			zap.String("Config file", cfgFile),
 			zap.String("Error", err.Error()),
 		)

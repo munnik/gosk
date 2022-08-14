@@ -62,7 +62,7 @@ var _ = Describe("Test database", Ordered, func() {
 		func(input message.Mapped, expected message.Mapped) {
 			db.WriteMapped(input)
 
-			mappedSelectQuery := `SELECT "time", "collector", "type", "context", "path", "value", "uuid", "origin" FROM "mapped_data" WHERE "uuid" = $1`
+			mappedSelectQuery := `SELECT "time", "connector", "type", "context", "path", "value", "uuid", "origin" FROM "mapped_data" WHERE "uuid" = $1`
 			var written *message.Mapped
 			rows, err := db.GetConnection().Query(context.Background(), mappedSelectQuery, input.Updates[0].Source.Uuid)
 			Expect(err).ShouldNot(HaveOccurred())

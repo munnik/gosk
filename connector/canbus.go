@@ -1,4 +1,4 @@
-package collector
+package connector
 
 import (
 	"encoding/binary"
@@ -11,20 +11,20 @@ import (
 	"github.com/brutella/can"
 )
 
-type CanBusCollector struct {
-	config *config.CollectorConfig
+type CanBusConnector struct {
+	config *config.ConnectorConfig
 }
 
-func NewCanBusCollector(c *config.CollectorConfig) (*CanBusCollector, error) {
-	return &CanBusCollector{config: c}, nil
+func NewCanBusConnector(c *config.ConnectorConfig) (*CanBusConnector, error) {
+	return &CanBusConnector{config: c}, nil
 }
 
-func (r *CanBusCollector) Collect(publisher mangos.Socket) {
-	stream := make(chan []byte, 1)
-	defer close(stream)
+func (r *CanBusConnector) Connect(publisher mangos.Socket) {
+	c := make(chan []byte, receiveChannelBufferSize)
+	defer close(c)
 	go func() {
 		for {
-			if err := r.receive(stream); err != nil {
+			if err := r.receive(c); err != nil {
 				logger.GetLogger().Warn(
 					"Error while receiving data for the stream",
 					zap.String("URL", r.config.URL.String()),
@@ -33,26 +33,24 @@ func (r *CanBusCollector) Collect(publisher mangos.Socket) {
 			}
 		}
 	}()
-	process(stream, r.config.Name, r.config.Protocol, publisher)
+	process(c, r.config.Name, r.config.Protocol, publisher)
 }
 
-func (r *CanBusCollector) receive(stream chan<- []byte) error {
+func (r *CanBusConnector) receive(c chan<- []byte) error {
 	bus, err := can.NewBusForInterfaceWithName(r.config.URL.Host)
 	if err != nil {
 		return err
 	}
 	defer bus.Disconnect()
-	bus.SubscribeFunc(handleCanFrameStream(stream))
+	bus.SubscribeFunc(handleCanFrameStream(c))
 	bus.ConnectAndPublish()
 	return nil
 }
 
-func handleCanFrameStream(stream chan<- []byte) can.HandlerFunc {
+func handleCanFrameStream(c chan<- []byte) can.HandlerFunc {
 	return func(frm can.Frame) {
-		// fmt.Println(frm)
 		bytes := FrameToBytes(frm)
-		stream <- bytes
-
+		c <- bytes
 	}
 }
 

@@ -4,7 +4,7 @@ Go SignalK implementation and more.
 
 - [1. Design](#1-design)
   - [1.1. Micro services](#11-micro-services)
-    - [1.1.1. Collectors](#111-collectors)
+    - [1.1.1. Connectors](#111-connectors)
     - [1.1.2. Raw store](#112-raw-store)
     - [1.1.3. Mappers](#113-mappers)
     - [1.1.4. Mapped store](#114-mapped-store)
@@ -26,9 +26,9 @@ This implementation consist of several small programs that collect, map, store a
 
 GOSK is a set of micro services that collect, map, store, transport and publish data available on a ship. GOSK publishes data in the [SignalK Open Marine Data Standard](https://signalk.org/). All data is stored in both a raw format (before any mapping is done) and in a mapped format.
 
-#### 1.1.1. Collectors
+#### 1.1.1. Connectors
 
-The only role of a collector is to collect raw data from the sensors on board. Collectors are made for specific protocols, e.g. a collector for NMEA0183 over UDP knows how to listen for data and a collector for Modbus over TCP knows how to pull data. Collectors have their individual configuration. Multiple collectors for the same protocol/transport can coexist in a system, e.g. 2 Canbus collectors for a port side and starboard engine.
+The only role of a connector is to collect raw data from the sensors on board. Connectors are made for specific protocols, e.g. a connector for NMEA0183 over UDP knows how to listen for data and a connector for Modbus over TCP knows how to pull data. Connectors have their individual configuration. Multiple connectors for the same protocol/transport can coexist in a system, e.g. 2 Canbus connectors for a port side and starboard engine.
 
 #### 1.1.2. Raw store
 
@@ -58,7 +58,7 @@ For communication between the different micro services [NNG](https://nng.nanomsg
 
 The JSON message contains the following fields:
 
-1. collector, identifier for the source of the data;
+1. connector, identifier for the source of the data;
 1. timestamp, the time when the data was receive in UTC and RFC3339Nano format;
 1. uuid, used to link raw and mapped data together;
 1. value, the actual value in base64 encoded format. This value contains all information needed for the mapper to map the data.
@@ -67,7 +67,7 @@ The JSON message contains the following fields:
 
 ```json
 {
-  "collector": "GPS",
+  "connector": "GPS",
   "timestamp": "2022-02-09T16:12:29.481162381Z",
   "uuid": "49175a7e-c4cb-455c-ae99-05eca8f7997d",
   "value": "JEdQR0xMLDM3MjMuMjQ3NSxOLDEyMTU4LjM0MTYsVywxNjEyMjkuNDg3LEEsQSo0MQ=="
@@ -80,7 +80,7 @@ The `value` is a base 64 encoded string of the NMEA018 sentence `$GPGLL,3723.247
 
 ```json
 {
-  "collector": "CAT 3512",
+  "connector": "CAT 3512",
   "timestamp": "2022-02-09T12:03:57.431272983Z",
   "uuid": "c67ae38f-64c6-427d-a91d-282a25623cc2",
   "value": "AQAEyOwAAgABjnA="
@@ -98,7 +98,7 @@ The `value` is a base64 encoded string of the following bytes
 
 #### 1.2.2 Mapped JSON messages
 
-The basis is the [Signal K Delta format](https://signalk.org/specification/1.5.0/doc/data_model.html#delta-format) with some extras. The `label`, `type` and `src` properties in the `source` section are used as follows. `label` is filled with `name` property of the collector config, `type` is filled with protocol that is used and `src` is filled with the `url` property of the collector config. Each individual `value` section has an extra property `uuid` that is filled with the `uuid` of the corresponding raw data.
+The basis is the [Signal K Delta format](https://signalk.org/specification/1.5.0/doc/data_model.html#delta-format) with some extras. The `label`, `type` and `src` properties in the `source` section are used as follows. `label` is filled with `name` property of the connector config, `type` is filled with protocol that is used and `src` is filled with the `url` property of the connector config. Each individual `value` section has an extra property `uuid` that is filled with the `uuid` of the corresponding raw data.
 
 ##### Example:
 
@@ -132,14 +132,14 @@ The basis is the [Signal K Delta format](https://signalk.org/specification/1.5.0
 
 ### 1.3. Storage
 
-PostgreSQL and TimescaleDB are used as a time series database. Two tables are created. One table stores the raw data as received from the different collectors. The other table stores the mapped data as received from the different mappers.
+PostgreSQL and TimescaleDB are used as a time series database. Two tables are created. One table stores the raw data as received from the different connectors. The other table stores the mapped data as received from the different mappers.
 
 #### 1.3.1. Raw data
 
 ```sql
 CREATE TABLE "raw_data" (
     "time" TIMESTAMPTZ NOT NULL,
-    "collector" TEXT NOT NULL,
+    "connector" TEXT NOT NULL,
     "extra_info" TEXT NOT NULL,
     "value" TEXT NOT NULL -- base64 encoded binary data
 );

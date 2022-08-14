@@ -19,8 +19,8 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/munnik/gosk/collector"
 	"github.com/munnik/gosk/config"
+	"github.com/munnik/gosk/connector"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/spf13/cobra"
@@ -28,32 +28,32 @@ import (
 )
 
 var (
-	collectCmd = &cobra.Command{
-		Use:   "collect",
-		Short: "Collect data using a specific protocol",
+	connectCmd = &cobra.Command{
+		Use:   "connect",
+		Short: "Connect to a data source to receive (and optional send) data using a specific protocol",
 		Long:  fmt.Sprintf(`Collect data using a specific protocol, current supported protocols are %v, %v, %v and %v`, config.NMEA0183Type, config.ModbusType, config.CSVType, config.JSONType),
-		Run:   doCollect,
+		Run:   doConnect,
 	}
 )
 
 func init() {
-	rootCmd.AddCommand(collectCmd)
-	collectCmd.Flags().StringVarP(&publishURL, "publishURL", "p", "", "Nanomsg URL, the URL is used to publish the data on. It listens for connections.")
-	collectCmd.MarkFlagRequired("publishURL")
+	rootCmd.AddCommand(connectCmd)
+	connectCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
+	connectCmd.Flags().StringVarP(&publishURL, "publishURL", "p", "", "Nanomsg URL, the URL is used to publish the data on. It listens for connections.")
 }
 
-func doCollect(cmd *cobra.Command, args []string) {
+func doConnect(cmd *cobra.Command, args []string) {
 	var err error
-	c := config.NewCollectorConfig(cfgFile)
-	var reader collector.Collector
+	c := config.NewConnectorConfig(cfgFile)
+	var conn connector.Connector
 	switch c.Protocol {
 	case config.CSVType, config.NMEA0183Type, config.JSONType:
-		reader, err = collector.NewLineCollector(c)
+		conn, err = connector.NewLineConnector(c)
 	case config.ModbusType:
 		rgc := config.NewRegisterGroupsConfig(cfgFile)
-		reader, err = collector.NewModbusCollector(c, rgc)
+		conn, err = connector.NewModbusConnector(c, rgc)
 	case config.CanBusType:
-		reader, err = collector.NewCanBusCollector(c)
+		conn, err = connector.NewCanBusConnector(c)
 	default:
 		logger.GetLogger().Fatal(
 			"Not a supported protocol",
@@ -63,10 +63,11 @@ func doCollect(cmd *cobra.Command, args []string) {
 	}
 	if err != nil {
 		logger.GetLogger().Fatal(
-			"Error while creating the collector",
+			"Error while creating the connector",
 			zap.String("Config file", cfgFile),
 			zap.String("Error", err.Error()),
 		)
 	}
-	reader.Collect(nanomsg.NewPub(publishURL))
+
+	conn.Connect(nanomsg.NewPub(publishURL))
 }

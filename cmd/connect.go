@@ -69,5 +69,14 @@ func doConnect(cmd *cobra.Command, args []string) {
 		)
 	}
 
-	conn.Connect(nanomsg.NewPub(publishURL))
+	publisher := nanomsg.NewPub(publishURL)
+	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
+	if err != nil && subscribeURL != "" {
+		logger.GetLogger().Warn(
+			"Error while creating the subscriber",
+			zap.String("Subscribe URL", subscribeURL),
+			zap.String("Error", err.Error()),
+		)
+	}
+	conn.Connect(publisher, subscriber)
 }

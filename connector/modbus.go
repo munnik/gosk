@@ -38,30 +38,51 @@ func NewModbusConnector(c *config.ConnectorConfig, rgcs []config.RegisterGroupCo
 	return &ModbusConnector{config: c, registerGroupsConfig: rgcs}, nil
 }
 
-func (r *ModbusConnector) Connect(publisher mangos.Socket) {
+func (m *ModbusConnector) Connect(publisher mangos.Socket, subscriber mangos.Socket) {
+	modbusClient, err := m.createModbusClient()
+	if err != nil {
+		logger.GetLogger().Fatal(
+			"Could not create modbus connection",
+			zap.String("URL", m.config.URL.String()),
+			zap.String("Error", err.Error()),
+		)
+	}
+	defer modbusClient.close()
+
+	// write data to the connection
+	go func() {
+		for {
+			_, err := subscriber.Recv()
+			if err != nil {
+				logger.GetLogger().Error(
+					"Unable to receive data from the subscriber",
+					zap.String("Error", err.Error()),
+				)
+				continue
+			}
+			// TODO: implement writes to modbus
+			logger.GetLogger().Error("Writing to modbus is not implemented yet")
+		}
+	}()
+
+	// receive data from the connection
 	c := make(chan []byte, receiveChannelBufferSize)
 	defer close(c)
 	go func() {
 		for {
-			if err := r.receive(c); err != nil {
+			if err := m.receive(modbusClient, c); err != nil {
 				logger.GetLogger().Warn(
 					"Error while receiving data for the stream",
-					zap.String("URL", r.config.URL.String()),
+					zap.String("URL", m.config.URL.String()),
 					zap.String("Error", err.Error()),
 				)
 			}
 		}
 	}()
-	process(c, r.config.Name, r.config.Protocol, publisher)
+	process(c, m.config.Name, m.config.Protocol, publisher)
 }
 
-func (m *ModbusConnector) receive(stream chan<- []byte) error {
-	client, err := m.createClient()
-	if err != nil {
-		return err
-	}
-	defer client.close()
-
+func (m *ModbusConnector) receive(modbusClient *ModbusClient, stream chan<- []byte) error {
 	errors := make(chan error)
 	done := make(chan bool)
 	var wg sync.WaitGroup
@@ -74,7 +95,8 @@ func (m *ModbusConnector) receive(stream chan<- []byte) error {
 				errors <- err
 			}
 			wg.Done()
-		}(client, rgc)
+		}(modbusClient, rgc)
+
 	}
 	go func() {
 		// if the reading of all register groups is finished close the done channel
@@ -92,7 +114,7 @@ func (m *ModbusConnector) receive(stream chan<- []byte) error {
 	return nil
 }
 
-func (m ModbusConnector) createClient() (*ModbusClient, error) {
+func (m ModbusConnector) createModbusClient() (*ModbusClient, error) {
 	client, err := modbus.NewClient(&modbus.ClientConfiguration{
 		URL:      m.config.URL.String(),
 		Speed:    uint(m.config.BaudRate),

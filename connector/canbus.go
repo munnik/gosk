@@ -19,7 +19,17 @@ func NewCanBusConnector(c *config.ConnectorConfig) (*CanBusConnector, error) {
 	return &CanBusConnector{config: c}, nil
 }
 
-func (r *CanBusConnector) Connect(publisher mangos.Socket) {
+func (r *CanBusConnector) Connect(publisher mangos.Socket, subscriber mangos.Socket) {
+	// write data to the connection
+	go func() {
+		for {
+			subscriber.Recv()
+			// TODO: implement writes to canbus
+			logger.GetLogger().Error("Writing to canbus is not implemented yet")
+		}
+	}()
+
+	// receive data from the connection
 	c := make(chan []byte, receiveChannelBufferSize)
 	defer close(c)
 	go func() {

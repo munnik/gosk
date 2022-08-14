@@ -24,7 +24,7 @@ func NewLineConnector(c *config.ConnectorConfig) (*LineConnector, error) {
 	return &LineConnector{config: c}, nil
 }
 
-func (r *LineConnector) Connect(publisher mangos.Socket) {
+func (r *LineConnector) Connect(publisher mangos.Socket, subscriber mangos.Socket) {
 	readWriter, err := r.createReadWriter()
 	if err != nil {
 		logger.GetLogger().Fatal(
@@ -33,6 +33,21 @@ func (r *LineConnector) Connect(publisher mangos.Socket) {
 		)
 		return
 	}
+
+	// write data to the connection
+	go func() {
+		for {
+			received, err := subscriber.Recv()
+			if err != nil {
+				logger.GetLogger().Error(
+					"Unable to receive data from the subscriber",
+					zap.String("Error", err.Error()),
+				)
+				continue
+			}
+			readWriter.Write(received)
+		}
+	}()
 
 	// receive data from the connection
 	c := make(chan []byte, receiveChannelBufferSize)

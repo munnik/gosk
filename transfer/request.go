@@ -27,6 +27,8 @@ func NewTransferRequester(c *config.TransferConfig) *TransferRequester {
 }
 
 func (t *TransferRequester) Run() {
+	rand.Seed(time.Now().UnixNano())
+
 	// listen for responses
 	t.mqttClient = mqtt.NewClient(t.createClientOptions())
 	if token := t.mqttClient.Connect(); token.Wait() && token.Error() != nil {
@@ -42,34 +44,36 @@ func (t *TransferRequester) Run() {
 	// send count requests
 	go func() {
 		for {
-			t.sendCountRequests()
+			t.sendCountRequests(30 * time.Minute)
 		}
 	}()
 
 	// send data requests
 	go func() {
 		for {
-			t.sendDataRequests()
+			t.sendDataRequests(2 * time.Hour)
 		}
 	}()
+
 	// never exit
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
 	wg.Wait()
 }
 
-func (t *TransferRequester) sendCountRequests() {
-	rand.Seed(time.Now().UnixNano())
-
+func (t *TransferRequester) sendCountRequests(interval time.Duration) {
 	wg := new(sync.WaitGroup)
-	wg.Add(len(t.origins))
+	wg.Add(len(t.origins) + 1)
 
-	threshold := time.Now().Add(-periodDuration)
+	go func() {
+		time.Sleep(interval)
+		wg.Done()
+	}()
 
 	for _, origin := range t.origins {
 		go func(origin string, epoch time.Time) {
 			// wait random amount of time before processing to spread the workload
-			time.Sleep(time.Duration(rand.Intn(int(30 * time.Minute))))
+			time.Sleep(time.Duration(rand.Intn(int(interval))))
 
 			completePeriods, err := t.db.SelectCompletePeriods(origin)
 			if err != nil {
@@ -88,7 +92,7 @@ func (t *TransferRequester) sendCountRequests() {
 				return
 			}
 
-			for period := epoch; period.Before(threshold); period = period.Add(periodDuration) {
+			for period := epoch; period.Before(time.Now().Add(-2 * periodDuration)); period = period.Add(periodDuration) {
 				if _, ok := completePeriods[period]; ok {
 					continue // no need to send a count request because the period is already complete
 				}
@@ -104,13 +108,19 @@ func (t *TransferRequester) sendCountRequests() {
 	wg.Wait()
 }
 
-func (t *TransferRequester) sendDataRequests() {
-	rand.Seed(time.Now().UnixNano())
+func (t *TransferRequester) sendDataRequests(interval time.Duration) {
+	wg := new(sync.WaitGroup)
+	wg.Add(len(t.origins) + 1)
+
+	go func() {
+		time.Sleep(interval)
+		wg.Done()
+	}()
 
 	for _, origin := range t.origins {
 		go func(origin string) {
 			// wait random amount of time before processing to spread the workload
-			time.Sleep(time.Duration(rand.Intn(int(2 * time.Hour))))
+			time.Sleep(time.Duration(rand.Intn(int(interval))))
 
 			incompletePeriods, err := t.db.SelectIncompletePeriods(origin)
 			if err != nil {
@@ -138,8 +148,10 @@ func (t *TransferRequester) sendDataRequests() {
 					t.sendMQTTCommand(origin, period, requestDataCmd)
 				}
 			}
+			wg.Done()
 		}(origin.Origin)
 	}
+	wg.Wait()
 }
 
 func (t *TransferRequester) responseReceived(origin string, response ResponseMessage) {

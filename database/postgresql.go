@@ -107,7 +107,7 @@ func (db *PostgresqlDatabase) WriteRaw(raw message.Raw) {
 			zap.String("Error", err.Error()),
 		)
 	}
-	rows, err := transaction.Query(context.Background(), selectRawQuery+` WHERE "time" = $1`)
+	rows, err := transaction.Query(context.Background(), selectRawQuery+` WHERE "time" = $1`, raw.Timestamp)
 	defer rows.Close()
 
 	rawJSON, err := raw.MarshalJSON()
@@ -159,7 +159,7 @@ func (db *PostgresqlDatabase) WriteMapped(mapped message.Mapped) {
 				zap.String("Error", err.Error()),
 			)
 		}
-		rows, err := transaction.Query(context.Background(), selectMappedQuery+` WHERE "time" = $1`)
+		rows, err := transaction.Query(context.Background(), selectMappedQuery+` WHERE "time" = $1`, m.Timestamp)
 		defer rows.Close()
 
 		if err != nil {

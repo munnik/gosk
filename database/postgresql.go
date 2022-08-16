@@ -1,7 +1,6 @@
 package database
 
 import (
-	"bytes"
 	"context"
 	"embed"
 	"fmt"
@@ -100,38 +99,38 @@ func (db *PostgresqlDatabase) GetConnection() *pgxpool.Pool {
 }
 
 func (db *PostgresqlDatabase) WriteRaw(raw message.Raw) {
-	transaction, err := db.GetConnection().Begin(context.Background())
-	if err != nil {
-		logger.GetLogger().Warn(
-			"Error starting a transaction",
-			zap.String("Error", err.Error()),
-		)
-	}
-	rows, err := transaction.Query(context.Background(), selectRawQuery+` WHERE "time" = $1`, raw.Timestamp)
-	defer rows.Close()
+	// transaction, err := db.GetConnection().Begin(context.Background())
+	// if err != nil {
+	// 	logger.GetLogger().Warn(
+	// 		"Error starting a transaction",
+	// 		zap.String("Error", err.Error()),
+	// 	)
+	// }
+	// rows, err := transaction.Query(context.Background(), selectRawQuery+` WHERE "time" = $1`, raw.Timestamp)
+	// defer rows.Close()
 
-	rawJSON, err := raw.MarshalJSON()
-	if err != nil {
-		transaction.Rollback(context.Background())
-		return
-	}
-	for rows.Next() {
-		existingRaw := message.NewRaw()
-		rows.Scan(
-			&existingRaw.Timestamp,
-			&existingRaw.Collector,
-			&existingRaw.Value,
-			&existingRaw.Uuid,
-			&existingRaw.Type,
-		)
+	// rawJSON, err := raw.MarshalJSON()
+	// if err != nil {
+	// 	transaction.Rollback(context.Background())
+	// 	return
+	// }
+	// for rows.Next() {
+	// 	existingRaw := message.NewRaw()
+	// 	rows.Scan(
+	// 		&existingRaw.Timestamp,
+	// 		&existingRaw.Collector,
+	// 		&existingRaw.Value,
+	// 		&existingRaw.Uuid,
+	// 		&existingRaw.Type,
+	// 	)
 
-		// don't insert because raw already seems to exist
-		if existingRawJSON, err := existingRaw.MarshalJSON(); err != nil || 0 != bytes.Compare(existingRawJSON, rawJSON) {
-			transaction.Rollback(context.Background())
-			return
-		}
-	}
-	_, err = transaction.Exec(context.Background(), rawInsertQuery, raw.Timestamp, raw.Collector, raw.Value, raw.Uuid, raw.Type)
+	// 	// don't insert because raw already seems to exist
+	// 	if existingRawJSON, err := existingRaw.MarshalJSON(); err != nil || 0 != bytes.Compare(existingRawJSON, rawJSON) {
+	// 		transaction.Rollback(context.Background())
+	// 		return
+	// 	}
+	// }
+	_, err := db.GetConnection().Exec(context.Background(), rawInsertQuery, raw.Timestamp, raw.Collector, raw.Value, raw.Uuid, raw.Type)
 	if err != nil {
 		logger.GetLogger().Warn(
 			"Error on inserting the received data in the database",
@@ -144,7 +143,7 @@ func (db *PostgresqlDatabase) WriteRaw(raw message.Raw) {
 			zap.String("Type", raw.Type),
 		)
 	}
-	transaction.Commit(context.Background())
+	// transaction.Commit(context.Background())
 }
 
 func (db *PostgresqlDatabase) WriteMapped(mapped message.Mapped) {
@@ -152,39 +151,39 @@ func (db *PostgresqlDatabase) WriteMapped(mapped message.Mapped) {
 		if str, ok := m.Value.(string); ok {
 			m.Value = strconv.Quote(str)
 		}
-		transaction, err := db.GetConnection().Begin(context.Background())
-		if err != nil {
-			logger.GetLogger().Warn(
-				"Error starting a transaction",
-				zap.String("Error", err.Error()),
-			)
-		}
-		rows, err := transaction.Query(context.Background(), selectMappedQuery+` WHERE "time" = $1`, m.Timestamp)
-		defer rows.Close()
+		// transaction, err := db.GetConnection().Begin(context.Background())
+		// if err != nil {
+		// 	logger.GetLogger().Warn(
+		// 		"Error starting a transaction",
+		// 		zap.String("Error", err.Error()),
+		// 	)
+		// }
+		// rows, err := transaction.Query(context.Background(), selectMappedQuery+` WHERE "time" = $1`, m.Timestamp)
+		// defer rows.Close()
 
-		if err != nil {
-			transaction.Rollback(context.Background())
-			return
-		}
-		for rows.Next() {
-			existingMapped := message.NewSingleValueMapped()
-			rows.Scan(
-				&m.Timestamp,
-				&m.Source.Label,
-				&m.Source.Type,
-				&m.Context,
-				&m.Path,
-				&m.Value,
-				&m.Source.Uuid,
-				&m.Origin,
-			)
+		// if err != nil {
+		// 	transaction.Rollback(context.Background())
+		// 	return
+		// }
+		// for rows.Next() {
+		// 	existingMapped := message.NewSingleValueMapped()
+		// 	rows.Scan(
+		// 		&m.Timestamp,
+		// 		&m.Source.Label,
+		// 		&m.Source.Type,
+		// 		&m.Context,
+		// 		&m.Path,
+		// 		&m.Value,
+		// 		&m.Source.Uuid,
+		// 		&m.Origin,
+		// 	)
 
-			// don't insert because mapped already seems to exist
-			if m == *existingMapped {
-				transaction.Rollback(context.Background())
-				return
-			}
-		}
+		// 	// don't insert because mapped already seems to exist
+		// 	if m == *existingMapped {
+		// 		transaction.Rollback(context.Background())
+		// 		return
+		// 	}
+		// }
 
 		for _, err := db.GetConnection().Exec(context.Background(), mappedInsertQuery, m.Timestamp, m.Source.Label, m.Source.Type, m.Context, m.Path, m.Value, m.Source.Uuid, m.Origin); err != nil; {
 			logger.GetLogger().Warn(
@@ -201,7 +200,7 @@ func (db *PostgresqlDatabase) WriteMapped(mapped message.Mapped) {
 				zap.String("Origin", m.Origin),
 			)
 		}
-		transaction.Commit(context.Background())
+		// transaction.Commit(context.Background())
 	}
 }
 

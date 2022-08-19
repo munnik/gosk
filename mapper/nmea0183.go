@@ -106,8 +106,8 @@ func (m *Nmea0183Mapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		}
 	}
 	if v, ok := sentence.(nmea.NumberOfSatellites); ok {
-		if numberOfSatelites, err := v.GetNumberOfSatellites(); err == nil {
-			u.AddValue(message.NewValue().WithPath("navigation.gnss.satellites").WithValue(numberOfSatelites))
+		if numberOfSatellites, err := v.GetNumberOfSatellites(); err == nil {
+			u.AddValue(message.NewValue().WithPath("navigation.gnss.satellites").WithValue(numberOfSatellites))
 		}
 	}
 	if v, ok := sentence.(nmea.Position2D); ok {

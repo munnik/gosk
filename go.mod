@@ -3,6 +3,7 @@ module github.com/munnik/gosk
 go 1.18
 
 require (
+	github.com/Code-Hex/go-generics-cache v1.0.1
 	github.com/Jeffail/gabs v1.4.0
 	github.com/allegro/bigcache/v3 v3.0.2
 	github.com/antonmedv/expr v1.9.0
@@ -32,7 +33,6 @@ require (
 
 require (
 	github.com/BertoldVdb/go-ais v0.1.0 // indirect
-	github.com/Code-Hex/go-generics-cache v1.0.1 // indirect
 	github.com/Microsoft/go-winio v0.5.2 // indirect
 	github.com/adrianmo/go-nmea v1.7.0 // indirect
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
@@ -63,7 +63,7 @@ require (
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/multierr v1.8.0 // indirect
 	golang.org/x/crypto v0.0.0-20220817201139-bc19a97f63c8 // indirect
-	golang.org/x/exp v0.0.0-20220328175248-053ad81199eb // indirect
+	golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e // indirect
 	golang.org/x/net v0.0.0-20220812174116-3211cb980234 // indirect
 	golang.org/x/sync v0.0.0-20220819030929-7fc1605a5dde // indirect
 	golang.org/x/sys v0.0.0-20220818161305-2296e01440c6 // indirect

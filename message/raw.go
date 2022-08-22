@@ -1,6 +1,7 @@
 package message
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -73,4 +74,10 @@ func (r *Raw) UnmarshalJSON(data []byte) error {
 	}
 
 	return nil
+}
+
+func (r Raw) Equals(other Raw) bool {
+	return r.Collector == other.Collector &&
+		r.Type == other.Type &&
+		bytes.Compare(r.Value, other.Value) == 0
 }

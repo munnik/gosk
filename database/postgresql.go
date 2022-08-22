@@ -9,6 +9,7 @@ import (
 	"time"
 
 	cache "github.com/Code-Hex/go-generics-cache"
+	"github.com/Code-Hex/go-generics-cache/policy/fifo"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
@@ -48,8 +49,8 @@ type PostgresqlDatabase struct {
 func NewPostgresqlDatabase(c *config.PostgresqlConfig) *PostgresqlDatabase {
 	return &PostgresqlDatabase{
 		url:         c.URLString,
-		rawCache:    cache.New[time.Time, []message.Raw](),
-		mappedCache: cache.New[time.Time, []message.SingleValueMapped](),
+		rawCache:    cache.New(cache.AsFIFO[time.Time, []message.Raw](fifo.WithCapacity(20 * 1024))),
+		mappedCache: cache.New(cache.AsFIFO[time.Time, []message.SingleValueMapped](fifo.WithCapacity(20 * 1024))),
 	}
 }
 

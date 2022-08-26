@@ -184,6 +184,7 @@ func (db *PostgresqlDatabase) WriteRaw(raw message.Raw) {
 }
 
 func (db *PostgresqlDatabase) WriteMapped(mapped message.Mapped) {
+SingleValueMapped:
 	for _, m := range mapped.ToSingleValueMapped() {
 		if str, ok := m.Value.(string); ok {
 			m.Value = strconv.Quote(str)
@@ -234,10 +235,9 @@ func (db *PostgresqlDatabase) WriteMapped(mapped message.Mapped) {
 		for _, c := range cached {
 			if c.Equals(m) {
 				transaction.Rollback(context.Background())
-				continue
+				continue SingleValueMapped
 			}
 		}
-
 		// value is not in cache, insert into the database and add to the cache
 		_, err = transaction.Exec(context.Background(), mappedInsertQuery, m.Timestamp, m.Source.Label, m.Source.Type, m.Context, m.Path, m.Value, m.Source.Uuid, m.Origin)
 		if err != nil {

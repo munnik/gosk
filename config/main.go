@@ -199,7 +199,8 @@ func NewMQTTConfig(configFilePath string) *MQTTConfig {
 }
 
 type PostgresqlConfig struct {
-	URLString string `mapstructure:"url"`
+	URLString       string `mapstructure:"url"`
+	InsertBatchSize uint16 `mapstructure:"insert_batch_size"`
 }
 
 func NewPostgresqlConfig(configFilePath string) *PostgresqlConfig {

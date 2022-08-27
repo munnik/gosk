@@ -7,9 +7,7 @@ import (
 	"time"
 
 	"github.com/antonmedv/expr/vm"
-	"github.com/mitchellh/mapstructure"
 	"github.com/munnik/gosk/logger"
-	"github.com/spf13/viper"
 	"go.uber.org/zap"
 )
 
@@ -259,52 +257,9 @@ type TransferConfig struct {
 }
 
 func NewTransferConfig(configFilePath string) *TransferConfig {
-	result := TransferConfig{}
-	readConfigFile(&result, configFilePath)
+	result := &TransferConfig{}
+	readConfigFile(result, configFilePath)
 
-	return &result
-}
-
-func readConfigFile(result interface{}, configFilePath string, subKeys ...string) interface{} {
-	viper.SetConfigFile(configFilePath)
-	if err := viper.ReadInConfig(); err != nil {
-		logger.GetLogger().Fatal(
-			"Fatal error while reading the configuration",
-			zap.String("Config file", configFilePath),
-			zap.String("Error", err.Error()),
-		)
-		return result
-	}
-
-	if len(subKeys) > 1 {
-		logger.GetLogger().Fatal(
-			"Unable to read the configuration, only one key is allowed",
-			zap.String("Config file", configFilePath),
-			zap.Strings("Keys", subKeys),
-		)
-		return result
-	}
-
-	var err error
-	if len(subKeys) == 0 {
-		err = viper.Unmarshal(
-			result,
-			viper.DecodeHook(
-				mapstructure.ComposeDecodeHookFunc(
-					mapstructure.StringToTimeHookFunc(time.RFC3339),
-				),
-			),
-		)
-	} else {
-		err = viper.UnmarshalKey(subKeys[0], result)
-	}
-	if err != nil {
-		logger.GetLogger().Fatal(
-			"Unable to read the configuration",
-			zap.String("Config file", configFilePath),
-			zap.String("Error", err.Error()),
-		)
-	}
 	return result
 }
 
@@ -316,8 +271,19 @@ type LWEConfig struct {
 }
 
 func NewLWEConfig(configFilePath string) *LWEConfig {
-	result := LWEConfig{}
-	readConfigFile(&result, configFilePath)
+	result := &LWEConfig{}
+	readConfigFile(result, configFilePath)
 
-	return &result
+	return result
+}
+
+type EventConfig struct {
+	Expression string `mapstructure:"expression"`
+}
+
+func NewEventConfig(configFilePath string) *EventConfig {
+	result := &EventConfig{}
+	readConfigFile(result, configFilePath)
+
+	return result
 }

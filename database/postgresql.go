@@ -39,19 +39,34 @@ const (
 var fs embed.FS
 
 type PostgresqlDatabase struct {
-	url         string
-	connection  *pgxpool.Pool
-	mu          sync.Mutex
-	rawCache    *cache.Cache[time.Time, []message.Raw]
-	mappedCache *cache.Cache[time.Time, []message.SingleValueMapped]
+	url             string
+	connection      *pgxpool.Pool
+	connectionMutex sync.Mutex
+	rawCache        *cache.Cache[time.Time, []message.Raw]
+	mappedCache     *cache.Cache[time.Time, []message.SingleValueMapped]
+	batch           pgx.Batch
+	batchSize       int
+	lastFlush       time.Time
+	flushMutex      sync.Mutex
 }
 
 func NewPostgresqlDatabase(c *config.PostgresqlConfig) *PostgresqlDatabase {
-	return &PostgresqlDatabase{
+	result := &PostgresqlDatabase{
 		url:         c.URLString,
 		rawCache:    cache.New(cache.AsFIFO[time.Time, []message.Raw](fifo.WithCapacity(20 * 1024))),
 		mappedCache: cache.New(cache.AsFIFO[time.Time, []message.SingleValueMapped](fifo.WithCapacity(20 * 1024))),
+		batchSize:   c.BatchSize,
 	}
+	go func() {
+		ticker := time.NewTicker(time.Second * time.Duration(c.BatchFlushInterval))
+		for {
+			<-ticker.C
+			if time.Now().Add(-time.Second * time.Duration(c.BatchFlushInterval)).Before(result.lastFlush) {
+				result.flushBatch()
+			}
+		}
+	}()
+	return result
 }
 
 func (db *PostgresqlDatabase) GetConnection() *pgxpool.Pool {
@@ -62,8 +77,8 @@ func (db *PostgresqlDatabase) GetConnection() *pgxpool.Pool {
 		}
 	}
 
-	db.mu.Lock()
-	defer db.mu.Unlock()
+	db.connectionMutex.Lock()
+	defer db.connectionMutex.Unlock()
 
 	if err := db.UpgradeDatabase(); err != nil {
 		logger.GetLogger().Fatal(
@@ -107,23 +122,12 @@ func (db *PostgresqlDatabase) GetConnection() *pgxpool.Pool {
 }
 
 func (db *PostgresqlDatabase) WriteRaw(raw message.Raw) {
-	// start a transaction
-	transaction, err := db.GetConnection().Begin(context.Background())
-	if err != nil {
-		logger.GetLogger().Warn(
-			"Error starting a transaction",
-			zap.String("Error", err.Error()),
-		)
-		return
-	}
-
 	// check if timestamp is already in the cache, if not retrieve all existing rows from the database and fill the cache
 	if _, ok := db.mappedCache.Get(raw.Timestamp); !ok {
 		// create an empty list for the timestamp
 		db.rawCache.Set(raw.Timestamp, []message.Raw{})
-		rows, err := transaction.Query(context.Background(), selectRawQuery+` WHERE "time" = $1`, raw.Timestamp)
+		rows, err := db.GetConnection().Query(context.Background(), selectRawQuery+` WHERE "time" = $1`, raw.Timestamp)
 		if err != nil {
-			transaction.Rollback(context.Background())
 			return
 		}
 		defer rows.Close()
@@ -147,132 +151,70 @@ func (db *PostgresqlDatabase) WriteRaw(raw message.Raw) {
 	cached, _ := db.rawCache.Get(raw.Timestamp)
 	for _, c := range cached {
 		if c.Equals(raw) {
-			transaction.Rollback(context.Background())
-			continue
+			return
 		}
 	}
 
 	// value is not in cache, insert into the database and add to the cache
-	_, err = transaction.Exec(context.Background(), rawInsertQuery, raw.Timestamp, raw.Collector, raw.Value, raw.Uuid, raw.Type)
-	if err != nil {
-		logger.GetLogger().Warn(
-			"Error on inserting the received data in the database",
-			zap.String("Error", err.Error()),
-			zap.String("Query", rawInsertQuery),
-			zap.Time("Timestamp", raw.Timestamp),
-			zap.String("Collector", raw.Collector),
-			zap.ByteString("Value", raw.Value),
-			zap.String("UUID", raw.Uuid.String()),
-			zap.String("Type", raw.Type),
-		)
-	}
-	err = transaction.Commit(context.Background())
-	if err != nil {
-		logger.GetLogger().Warn(
-			"Error on inserting the received data in the database",
-			zap.String("Error", err.Error()),
-			zap.String("Query", rawInsertQuery),
-			zap.Time("Timestamp", raw.Timestamp),
-			zap.String("Collector", raw.Collector),
-			zap.ByteString("Value", raw.Value),
-			zap.String("UUID", raw.Uuid.String()),
-			zap.String("Type", raw.Type),
-		)
-	} else {
-		db.rawCache.Set(raw.Timestamp, append(cached, raw))
+	db.rawCache.Set(raw.Timestamp, append(cached, raw))
+	db.batch.Queue(rawInsertQuery, raw.Timestamp, raw.Collector, raw.Value, raw.Uuid, raw.Type)
+	if db.batch.Len() > db.batchSize {
+		go db.flushBatch()
 	}
 }
 
 func (db *PostgresqlDatabase) WriteMapped(mapped message.Mapped) {
-	for _, m := range mapped.ToSingleValueMapped() {
-		if str, ok := m.Value.(string); ok {
-			m.Value = strconv.Quote(str)
-		}
+	for _, svm := range mapped.ToSingleValueMapped() {
+		db.WriteSingleValueMapped(svm)
+	}
+}
 
-		// start a transaction
-		transaction, err := db.GetConnection().Begin(context.Background())
+func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapped) {
+	if str, ok := svm.Value.(string); ok {
+		svm.Value = strconv.Quote(str)
+	}
+	// check if timestamp is already in the cache, if not retrieve all existing rows from the database and fill the cache
+	if _, ok := db.mappedCache.Get(svm.Timestamp); !ok {
+		// create an empty list for the timestamp
+		db.mappedCache.Set(svm.Timestamp, []message.SingleValueMapped{})
+
+		rows, err := db.GetConnection().Query(context.Background(), selectMappedQuery+` WHERE "time" = $1`, svm.Timestamp)
 		if err != nil {
-			logger.GetLogger().Warn(
-				"Error starting a transaction",
-				zap.String("Error", err.Error()),
+			return
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			inDatabase := message.NewSingleValueMapped()
+			rows.Scan(
+				&inDatabase.Timestamp,
+				&inDatabase.Source.Label,
+				&inDatabase.Source.Type,
+				&inDatabase.Context,
+				&inDatabase.Path,
+				&inDatabase.Value,
+				&inDatabase.Source.Uuid,
+				&inDatabase.Origin,
 			)
-			continue
+
+			cached, _ := db.mappedCache.Get(svm.Timestamp)
+			db.mappedCache.Set(svm.Timestamp, append(cached, *inDatabase))
 		}
+	}
 
-		// check if timestamp is already in the cache, if not retrieve all existing rows from the database and fill the cache
-		if _, ok := db.mappedCache.Get(m.Timestamp); !ok {
-			// create an empty list for the timestamp
-			db.mappedCache.Set(m.Timestamp, []message.SingleValueMapped{})
-
-			rows, err := transaction.Query(context.Background(), selectMappedQuery+` WHERE "time" = $1`, m.Timestamp)
-			if err != nil {
-				transaction.Rollback(context.Background())
-				continue
-			}
-			defer rows.Close()
-
-			for rows.Next() {
-				inDatabase := message.NewSingleValueMapped()
-				rows.Scan(
-					&inDatabase.Timestamp,
-					&inDatabase.Source.Label,
-					&inDatabase.Source.Type,
-					&inDatabase.Context,
-					&inDatabase.Path,
-					&inDatabase.Value,
-					&inDatabase.Source.Uuid,
-					&inDatabase.Origin,
-				)
-
-				cached, _ := db.mappedCache.Get(m.Timestamp)
-				db.mappedCache.Set(m.Timestamp, append(cached, *inDatabase))
-			}
+	// now check the cache to see if the value is already in the cache, if so continue
+	cached, _ := db.mappedCache.Get(svm.Timestamp)
+	for _, c := range cached {
+		if c.Equals(svm) {
+			return
 		}
+	}
 
-		// now check the cache to see if the value is already in the cache, if so continue
-		cached, _ := db.mappedCache.Get(m.Timestamp)
-		for _, c := range cached {
-			if c.Equals(m) {
-				transaction.Rollback(context.Background())
-				continue
-			}
-		}
-
-		// value is not in cache, insert into the database and add to the cache
-		_, err = transaction.Exec(context.Background(), mappedInsertQuery, m.Timestamp, m.Source.Label, m.Source.Type, m.Context, m.Path, m.Value, m.Source.Uuid, m.Origin)
-		if err != nil {
-			logger.GetLogger().Warn(
-				"Error on inserting the received data in the database",
-				zap.String("Error", err.Error()),
-				zap.String("Query", mappedInsertQuery),
-				zap.Time("Timestamp", m.Timestamp),
-				zap.String("Label", m.Source.Label),
-				zap.String("Type", m.Source.Type),
-				zap.String("Context", m.Context),
-				zap.String("Path", m.Path),
-				zap.Any("Value", m.Value),
-				zap.String("UUID", m.Source.Uuid.String()),
-				zap.String("Origin", m.Origin),
-			)
-		}
-		err = transaction.Commit(context.Background())
-		if err != nil {
-			logger.GetLogger().Warn(
-				"Error on inserting the received data in the database",
-				zap.String("Error", err.Error()),
-				zap.String("Query", mappedInsertQuery),
-				zap.Time("Timestamp", m.Timestamp),
-				zap.String("Label", m.Source.Label),
-				zap.String("Type", m.Source.Type),
-				zap.String("Context", m.Context),
-				zap.String("Path", m.Path),
-				zap.Any("Value", m.Value),
-				zap.String("UUID", m.Source.Uuid.String()),
-				zap.String("Origin", m.Origin),
-			)
-		} else {
-			db.mappedCache.Set(m.Timestamp, append(cached, m))
-		}
+	// value is not in cache, insert into the database and add to the cache
+	db.mappedCache.Set(svm.Timestamp, append(cached, svm))
+	db.batch.Queue(mappedInsertQuery, svm.Timestamp, svm.Source.Label, svm.Source.Type, svm.Context, svm.Path, svm.Value, svm.Source.Uuid, svm.Origin)
+	if db.batch.Len() > db.batchSize {
+		go db.flushBatch()
 	}
 }
 
@@ -400,4 +342,21 @@ func (db *PostgresqlDatabase) DowngradeDatabase() error {
 		return err
 	}
 	return nil
+}
+
+func (db *PostgresqlDatabase) flushBatch() {
+	db.flushMutex.Lock()
+	defer db.flushMutex.Unlock()
+	result := db.GetConnection().SendBatch(context.Background(), &db.batch)
+	// todo, determine if inserts went well
+
+	if err := result.Close(); err != nil {
+		logger.GetLogger().Error(
+			"Unable to flush batch",
+			zap.String("Error", err.Error()),
+		)
+		return
+	}
+
+	db.lastFlush = time.Now()
 }

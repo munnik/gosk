@@ -362,7 +362,7 @@ func NewPostgresqlBuffer(pool *pgxpool.Pool, table string, columnNames []string,
 		pool:      pool,
 		table:     pgx.Identifier{table},
 		size:      size,
-		rows:      make([][]interface{}, size),
+		rows:      make([][]interface{}, size+1),
 	}
 	go func() {
 		ticker := time.NewTicker(time.Second * time.Duration(flushInterval))
@@ -399,6 +399,6 @@ func (b *PostgresqlBuffer) flush() {
 			zap.String("Error", src.Err().Error()),
 		)
 	}
-	b.rows = make([][]interface{}, b.size)
+	b.rows = make([][]interface{}, b.size+1)
 	b.lastFlush = time.Now()
 }

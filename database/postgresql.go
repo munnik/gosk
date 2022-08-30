@@ -37,20 +37,22 @@ const (
 var fs embed.FS
 
 type PostgresqlDatabase struct {
-	url          string
-	connection   *pgxpool.Pool
-	mu           sync.Mutex
-	rawCache     *cache.Cache[time.Time, []message.Raw]
-	mappedCache  *cache.Cache[time.Time, []message.SingleValueMapped]
-	rawBuffer    PostgresqlBuffer
-	mappedBuffer PostgresqlBuffer
+	url                 string
+	connection          *pgxpool.Pool
+	mu                  sync.Mutex
+	rawCache            *cache.Cache[time.Time, []message.Raw]
+	mappedCache         *cache.Cache[time.Time, []message.SingleValueMapped]
+	cacheSelectDuration int
+	rawBuffer           PostgresqlBuffer
+	mappedBuffer        PostgresqlBuffer
 }
 
 func NewPostgresqlDatabase(c *config.PostgresqlConfig) *PostgresqlDatabase {
 	result := &PostgresqlDatabase{
-		url:         c.URLString,
-		rawCache:    cache.New(cache.AsFIFO[time.Time, []message.Raw](fifo.WithCapacity(20 * 1024))),
-		mappedCache: cache.New(cache.AsFIFO[time.Time, []message.SingleValueMapped](fifo.WithCapacity(20 * 1024))),
+		url:                 c.URLString,
+		rawCache:            cache.New(cache.AsFIFO[time.Time, []message.Raw](fifo.WithCapacity(c.CacheCapacity))),
+		mappedCache:         cache.New(cache.AsFIFO[time.Time, []message.SingleValueMapped](fifo.WithCapacity(c.CacheCapacity))),
+		cacheSelectDuration: c.CacheSelectDuration,
 	}
 	result.rawBuffer = *NewPostgresqlBuffer(result.GetConnection(), "raw_data", []string{"time", "collector", "value", "uuid", "type"}, c.BufferSize, c.BufferFlushInterval)
 	result.mappedBuffer = *NewPostgresqlBuffer(result.GetConnection(), "mapped_data", []string{"time", "collector", "type", "context", "path", "value", "uuid", "origin"}, c.BufferSize, c.BufferFlushInterval)
@@ -114,7 +116,7 @@ func (db *PostgresqlDatabase) WriteRaw(raw message.Raw) {
 	if _, ok := db.mappedCache.Get(raw.Timestamp); !ok {
 		// create an empty list for the timestamp
 		db.rawCache.Set(raw.Timestamp, []message.Raw{})
-		rows, err := db.GetConnection().Query(context.Background(), selectRawQuery+` WHERE "time" = $1`, raw.Timestamp)
+		rows, err := db.GetConnection().Query(context.Background(), selectRawQuery+` WHERE "time" BETWEEN $1 AND $2`, raw.Timestamp.Add(-time.Second*time.Duration(db.cacheSelectDuration)), raw.Timestamp.Add(time.Second*time.Duration(db.cacheSelectDuration)))
 		if err != nil {
 			return
 		}
@@ -171,7 +173,7 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 		// create an empty list for the timestamp
 		db.mappedCache.Set(svm.Timestamp, []message.SingleValueMapped{})
 
-		rows, err := db.GetConnection().Query(context.Background(), selectMappedQuery+` WHERE "time" = $1`, svm.Timestamp)
+		rows, err := db.GetConnection().Query(context.Background(), selectMappedQuery+` WHERE "time" BETWEEN $1 AND $2`, svm.Timestamp.Add(-time.Second*time.Duration(db.cacheSelectDuration)), svm.Timestamp.Add(time.Second*time.Duration(db.cacheSelectDuration)))
 		if err != nil {
 			return
 		}

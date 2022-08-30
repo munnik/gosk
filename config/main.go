@@ -202,6 +202,8 @@ type PostgresqlConfig struct {
 	URLString           string `mapstructure:"url"`
 	BufferSize          int    `mapstructure:"buffer_size" default:"0"`
 	BufferFlushInterval int    `mapstructure:"buffer_flush_interval" default:"600"`
+	CacheCapacity       int    `mapstructure:"cache_capacity" default:"1024"`
+	CacheSelectDuration int    `mapstructure:"cache_select_duration" default:"10"`
 }
 
 func NewPostgresqlConfig(configFilePath string) *PostgresqlConfig {

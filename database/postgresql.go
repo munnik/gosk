@@ -163,7 +163,8 @@ func (db *PostgresqlDatabase) WriteMapped(mapped message.Mapped) {
 
 func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapped) {
 	if str, ok := svm.Value.(string); ok {
-		svm.Value = strconv.Quote(str)
+		// see https://github.com/jackc/pgx/issues/1294
+		svm.Value = "\x01" + strconv.Quote(str)
 	}
 	// check if timestamp is already in the cache, if not retrieve all existing rows from the database and fill the cache
 	if _, ok := db.mappedCache.Get(svm.Timestamp); !ok {
@@ -379,9 +380,10 @@ func NewPostgresqlBuffer(pool *pgxpool.Pool, table string, columnNames []string,
 func (b *PostgresqlBuffer) Add(row []interface{}) {
 	b.mu.Lock()
 	b.rows = append(b.rows, row)
+	l := len(b.rows)
 	b.mu.Unlock()
 
-	if len(b.rows) > b.size {
+	if l >= b.size {
 		b.flush()
 	}
 }
@@ -391,7 +393,13 @@ func (b *PostgresqlBuffer) flush() {
 	defer b.mu.Unlock()
 
 	src := pgx.CopyFromRows(b.rows)
-	b.pool.CopyFrom(context.Background(), b.table, b.columnNames, src)
+	_, err := b.pool.CopyFrom(context.Background(), b.table, b.columnNames, src)
+	if err != nil {
+		logger.GetLogger().Error(
+			"CopyFrom failed",
+			zap.String("Error", err.Error()),
+		)
+	}
 	if src.Err() != nil {
 		logger.GetLogger().Error(
 			"CopyFrom failed",

@@ -360,7 +360,7 @@ func NewPostgresqlBuffer(pool *pgxpool.Pool, table string, columnNames []string,
 		pool:        pool,
 		table:       pgx.Identifier{table},
 		size:        size,
-		rows:        make([][]interface{}, size+1),
+		rows:        make([][]interface{}, 0, size+1),
 		columnNames: columnNames,
 	}
 	go func() {
@@ -398,6 +398,6 @@ func (b *PostgresqlBuffer) flush() {
 			zap.String("Error", src.Err().Error()),
 		)
 	}
-	b.rows = make([][]interface{}, b.size+1)
+	b.rows = make([][]interface{}, 0, b.size+1)
 	b.lastFlush = time.Now()
 }

@@ -377,9 +377,9 @@ func NewPostgresqlBuffer(pool *pgxpool.Pool, table string, columnNames []string,
 
 func (b *PostgresqlBuffer) Add(row []interface{}) {
 	b.mu.Lock()
-	defer b.mu.Unlock()
-
 	b.rows = append(b.rows, row)
+	b.mu.Unlock()
+
 	if len(b.rows) > b.size {
 		b.flush()
 	}

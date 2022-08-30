@@ -356,11 +356,12 @@ type PostgresqlBuffer struct {
 
 func NewPostgresqlBuffer(pool *pgxpool.Pool, table string, columnNames []string, size int, flushInterval int) *PostgresqlBuffer {
 	result := &PostgresqlBuffer{
-		lastFlush: time.Now(),
-		pool:      pool,
-		table:     pgx.Identifier{table},
-		size:      size,
-		rows:      make([][]interface{}, size+1),
+		lastFlush:   time.Now(),
+		pool:        pool,
+		table:       pgx.Identifier{table},
+		size:        size,
+		rows:        make([][]interface{}, size+1),
+		columnNames: columnNames,
 	}
 	go func() {
 		ticker := time.NewTicker(time.Second * time.Duration(flushInterval))

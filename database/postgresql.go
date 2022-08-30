@@ -39,15 +39,13 @@ const (
 var fs embed.FS
 
 type PostgresqlDatabase struct {
-	url             string
-	connection      *pgxpool.Pool
-	connectionMutex sync.Mutex
-	rawCache        *cache.Cache[time.Time, []message.Raw]
-	mappedCache     *cache.Cache[time.Time, []message.SingleValueMapped]
-	batch           pgx.Batch
-	batchSize       int
-	lastFlush       time.Time
-	flushMutex      sync.Mutex
+	url          string
+	connection   *pgxpool.Pool
+	mu           sync.Mutex
+	rawCache     *cache.Cache[time.Time, []message.Raw]
+	mappedCache  *cache.Cache[time.Time, []message.SingleValueMapped]
+	rawBuffer    PostgresqlBuffer
+	mappedBuffer PostgresqlBuffer
 }
 
 func NewPostgresqlDatabase(c *config.PostgresqlConfig) *PostgresqlDatabase {
@@ -55,17 +53,9 @@ func NewPostgresqlDatabase(c *config.PostgresqlConfig) *PostgresqlDatabase {
 		url:         c.URLString,
 		rawCache:    cache.New(cache.AsFIFO[time.Time, []message.Raw](fifo.WithCapacity(20 * 1024))),
 		mappedCache: cache.New(cache.AsFIFO[time.Time, []message.SingleValueMapped](fifo.WithCapacity(20 * 1024))),
-		batchSize:   c.BatchSize,
 	}
-	go func() {
-		ticker := time.NewTicker(time.Second * time.Duration(c.BatchFlushInterval))
-		for {
-			<-ticker.C
-			if time.Now().Add(-time.Second * time.Duration(c.BatchFlushInterval)).Before(result.lastFlush) {
-				result.flushBatch()
-			}
-		}
-	}()
+	result.rawBuffer = *NewPostgresqlBuffer(result.GetConnection(), "raw_data", []string{"time", "collector", "value", "uuid", "type"}, c.BufferSize, c.BufferFlushInterval)
+	result.mappedBuffer = *NewPostgresqlBuffer(result.GetConnection(), "mapped_data", []string{"time", "collector", "type", "context", "path", "value", "uuid", "origin"}, c.BufferSize, c.BufferFlushInterval)
 	return result
 }
 
@@ -77,8 +67,8 @@ func (db *PostgresqlDatabase) GetConnection() *pgxpool.Pool {
 		}
 	}
 
-	db.connectionMutex.Lock()
-	defer db.connectionMutex.Unlock()
+	db.mu.Lock()
+	defer db.mu.Unlock()
 
 	if err := db.UpgradeDatabase(); err != nil {
 		logger.GetLogger().Fatal(
@@ -157,10 +147,14 @@ func (db *PostgresqlDatabase) WriteRaw(raw message.Raw) {
 
 	// value is not in cache, insert into the database and add to the cache
 	db.rawCache.Set(raw.Timestamp, append(cached, raw))
-	db.batch.Queue(rawInsertQuery, raw.Timestamp, raw.Collector, raw.Value, raw.Uuid, raw.Type)
-	if db.batch.Len() > db.batchSize {
-		go db.flushBatch()
-	}
+	// `INSERT INTO "raw_data" ("time", "collector", "value", "uuid", "type") VALUES ($1, $2, $3, $4, $5)`
+	db.rawBuffer.Add([]interface{}{
+		raw.Timestamp,
+		raw.Collector,
+		raw.Value,
+		raw.Uuid,
+		raw.Type,
+	})
 }
 
 func (db *PostgresqlDatabase) WriteMapped(mapped message.Mapped) {
@@ -212,10 +206,18 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 
 	// value is not in cache, insert into the database and add to the cache
 	db.mappedCache.Set(svm.Timestamp, append(cached, svm))
-	db.batch.Queue(mappedInsertQuery, svm.Timestamp, svm.Source.Label, svm.Source.Type, svm.Context, svm.Path, svm.Value, svm.Source.Uuid, svm.Origin)
-	if db.batch.Len() > db.batchSize {
-		go db.flushBatch()
-	}
+
+	// `INSERT INTO "mapped_data" ("time", "collector", "type", "context", "path", "value", "uuid", "origin") VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+	db.mappedBuffer.Add([]interface{}{
+		svm.Timestamp,
+		svm.Source.Label,
+		svm.Source.Type,
+		svm.Context,
+		svm.Path,
+		svm.Value,
+		svm.Source.Uuid,
+		svm.Origin,
+	})
 }
 
 func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...interface{}) ([]message.Mapped, error) {
@@ -344,19 +346,59 @@ func (db *PostgresqlDatabase) DowngradeDatabase() error {
 	return nil
 }
 
-func (db *PostgresqlDatabase) flushBatch() {
-	db.flushMutex.Lock()
-	defer db.flushMutex.Unlock()
-	result := db.GetConnection().SendBatch(context.Background(), &db.batch)
-	// todo, determine if inserts went well
+type PostgresqlBuffer struct {
+	lastFlush   time.Time
+	mu          sync.Mutex
+	pool        *pgxpool.Pool
+	table       pgx.Identifier
+	columnNames []string
+	size        int
+	rows        [][]interface{}
+}
 
-	if err := result.Close(); err != nil {
-		logger.GetLogger().Error(
-			"Unable to flush batch",
-			zap.String("Error", err.Error()),
-		)
-		return
+func NewPostgresqlBuffer(pool *pgxpool.Pool, table string, columnNames []string, size int, flushInterval int) *PostgresqlBuffer {
+	result := &PostgresqlBuffer{
+		lastFlush: time.Now(),
+		pool:      pool,
+		table:     pgx.Identifier{table},
+		size:      size,
+		rows:      make([][]interface{}, size),
 	}
+	go func() {
+		ticker := time.NewTicker(time.Second * time.Duration(flushInterval))
+		for {
+			<-ticker.C
+			if time.Now().Add(-time.Second * time.Duration(flushInterval)).Before(result.lastFlush) {
+				result.flush()
+			}
+		}
+	}()
 
-	db.lastFlush = time.Now()
+	return result
+}
+
+func (b *PostgresqlBuffer) Add(row []interface{}) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.rows = append(b.rows, row)
+	if len(b.rows) > b.size {
+		b.flush()
+	}
+}
+
+func (b *PostgresqlBuffer) flush() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	src := pgx.CopyFromRows(b.rows)
+	b.pool.CopyFrom(context.Background(), b.table, b.columnNames, src)
+	if src.Err() != nil {
+		logger.GetLogger().Error(
+			"CopyFrom failed",
+			zap.String("Error", src.Err().Error()),
+		)
+	}
+	b.rows = make([][]interface{}, b.size)
+	b.lastFlush = time.Now()
 }

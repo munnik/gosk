@@ -199,9 +199,9 @@ func NewMQTTConfig(configFilePath string) *MQTTConfig {
 }
 
 type PostgresqlConfig struct {
-	URLString          string `mapstructure:"url"`
-	BatchSize          int    `mapstructure:"batch_size"`
-	BatchFlushInterval int    `mapstructure:"batch_flush_interval"`
+	URLString           string `mapstructure:"url"`
+	BufferSize          int    `mapstructure:"buffer_size" default:"0"`
+	BufferFlushInterval int    `mapstructure:"buffer_flush_interval" default:"600"`
 }
 
 func NewPostgresqlConfig(configFilePath string) *PostgresqlConfig {

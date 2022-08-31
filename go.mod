@@ -17,6 +17,7 @@ require (
 	github.com/gorilla/websocket v1.5.0
 	github.com/jackc/pgx/v4 v4.17.1
 	github.com/klauspost/compress v1.15.9
+	github.com/mcuadros/go-defaults v1.2.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/munnik/go-nmea v1.5.0
 	github.com/munnik/uniqueue v0.0.2
@@ -52,7 +53,6 @@ require (
 	github.com/lib/pq v1.10.6 // indirect
 	github.com/magiconair/properties v1.8.6 // indirect
 	github.com/martinlindhe/unit v0.0.0-20220817221856-f7b595b5f97e // indirect
-	github.com/mcuadros/go-defaults v1.2.0 // indirect
 	github.com/onsi/ginkgo v1.16.5 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/pelletier/go-toml/v2 v2.0.5 // indirect

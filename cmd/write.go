@@ -22,6 +22,7 @@ import (
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/nanomsg"
+	"github.com/munnik/gosk/version"
 	"github.com/munnik/gosk/writer"
 	"github.com/spf13/cobra"
 )
@@ -169,7 +170,7 @@ func doWriteSignalK(cmd *cobra.Command, args []string) {
 			zap.String("Error", err.Error()),
 		)
 	}
-	c := config.NewSignalKConfig(cfgFile).WithVersion(version)
+	c := config.NewSignalKConfig(cfgFile).WithVersion(version.Version)
 	s := writer.NewSignalKWriter(c)
 	s.WriteMapped(subscriber)
 }

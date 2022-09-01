@@ -18,6 +18,7 @@ package cmd
 
 import (
 	"github.com/munnik/gosk/logger"
+	"github.com/munnik/gosk/version"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
@@ -28,8 +29,6 @@ var (
 	cfgFile      string
 	subscribeURL string
 	publishURL   string
-
-	version string
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -41,12 +40,12 @@ for different protocols (e.g. NMEA0183, NMEA200, Canbus or Modbus). This raw dat
 can be stored in a database for later usage. The data can also be forwarded to a 
 mapper to process the data and convert it to SignalK key/value pairs. Finally the 
 data can be published in different ways (e.g. HTTP or Websocket).`,
+	Version: version.Version,
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
-func Execute(v string) {
-	version = v
+func Execute() {
 
 	if err := rootCmd.Execute(); err != nil {
 		logger.GetLogger().Fatal(

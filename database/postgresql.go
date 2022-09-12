@@ -26,8 +26,8 @@ const (
 	selectRawQuery                 = `SELECT "time", "collector", "value", "uuid", "type" FROM "raw_data"`
 	selectMappedQuery              = `SELECT "time", "collector", "type", "context", "path", "value", "uuid", "origin" FROM "mapped_data"`
 	selectMappedDataPointsQuery    = `SELECT count(*) FROM "mapped_data" WHERE "time" BETWEEN $1 AND $2`
-	selectCompletePeriodsQuery     = `SELECT "start" FROM "remote_data" WHERE "origin" = $1 AND "local" >= "remote"`
-	selectIncompletePeriodsQuery   = `SELECT "start" FROM "remote_data" WHERE "origin" = $1 AND "local" < "remote"`
+	selectCompletePeriodsQuery     = `SELECT "start" FROM "remote_data" WHERE "origin" = $1 AND "local" >= "remote" * $2`
+	selectIncompletePeriodsQuery   = `SELECT "start" FROM "remote_data" WHERE "origin" = $1 AND "local" < "remote" * $2`
 	insertOrUpdatePeriodQuery      = `INSERT INTO "remote_data" ("origin", "start", "end", "remote") VALUES ($1, $2, $3, $4) ON CONFLICT ("origin", "start", "end") DO UPDATE SET "remote" = $4`
 	updateLocalDataPoints          = `UPDATE "remote_data" SET "local" = $4 WHERE "origin" = $1 AND "start" = $2 AND "end" = $3`
 	selectLocalAndRemoteDataPoints = `SELECT count(mapped_data.*) AS "local", "remote" FROM "mapped_data", "remote_data" WHERE "remote_data"."origin" = $1 AND "start" = $2 AND "end" = $3 AND "mapped_data"."origin" = $1 AND "mapped_data"."time" BETWEEN $2 AND $3 GROUP BY "remote";`
@@ -43,6 +43,7 @@ type PostgresqlDatabase struct {
 	rawCache            *cache.Cache[time.Time, []message.Raw]
 	mappedCache         *cache.Cache[time.Time, []message.SingleValueMapped]
 	cacheSelectDuration int
+	completeRatio       float64
 	rawBuffer           PostgresqlBuffer
 	mappedBuffer        PostgresqlBuffer
 }
@@ -53,6 +54,7 @@ func NewPostgresqlDatabase(c *config.PostgresqlConfig) *PostgresqlDatabase {
 		rawCache:            cache.New(cache.AsFIFO[time.Time, []message.Raw](fifo.WithCapacity(c.CacheCapacity))),
 		mappedCache:         cache.New(cache.AsFIFO[time.Time, []message.SingleValueMapped](fifo.WithCapacity(c.CacheCapacity))),
 		cacheSelectDuration: c.CacheSelectDuration,
+		completeRatio:       c.CompleteRatio,
 	}
 	result.rawBuffer = *NewPostgresqlBuffer(result.GetConnection(), "raw_data", []string{"time", "collector", "value", "uuid", "type"}, c.BufferSize, c.BufferFlushInterval)
 	result.mappedBuffer = *NewPostgresqlBuffer(result.GetConnection(), "mapped_data", []string{"time", "collector", "type", "context", "path", "value", "uuid", "origin"}, c.BufferSize, c.BufferFlushInterval)
@@ -268,18 +270,18 @@ func (db *PostgresqlDatabase) ReadMappedCount(start time.Time, end time.Time) (i
 
 // Returns the start timestamp of each period that has the same or more local rows than remote
 func (db *PostgresqlDatabase) SelectCompletePeriods(origin string) (map[time.Time]struct{}, error) {
-	return db.selectPeriods(selectCompletePeriodsQuery, origin)
+	return db.selectPeriods(selectCompletePeriodsQuery, origin, db.completeRatio)
 }
 
 // Returns the start timestamp of each period that has the same or more local rows than remote
 func (db *PostgresqlDatabase) SelectIncompletePeriods(origin string) (map[time.Time]struct{}, error) {
-	return db.selectPeriods(selectIncompletePeriodsQuery, origin)
+	return db.selectPeriods(selectIncompletePeriodsQuery, origin, db.completeRatio)
 }
 
 // Returns the start timestamp of each period that has the same or more local rows than remote
-func (db *PostgresqlDatabase) selectPeriods(query string, origin string) (map[time.Time]struct{}, error) {
+func (db *PostgresqlDatabase) selectPeriods(query string, origin string, completeRatio float64) (map[time.Time]struct{}, error) {
 	result := map[time.Time]struct{}{}
-	rows, err := db.GetConnection().Query(context.Background(), query, origin)
+	rows, err := db.GetConnection().Query(context.Background(), query, origin, completeRatio)
 	if err != nil {
 		return result, err
 	}

@@ -79,3 +79,9 @@ mappings:
     numberOfCoilsOrRegisters: 1
     expression: "deltas[22]"
     path: "testingDeltaPath"
+  - slave: 3
+    functionCode: 4
+    address: 23
+    numberOfCoilsOrRegisters: 1
+    expression: "timedeltas[23]"
+    path: "testingTimeDeltaPath"

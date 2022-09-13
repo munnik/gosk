@@ -433,5 +433,30 @@ var _ = Describe("DoMap Modbus", func() {
 			),
 			false,
 		),
+		Entry("time difference",
+			mapper,
+			func() *message.Raw {
+				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x17, 0x00, 0x01, 0x00, 0x01})
+				m.Uuid = uuid.Nil
+				m.Timestamp = now.Add(-1 * time.Second)
+				return m
+			}(),
+			func() *message.Raw {
+				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x17, 0x00, 0x01, 0xff, 0xff})
+				m.Uuid = uuid.Nil
+				m.Timestamp = now
+				return m
+			}(),
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				message.NewUpdate().WithSource(
+					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType).WithUuid(uuid.Nil),
+				).WithTimestamp(
+					now,
+				).AddValue(
+					message.NewValue().WithPath("testingTimeDeltaPath").WithValue(int64(1000)),
+				),
+			),
+			false,
+		),
 	)
 })

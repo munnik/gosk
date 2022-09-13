@@ -3,6 +3,7 @@ package mapper
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/antonmedv/expr"
@@ -45,7 +46,6 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	for i := range registerData {
 		registerData[i] = binary.BigEndian.Uint16(r.Value[7+i*2 : 9+i*2])
 	}
-	// var env = map[string]interface{}{}
 	if functionCode == config.Coils || functionCode == config.DiscreteInputs {
 		coilsMap := make(map[int]bool, 0)
 		for i, coil := range RegistersToCoils(registerData, numberOfCoilsOrRegisters) {
@@ -59,7 +59,14 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		if previousMap, ok := m.env["registers"].(map[int]uint16); ok {
 			oldTimestampMap := m.env["timestamps"].(map[int]time.Time)
 			for i, register := range registerData {
-				deltaMap[int(address)+i] = int32(register) - int32(previousMap[int(address)+i])
+				delta := int32(register) - int32(previousMap[int(address)+i])
+				if delta < -50000 { // overflow
+					delta = delta + math.MaxUint16
+				} else if delta > 50000 { // underflow
+					delta = delta - math.MaxUint16
+				}
+				deltaMap[int(address)+i] = delta
+
 				timeDeltaMap[int(address)+i] = r.Timestamp.Sub(oldTimestampMap[int(address)+i])
 			}
 		} else { // first time, no previous data available yet

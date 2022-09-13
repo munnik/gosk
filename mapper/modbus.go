@@ -55,7 +55,7 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	} else if functionCode == config.HoldingRegisters || functionCode == config.InputRegisters {
 		deltaMap := make(map[int]int32, 0)
 		timestampMap := make(map[int]time.Time, 0)
-		timeDeltaMap := make(map[int]time.Duration, 0)
+		timeDeltaMap := make(map[int]int64, 0)
 		if previousMap, ok := m.env["registers"].(map[int]uint16); ok {
 			oldTimestampMap := m.env["timestamps"].(map[int]time.Time)
 			for i, register := range registerData {
@@ -67,7 +67,7 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 				}
 				deltaMap[int(address)+i] = delta
 
-				timeDeltaMap[int(address)+i] = r.Timestamp.Sub(oldTimestampMap[int(address)+i])
+				timeDeltaMap[int(address)+i] = time.Duration(r.Timestamp.Sub(oldTimestampMap[int(address)+i])).Milliseconds()
 			}
 		} else { // first time, no previous data available yet
 			for i, register := range registerData {

@@ -296,4 +296,142 @@ var _ = Describe("DoMap Modbus", func() {
 			false,
 		),
 	)
+	DescribeTable("deltas", func(m *ModbusMapper, first *message.Raw, second *message.Raw, expected *message.Mapped, expectError bool) {
+		m.DoMap(first)
+		result, err := m.DoMap(second)
+		if expectError {
+			Expect(err).To(HaveOccurred())
+			Expect(result).To(BeNil())
+		} else {
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result).To(Equal(expected))
+		}
+
+	},
+		Entry("no difference",
+			mapper,
+			func() *message.Raw {
+				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x16, 0x00, 0x01, 0x0f, 0x92})
+				m.Uuid = uuid.Nil
+				m.Timestamp = now.Add(-time.Second)
+				return m
+			}(),
+			func() *message.Raw {
+				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x16, 0x00, 0x01, 0x0f, 0x92})
+				m.Uuid = uuid.Nil
+				m.Timestamp = now
+				return m
+			}(),
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				message.NewUpdate().WithSource(
+					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType).WithUuid(uuid.Nil),
+				).WithTimestamp(
+					now,
+				).AddValue(
+					message.NewValue().WithPath("testingDeltaPath").WithValue(int32(0)),
+				),
+			),
+			false,
+		),
+		Entry("small difference",
+			mapper,
+			func() *message.Raw {
+				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x16, 0x00, 0x01, 0x0f, 0x92})
+				m.Uuid = uuid.Nil
+				m.Timestamp = now.Add(-time.Second)
+				return m
+			}(),
+			func() *message.Raw {
+				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x16, 0x00, 0x01, 0x0f, 0xf2})
+				m.Uuid = uuid.Nil
+				m.Timestamp = now
+				return m
+			}(),
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				message.NewUpdate().WithSource(
+					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType).WithUuid(uuid.Nil),
+				).WithTimestamp(
+					now,
+				).AddValue(
+					message.NewValue().WithPath("testingDeltaPath").WithValue(int32(96)),
+				),
+			),
+			false,
+		),
+		Entry("negative difference",
+			mapper,
+			func() *message.Raw {
+				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x16, 0x00, 0x01, 0x0f, 0xf2})
+				m.Uuid = uuid.Nil
+				m.Timestamp = now.Add(-time.Second)
+				return m
+			}(),
+			func() *message.Raw {
+				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x16, 0x00, 0x01, 0x0f, 0x92})
+				m.Uuid = uuid.Nil
+				m.Timestamp = now
+				return m
+			}(),
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				message.NewUpdate().WithSource(
+					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType).WithUuid(uuid.Nil),
+				).WithTimestamp(
+					now,
+				).AddValue(
+					message.NewValue().WithPath("testingDeltaPath").WithValue(int32(-96)),
+				),
+			),
+			false,
+		),
+		Entry("overflow",
+			mapper,
+			func() *message.Raw {
+				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x16, 0x00, 0x01, 0xff, 0xff})
+				m.Uuid = uuid.Nil
+				m.Timestamp = now.Add(-time.Second)
+				return m
+			}(),
+			func() *message.Raw {
+				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x16, 0x00, 0x01, 0x00, 0x01})
+				m.Uuid = uuid.Nil
+				m.Timestamp = now
+				return m
+			}(),
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				message.NewUpdate().WithSource(
+					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType).WithUuid(uuid.Nil),
+				).WithTimestamp(
+					now,
+				).AddValue(
+					message.NewValue().WithPath("testingDeltaPath").WithValue(int32(1)),
+				),
+			),
+			false,
+		),
+		Entry("underflow",
+			mapper,
+			func() *message.Raw {
+				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x16, 0x00, 0x01, 0x00, 0x01})
+				m.Uuid = uuid.Nil
+				m.Timestamp = now.Add(-time.Second)
+				return m
+			}(),
+			func() *message.Raw {
+				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x16, 0x00, 0x01, 0xff, 0xff})
+				m.Uuid = uuid.Nil
+				m.Timestamp = now
+				return m
+			}(),
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				message.NewUpdate().WithSource(
+					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType).WithUuid(uuid.Nil),
+				).WithTimestamp(
+					now,
+				).AddValue(
+					message.NewValue().WithPath("testingDeltaPath").WithValue(int32(-1)),
+				),
+			),
+			false,
+		),
+	)
 })

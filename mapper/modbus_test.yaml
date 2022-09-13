@@ -73,3 +73,9 @@ mappings:
     numberOfCoilsOrRegisters: 1
     expression: '{"state": !coils[808],"message":"The battery voltage is too low"}'
     path: "notifications.electrical.batteries.main.voltage"
+  - slave: 3
+    functionCode: 4
+    address: 22
+    numberOfCoilsOrRegisters: 1
+    expression: "deltas[22]"
+    path: "testingDeltaPath"

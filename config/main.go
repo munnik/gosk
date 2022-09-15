@@ -34,16 +34,17 @@ const (
 )
 
 type CollectorConfig struct {
-	Name         string   `mapstructure:"name"`
-	URL          *url.URL `mapstructure:"_"`
-	URLString    string   `mapstructure:"url"`
-	Listen       bool     `mapstructure:"listen"`
-	BaudRate     int      `mapstructure:"baudRate"`
-	DataBits     int      `mapstructure:"dataBits"`
-	StopBits     int      `mapstructure:"stopBits"`
-	Parity       int      `mapstructure:"_"`
-	ParityString string   `mapstructure:"parity"`
-	Protocol     string   `mapstructure:"protocol"`
+	Name         string        `mapstructure:"name"`
+	URL          *url.URL      `mapstructure:"_"`
+	URLString    string        `mapstructure:"url"`
+	Listen       bool          `mapstructure:"listen"`
+	BaudRate     int           `mapstructure:"baudRate"`
+	DataBits     int           `mapstructure:"dataBits"`
+	StopBits     int           `mapstructure:"stopBits"`
+	Parity       int           `mapstructure:"_"`
+	ParityString string        `mapstructure:"parity"`
+	Protocol     string        `mapstructure:"protocol"`
+	MinWait      time.Duration `mapstructure:"minWait"`
 }
 
 func NewCollectorConfig(configFilePath string) *CollectorConfig {
@@ -53,6 +54,7 @@ func NewCollectorConfig(configFilePath string) *CollectorConfig {
 		DataBits:     8,
 		StopBits:     1,
 		ParityString: "N",
+		MinWait:      time.Second,
 	}
 	readConfigFile(result, configFilePath)
 

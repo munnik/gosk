@@ -2,6 +2,7 @@ package collector
 
 import (
 	"encoding/binary"
+	"time"
 
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
@@ -33,7 +34,7 @@ func (r *CanBusCollector) Collect(publisher mangos.Socket) {
 			}
 		}
 	}()
-	process(stream, r.config.Name, r.config.Protocol, publisher)
+	processRateLimited(stream, r.config.Name, r.config.Protocol, publisher, time.Second)
 }
 
 func (r *CanBusCollector) receive(stream chan<- []byte) error {

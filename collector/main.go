@@ -2,6 +2,7 @@ package collector
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
@@ -15,13 +16,21 @@ type Collector interface {
 }
 
 func process(stream <-chan []byte, collector string, protocol string, publisher mangos.Socket) {
+	processRateLimited(stream, collector, protocol, publisher, 0)
+}
+
+func processRateLimited(stream <-chan []byte, collector string, protocol string, publisher mangos.Socket, minWait time.Duration) {
 	var m *message.Raw
+	lastTimestamp := time.Now()
 	for value := range stream {
 		logger.GetLogger().Debug(
 			"Received a message from the stream",
 			zap.ByteString("Message", value),
 		)
-
+		if time.Since(lastTimestamp) < minWait {
+			continue
+		}
+		lastTimestamp = time.Now()
 		m = message.NewRaw().WithCollector(collector).WithValue(value).WithType(protocol)
 		bytes, err := json.Marshal(m)
 		if err != nil {

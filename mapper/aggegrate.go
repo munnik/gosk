@@ -7,6 +7,7 @@ import (
 	"github.com/antonmedv/expr/vm"
 	"github.com/google/uuid"
 	"github.com/munnik/gosk/config"
+	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
 	"go.nanomsg.org/mangos/v3"
 )
@@ -38,8 +39,9 @@ func (m *AggegrateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 	for _, svm := range input.ToSingleValueMapped() {
 		mappings, present := m.aggegrateMappings[svm.Path]
 		if present {
-			fmt.Println(svm.Path)
-			m.env[svm.Path] = svm
+			logger.GetLogger().Warn((svm.Path))
+			m.env["data"] = svm.Value
+			logger.GetLogger().Warn(fmt.Sprint(m.env))
 			vm := vm.VM{}
 			for _, mapping := range mappings {
 				output, err := runExpr(vm, m.env, mapping.MappingConfig)
@@ -50,6 +52,9 @@ func (m *AggegrateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 
 		}
 	}
-	return input.AddUpdate(u), nil
-	// return input, nil
+	if len(u.Values) > 0 {
+		return input.AddUpdate(u), nil
+	} else {
+		return input, nil
+	}
 }

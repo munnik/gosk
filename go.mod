@@ -17,7 +17,6 @@ require (
 	github.com/gorilla/websocket v1.5.0
 	github.com/jackc/pgx/v4 v4.17.1
 	github.com/klauspost/compress v1.15.9
-	github.com/mcuadros/go-defaults v1.2.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/munnik/go-nmea v1.5.0
 	github.com/munnik/uniqueue v0.0.2

@@ -1,13 +1,12 @@
 package mapper
 
 import (
-	"fmt"
+	"strings"
 	"time"
 
 	"github.com/antonmedv/expr/vm"
 	"github.com/google/uuid"
 	"github.com/munnik/gosk/config"
-	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
 	"go.nanomsg.org/mangos/v3"
 )
@@ -39,9 +38,9 @@ func (m *AggegrateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 	for _, svm := range input.ToSingleValueMapped() {
 		mappings, present := m.aggegrateMappings[svm.Path]
 		if present {
-			logger.GetLogger().Warn((svm.Path))
-			m.env["data"] = svm.Value
-			logger.GetLogger().Warn(fmt.Sprint(m.env))
+			u.WithTimestamp(svm.Timestamp)
+			path := strings.ReplaceAll(svm.Path, ".", "_")
+			m.env[path] = svm.Value
 			vm := vm.VM{}
 			for _, mapping := range mappings {
 				output, err := runExpr(vm, m.env, mapping.MappingConfig)

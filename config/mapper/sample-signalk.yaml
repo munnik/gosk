@@ -1,0 +1,9 @@
+---
+context: "vessels.urn:mrn:imo:mmsi:123456789"
+protocol: "signalk"
+mappings:
+  - expression: "propulsion.port.drive.power['value'] + propulsion.starboard.drive.power['value']"
+    path: "propulsion.combined.drive.power"
+    sourcePaths: 
+      - "propulsion.port.drive.power"
+      - "propulsion.starboard.drive.power"

@@ -24,7 +24,14 @@ func (u *Update) WithTimestamp(t time.Time) *Update {
 	u.Timestamp = t
 	return u
 }
-
+func (u *Update) GetValueByPath(p string) *Value {
+	for _, v := range u.Values {
+		if v.Path == p {
+			return &v
+		}
+	}
+	return nil
+}
 func (u *Update) AddValue(v *Value) *Update {
 	u.Values = append(u.Values, *v)
 	return u

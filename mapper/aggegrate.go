@@ -34,18 +34,24 @@ func (m *AggegrateMapper) Map(subscriber mangos.Socket, publisher mangos.Socket)
 
 func (m *AggegrateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) {
 	s := message.NewSource().WithLabel("signalk").WithType(m.protocol).WithUuid(uuid.Nil)
-	u := message.NewUpdate().WithSource(*s).WithTimestamp(time.Now())
+	u := message.NewUpdate().WithSource(*s).WithTimestamp(time.Time{}) // initialize with empty timestamp instead of hidden now
 	for _, svm := range input.ToSingleValueMapped() {
 		mappings, present := m.aggegrateMappings[svm.Path]
 		if present {
-			u.WithTimestamp(svm.Timestamp)
+			if svm.Timestamp.After(u.Timestamp) { // take most recent timestamp from relevant data
+				u.WithTimestamp(svm.Timestamp)
+			}
 			path := strings.ReplaceAll(svm.Path, ".", "_")
 			m.env[path] = svm.Value
 			vm := vm.VM{}
 			for _, mapping := range mappings {
 				output, err := runExpr(vm, m.env, mapping.MappingConfig)
-				if err == nil {
-					u.AddValue(message.NewValue().WithPath(mapping.Path).WithValue(output))
+				if err == nil { // don't insert a path twice
+					if v := u.GetValueByPath(mapping.Path); v != nil {
+						v.WithValue(output)
+					} else {
+						u.AddValue(message.NewValue().WithPath(mapping.Path).WithValue(output))
+					}
 				}
 			}
 

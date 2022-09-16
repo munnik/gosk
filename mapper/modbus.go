@@ -3,6 +3,8 @@ package mapper
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
+	"time"
 
 	"github.com/antonmedv/expr"
 	"github.com/antonmedv/expr/vm"
@@ -17,10 +19,11 @@ type ModbusMapper struct {
 	config               config.MapperConfig
 	protocol             string
 	modbusMappingsConfig []config.ModbusMappingsConfig
+	env                  map[string]interface{}
 }
 
 func NewModbusMapper(c config.MapperConfig, mmc []config.ModbusMappingsConfig) (*ModbusMapper, error) {
-	return &ModbusMapper{config: c, protocol: config.ModbusType, modbusMappingsConfig: mmc}, nil
+	return &ModbusMapper{config: c, protocol: config.ModbusType, modbusMappingsConfig: mmc, env: map[string]interface{}{}}, nil
 }
 
 func (m *ModbusMapper) Map(subscriber mangos.Socket, publisher mangos.Socket) {
@@ -33,7 +36,7 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	u := message.NewUpdate().WithSource(*s).WithTimestamp(r.Timestamp)
 
 	if len(r.Value) < 8 {
-		return nil, fmt.Errorf("no usefull data in %v", r.Value)
+		return nil, fmt.Errorf("no useful data in %v", r.Value)
 	}
 	slave := uint8(r.Value[0])
 	functionCode := binary.BigEndian.Uint16(r.Value[1:3])
@@ -43,19 +46,43 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	for i := range registerData {
 		registerData[i] = binary.BigEndian.Uint16(r.Value[7+i*2 : 9+i*2])
 	}
-	var env = map[string]interface{}{}
 	if functionCode == config.Coils || functionCode == config.DiscreteInputs {
 		coilsMap := make(map[int]bool, 0)
 		for i, coil := range RegistersToCoils(registerData, numberOfCoilsOrRegisters) {
 			coilsMap[int(address)+i] = coil
 		}
-		env["coils"] = coilsMap
+		m.env["coils"] = coilsMap
 	} else if functionCode == config.HoldingRegisters || functionCode == config.InputRegisters {
+		deltaMap := make(map[int]int32, 0)
+		timestampMap := make(map[int]time.Time, 0)
+		timeDeltaMap := make(map[int]int64, 0)
+		if previousMap, ok := m.env["registers"].(map[int]uint16); ok {
+			oldTimestampMap := m.env["timestamps"].(map[int]time.Time)
+			for i, register := range registerData {
+				delta := int32(register) - int32(previousMap[int(address)+i])
+				if delta < -50000 { // overflow
+					delta = delta + math.MaxUint16
+				} else if delta > 50000 { // underflow
+					delta = delta - math.MaxUint16
+				}
+				deltaMap[int(address)+i] = delta
+
+				timeDeltaMap[int(address)+i] = time.Duration(r.Timestamp.Sub(oldTimestampMap[int(address)+i])).Milliseconds()
+			}
+		} else { // first time, no previous data available yet
+			for i, register := range registerData {
+				deltaMap[int(address)+i] = int32(register)
+			}
+		}
 		registersMap := make(map[int]uint16, 0)
 		for i, register := range registerData {
 			registersMap[int(address)+i] = register
+			timestampMap[int(address)+i] = r.Timestamp
 		}
-		env["registers"] = registersMap
+		m.env["deltas"] = deltaMap
+		m.env["registers"] = registersMap
+		m.env["timestamps"] = timestampMap
+		m.env["timedeltas"] = timeDeltaMap
 	}
 
 	// Reuse this vm instance between runs
@@ -73,7 +100,7 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		if mmc.CompiledExpression == nil {
 			// TODO: each iteration the CompiledExpression is nil
 			var err error
-			if mmc.CompiledExpression, err = expr.Compile(mmc.Expression, expr.Env(env)); err != nil {
+			if mmc.CompiledExpression, err = expr.Compile(mmc.Expression, expr.Env(m.env)); err != nil {
 				logger.GetLogger().Warn(
 					"Could not compile the mapping expression",
 					zap.String("Expression", mmc.Expression),
@@ -84,12 +111,12 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		}
 
 		// the compiled program exists, let's run it
-		output, err := vm.Run(mmc.CompiledExpression, env)
+		output, err := vm.Run(mmc.CompiledExpression, m.env)
 		if err != nil {
 			logger.GetLogger().Warn(
 				"Could not run the mapping expression",
 				zap.String("Expression", mmc.Expression),
-				zap.String("Environment", fmt.Sprintf("%+v", env)),
+				zap.String("Environment", fmt.Sprintf("%+v", m.env)),
 				zap.String("Error", err.Error()),
 			)
 			continue

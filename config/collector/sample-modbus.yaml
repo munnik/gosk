@@ -7,10 +7,10 @@ registerGroups: # groups of registers that should be read in one request
   - slave: 1 # slave id
     functionCode: 4 # function code of the registers, 1 = coils, 2 = discrete inputs, 3 = holding registers, 4 = input registers
     address: 51300 # address of the first register to read, zero based
-    numberOfRegisters: 2 # number of registers to read from address [optional default is 1]
+    numberOfCoilsOrRegisters: 2 # number of registers to read from address [optional default is 1]
     pollingInterval: 500000000 # interval between consecutive reads in ns [optional default is 1000000000 (1s)]
   - slave: 1 # slave id
     functionCode: 4 # function code of the registers, 1 = coils, 2 = discrete inputs, 3 = holding registers, 4 = input registers
     address: 51440 # address of the first register to read, zero based
-    numberOfRegisters: 4 # number of registers to read from address [optional default is 1]
+    numberOfCoilsOrRegisters: 4 # number of registers to read from address [optional default is 1]
     pollingInterval: 500000000 # interval between consecutive reads in ns [optional default is 1000000000 (1s)]

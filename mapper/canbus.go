@@ -2,17 +2,14 @@ package mapper
 
 import (
 	"encoding/binary"
-	"fmt"
 	"io/ioutil"
 	"os"
 
-	"github.com/antonmedv/expr"
 	"github.com/antonmedv/expr/vm"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
 	"go.nanomsg.org/mangos/v3"
-	"go.uber.org/zap"
 
 	"github.com/brutella/can"
 	"go.einride.tech/can/pkg/dbc"
@@ -84,33 +81,6 @@ func createFrame(r *message.Raw) can.Frame {
 		Data:   data,
 	}
 	return frm
-}
-
-func runExpr(vm vm.VM, env map[string]interface{}, mapping config.MappingConfig) (interface{}, error) {
-	if mapping.CompiledExpression == nil {
-		// TODO: each iteration the CompiledExpression is nil
-		var err error
-		if mapping.CompiledExpression, err = expr.Compile(mapping.Expression, expr.Env(env)); err != nil {
-			logger.GetLogger().Warn(
-				"Could not compile the mapping expression",
-				zap.String("Expression", mapping.Expression),
-				zap.String("Error", err.Error()),
-			)
-			return nil, err
-		}
-	}
-	// the compiled program exists, let's run it
-	output, err := vm.Run(mapping.CompiledExpression, env)
-	if err != nil {
-		logger.GetLogger().Warn(
-			"Could not run the mapping expression",
-			zap.String("Expression", mapping.Expression),
-			zap.String("Environment", fmt.Sprintf("%+v", env)),
-			zap.String("Error", err.Error()),
-		)
-		return nil, err
-	}
-	return output, nil
 }
 
 func extractSignal(mapping dbc.SignalDef, origin string, frm can.Frame) Signal {

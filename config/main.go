@@ -23,6 +23,8 @@ const (
 
 	CanBusType = "canbus"
 
+	SignalKType = "signalk"
+
 	ParityMap string = "NOE" // None, Odd, Even
 )
 
@@ -160,6 +162,21 @@ type JSONMappingConfig struct {
 
 func NewJSONMappingConfig(configFilePath string) []JSONMappingConfig {
 	var result []JSONMappingConfig
+	readConfigFile(&result, configFilePath, "mappings")
+
+	for _, rmc := range result {
+		rmc.verify()
+	}
+	return result
+}
+
+type AggegrateMappingConfig struct {
+	MappingConfig `mapstructure:",squash"`
+	SourcePaths   []string `mapstructure:"sourcePaths"`
+}
+
+func NewAggegrateMappingConfig(configFilePath string) []AggegrateMappingConfig {
+	var result []AggegrateMappingConfig
 	readConfigFile(&result, configFilePath, "mappings")
 
 	for _, rmc := range result {

@@ -28,8 +28,8 @@ import (
 var (
 	mapCmd = &cobra.Command{
 		Use:   "map",
-		Short: "Map raw data to meaningfull data",
-		Long:  `Map raw data to meaningfull data based on the SignalK specification`,
+		Short: "Map raw data to meaningful data",
+		Long:  `Map raw data to meaningful data based on the SignalK specification`,
 		Run:   doMap,
 	}
 )
@@ -71,6 +71,10 @@ func doMap(cmd *cobra.Command, args []string) {
 		c2 := config.NewCanBusMapperConfig(cfgFile)
 		cmc := config.NewCanBusMappingConfig(cfgFile)
 		m, err = mapper.NewCanBusMapper(c2, cmc)
+	case config.SignalKType:
+		amc := config.NewAggegrateMappingConfig(cfgFile)
+		m, err = mapper.NewAggegrateMapper(c, amc)
+
 	default:
 		logger.GetLogger().Fatal(
 			"Not a supported protocol",
@@ -80,7 +84,7 @@ func doMap(cmd *cobra.Command, args []string) {
 	}
 	if err != nil {
 		logger.GetLogger().Fatal(
-			"Error while creating the collector",
+			"Error while creating the mapper",
 			zap.String("Config file", cfgFile),
 			zap.String("Error", err.Error()),
 		)

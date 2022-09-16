@@ -16,7 +16,7 @@ const (
 	NMEA0183Type = "nmea0183"
 	// ModbusType is used to identify the data as Modbus data
 	ModbusType = "modbus"
-	// CSVType is used to identify the data as comma separated values data
+	// CSVType is used to identify the data as comma seperated values data
 	CSVType = "csv"
 	// JSONType is used to identify the data as json messages
 	JSONType = "json"
@@ -199,11 +199,9 @@ func NewMQTTConfig(configFilePath string) *MQTTConfig {
 }
 
 type PostgresqlConfig struct {
-	URLString           string `mapstructure:"url"`
-	BufferSize          int    `mapstructure:"buffer_size" default:"0"`
-	BufferFlushInterval int    `mapstructure:"buffer_flush_interval" default:"600"`
-	CacheCapacity       int    `mapstructure:"cache_capacity" default:"1024"`
-	CacheSelectDuration int    `mapstructure:"cache_select_duration" default:"10"`
+	URLString          string `mapstructure:"url"`
+	BatchSize          int    `mapstructure:"batch_size"`
+	BatchFlushInterval int    `mapstructure:"batch_flush_interval"`
 }
 
 func NewPostgresqlConfig(configFilePath string) *PostgresqlConfig {

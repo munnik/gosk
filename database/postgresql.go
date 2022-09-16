@@ -23,7 +23,9 @@ import (
 )
 
 const (
+	rawInsertQuery                 = `INSERT INTO "raw_data" ("time", "collector", "value", "uuid", "type") VALUES ($1, $2, $3, $4, $5)`
 	selectRawQuery                 = `SELECT "time", "collector", "value", "uuid", "type" FROM "raw_data"`
+	mappedInsertQuery              = `INSERT INTO "mapped_data" ("time", "collector", "type", "context", "path", "value", "uuid", "origin") VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
 	selectMappedQuery              = `SELECT "time", "collector", "type", "context", "path", "value", "uuid", "origin" FROM "mapped_data"`
 	selectMappedDataPointsQuery    = `SELECT count(*) FROM "mapped_data" WHERE "time" BETWEEN $1 AND $2`
 	selectCompletePeriodsQuery     = `SELECT "start" FROM "remote_data" WHERE "origin" = $1 AND "local" >= "remote"`
@@ -37,25 +39,33 @@ const (
 var fs embed.FS
 
 type PostgresqlDatabase struct {
-	url                 string
-	connection          *pgxpool.Pool
-	mu                  sync.Mutex
-	rawCache            *cache.Cache[time.Time, []message.Raw]
-	mappedCache         *cache.Cache[time.Time, []message.SingleValueMapped]
-	cacheSelectDuration int
-	rawBuffer           PostgresqlBuffer
-	mappedBuffer        PostgresqlBuffer
+	url             string
+	connection      *pgxpool.Pool
+	connectionMutex sync.Mutex
+	rawCache        *cache.Cache[time.Time, []message.Raw]
+	mappedCache     *cache.Cache[time.Time, []message.SingleValueMapped]
+	batch           pgx.Batch
+	batchSize       int
+	lastFlush       time.Time
+	flushMutex      sync.Mutex
 }
 
 func NewPostgresqlDatabase(c *config.PostgresqlConfig) *PostgresqlDatabase {
 	result := &PostgresqlDatabase{
-		url:                 c.URLString,
-		rawCache:            cache.New(cache.AsFIFO[time.Time, []message.Raw](fifo.WithCapacity(c.CacheCapacity))),
-		mappedCache:         cache.New(cache.AsFIFO[time.Time, []message.SingleValueMapped](fifo.WithCapacity(c.CacheCapacity))),
-		cacheSelectDuration: c.CacheSelectDuration,
+		url:         c.URLString,
+		rawCache:    cache.New(cache.AsFIFO[time.Time, []message.Raw](fifo.WithCapacity(20 * 1024))),
+		mappedCache: cache.New(cache.AsFIFO[time.Time, []message.SingleValueMapped](fifo.WithCapacity(20 * 1024))),
+		batchSize:   c.BatchSize,
 	}
-	result.rawBuffer = *NewPostgresqlBuffer(result.GetConnection(), "raw_data", []string{"time", "collector", "value", "uuid", "type"}, c.BufferSize, c.BufferFlushInterval)
-	result.mappedBuffer = *NewPostgresqlBuffer(result.GetConnection(), "mapped_data", []string{"time", "collector", "type", "context", "path", "value", "uuid", "origin"}, c.BufferSize, c.BufferFlushInterval)
+	go func() {
+		ticker := time.NewTicker(time.Second * time.Duration(c.BatchFlushInterval))
+		for {
+			<-ticker.C
+			if time.Now().Add(-time.Second * time.Duration(c.BatchFlushInterval)).Before(result.lastFlush) {
+				result.flushBatch()
+			}
+		}
+	}()
 	return result
 }
 
@@ -67,8 +77,8 @@ func (db *PostgresqlDatabase) GetConnection() *pgxpool.Pool {
 		}
 	}
 
-	db.mu.Lock()
-	defer db.mu.Unlock()
+	db.connectionMutex.Lock()
+	defer db.connectionMutex.Unlock()
 
 	if err := db.UpgradeDatabase(); err != nil {
 		logger.GetLogger().Fatal(
@@ -116,7 +126,7 @@ func (db *PostgresqlDatabase) WriteRaw(raw message.Raw) {
 	if _, ok := db.mappedCache.Get(raw.Timestamp); !ok {
 		// create an empty list for the timestamp
 		db.rawCache.Set(raw.Timestamp, []message.Raw{})
-		rows, err := db.GetConnection().Query(context.Background(), selectRawQuery+` WHERE "time" BETWEEN $1 AND $2`, raw.Timestamp.Add(-time.Second*time.Duration(db.cacheSelectDuration)), raw.Timestamp.Add(time.Second*time.Duration(db.cacheSelectDuration)))
+		rows, err := db.GetConnection().Query(context.Background(), selectRawQuery+` WHERE "time" = $1`, raw.Timestamp)
 		if err != nil {
 			return
 		}
@@ -147,14 +157,10 @@ func (db *PostgresqlDatabase) WriteRaw(raw message.Raw) {
 
 	// value is not in cache, insert into the database and add to the cache
 	db.rawCache.Set(raw.Timestamp, append(cached, raw))
-	// `INSERT INTO "raw_data" ("time", "collector", "value", "uuid", "type") VALUES ($1, $2, $3, $4, $5)`
-	db.rawBuffer.Add([]interface{}{
-		raw.Timestamp,
-		raw.Collector,
-		raw.Value,
-		raw.Uuid,
-		raw.Type,
-	})
+	db.batch.Queue(rawInsertQuery, raw.Timestamp, raw.Collector, raw.Value, raw.Uuid, raw.Type)
+	if db.batch.Len() > db.batchSize {
+		go db.flushBatch()
+	}
 }
 
 func (db *PostgresqlDatabase) WriteMapped(mapped message.Mapped) {
@@ -165,15 +171,14 @@ func (db *PostgresqlDatabase) WriteMapped(mapped message.Mapped) {
 
 func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapped) {
 	if str, ok := svm.Value.(string); ok {
-		// see https://github.com/jackc/pgx/issues/1294
-		svm.Value = "\x01" + strconv.Quote(str)
+		svm.Value = strconv.Quote(str)
 	}
 	// check if timestamp is already in the cache, if not retrieve all existing rows from the database and fill the cache
 	if _, ok := db.mappedCache.Get(svm.Timestamp); !ok {
 		// create an empty list for the timestamp
 		db.mappedCache.Set(svm.Timestamp, []message.SingleValueMapped{})
 
-		rows, err := db.GetConnection().Query(context.Background(), selectMappedQuery+` WHERE "time" BETWEEN $1 AND $2`, svm.Timestamp.Add(-time.Second*time.Duration(db.cacheSelectDuration)), svm.Timestamp.Add(time.Second*time.Duration(db.cacheSelectDuration)))
+		rows, err := db.GetConnection().Query(context.Background(), selectMappedQuery+` WHERE "time" = $1`, svm.Timestamp)
 		if err != nil {
 			return
 		}
@@ -207,18 +212,10 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 
 	// value is not in cache, insert into the database and add to the cache
 	db.mappedCache.Set(svm.Timestamp, append(cached, svm))
-
-	// `INSERT INTO "mapped_data" ("time", "collector", "type", "context", "path", "value", "uuid", "origin") VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
-	db.mappedBuffer.Add([]interface{}{
-		svm.Timestamp,
-		svm.Source.Label,
-		svm.Source.Type,
-		svm.Context,
-		svm.Path,
-		svm.Value,
-		svm.Source.Uuid,
-		svm.Origin,
-	})
+	db.batch.Queue(mappedInsertQuery, svm.Timestamp, svm.Source.Label, svm.Source.Type, svm.Context, svm.Path, svm.Value, svm.Source.Uuid, svm.Origin)
+	if db.batch.Len() > db.batchSize {
+		go db.flushBatch()
+	}
 }
 
 func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...interface{}) ([]message.Mapped, error) {
@@ -345,4 +342,21 @@ func (db *PostgresqlDatabase) DowngradeDatabase() error {
 		return err
 	}
 	return nil
+}
+
+func (db *PostgresqlDatabase) flushBatch() {
+	db.flushMutex.Lock()
+	defer db.flushMutex.Unlock()
+	result := db.GetConnection().SendBatch(context.Background(), &db.batch)
+	// todo, determine if inserts went well
+
+	if err := result.Close(); err != nil {
+		logger.GetLogger().Error(
+			"Unable to flush batch",
+			zap.String("Error", err.Error()),
+		)
+		return
+	}
+
+	db.lastFlush = time.Now()
 }

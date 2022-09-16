@@ -3,7 +3,6 @@ package config
 import (
 	"time"
 
-	"github.com/mcuadros/go-defaults"
 	"github.com/mitchellh/mapstructure"
 	"github.com/munnik/gosk/logger"
 	"github.com/spf13/viper"
@@ -11,7 +10,6 @@ import (
 )
 
 func readConfigFile(result interface{}, configFilePath string, subKeys ...string) interface{} {
-	defaults.SetDefaults(result)
 	viper.SetConfigFile(configFilePath)
 	if err := viper.ReadInConfig(); err != nil {
 		logger.GetLogger().Fatal(

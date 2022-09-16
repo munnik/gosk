@@ -28,8 +28,8 @@ const (
 	mappedInsertQuery              = `INSERT INTO "mapped_data" ("time", "collector", "type", "context", "path", "value", "uuid", "origin") VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
 	selectMappedQuery              = `SELECT "time", "collector", "type", "context", "path", "value", "uuid", "origin" FROM "mapped_data"`
 	selectMappedDataPointsQuery    = `SELECT count(*) FROM "mapped_data" WHERE "time" BETWEEN $1 AND $2`
-	selectCompletePeriodsQuery     = `SELECT "start" FROM "remote_data" WHERE "origin" = $1 AND "local" >= "remote"`
-	selectIncompletePeriodsQuery   = `SELECT "start" FROM "remote_data" WHERE "origin" = $1 AND "local" < "remote"`
+	selectCompletePeriodsQuery     = `SELECT "start" FROM "remote_data" WHERE "origin" = $1 AND "local" >= "remote" * $2`
+	selectIncompletePeriodsQuery   = `SELECT "start" FROM "remote_data" WHERE "origin" = $1 AND "local" < "remote" * $2`
 	insertOrUpdatePeriodQuery      = `INSERT INTO "remote_data" ("origin", "start", "end", "remote") VALUES ($1, $2, $3, $4) ON CONFLICT ("origin", "start", "end") DO UPDATE SET "remote" = $4`
 	updateLocalDataPoints          = `UPDATE "remote_data" SET "local" = $4 WHERE "origin" = $1 AND "start" = $2 AND "end" = $3`
 	selectLocalAndRemoteDataPoints = `SELECT count(mapped_data.*) AS "local", "remote" FROM "mapped_data", "remote_data" WHERE "remote_data"."origin" = $1 AND "start" = $2 AND "end" = $3 AND "mapped_data"."origin" = $1 AND "mapped_data"."time" BETWEEN $2 AND $3 GROUP BY "remote";`
@@ -48,14 +48,16 @@ type PostgresqlDatabase struct {
 	batchSize       int
 	lastFlush       time.Time
 	flushMutex      sync.Mutex
+	completeRatio   float64
 }
 
 func NewPostgresqlDatabase(c *config.PostgresqlConfig) *PostgresqlDatabase {
 	result := &PostgresqlDatabase{
-		url:         c.URLString,
-		rawCache:    cache.New(cache.AsFIFO[time.Time, []message.Raw](fifo.WithCapacity(20 * 1024))),
-		mappedCache: cache.New(cache.AsFIFO[time.Time, []message.SingleValueMapped](fifo.WithCapacity(20 * 1024))),
-		batchSize:   c.BatchSize,
+		url:           c.URLString,
+		rawCache:      cache.New(cache.AsFIFO[time.Time, []message.Raw](fifo.WithCapacity(20 * 1024))),
+		mappedCache:   cache.New(cache.AsFIFO[time.Time, []message.SingleValueMapped](fifo.WithCapacity(20 * 1024))),
+		batchSize:     c.BatchSize,
+		completeRatio: c.CompleteRatio,
 	}
 	go func() {
 		ticker := time.NewTicker(time.Second * time.Duration(c.BatchFlushInterval))
@@ -265,18 +267,18 @@ func (db *PostgresqlDatabase) ReadMappedCount(start time.Time, end time.Time) (i
 
 // Returns the start timestamp of each period that has the same or more local rows than remote
 func (db *PostgresqlDatabase) SelectCompletePeriods(origin string) (map[time.Time]struct{}, error) {
-	return db.selectPeriods(selectCompletePeriodsQuery, origin)
+	return db.selectPeriods(selectCompletePeriodsQuery, origin, db.completeRatio)
 }
 
 // Returns the start timestamp of each period that has the same or more local rows than remote
 func (db *PostgresqlDatabase) SelectIncompletePeriods(origin string) (map[time.Time]struct{}, error) {
-	return db.selectPeriods(selectIncompletePeriodsQuery, origin)
+	return db.selectPeriods(selectIncompletePeriodsQuery, origin, db.completeRatio)
 }
 
 // Returns the start timestamp of each period that has the same or more local rows than remote
-func (db *PostgresqlDatabase) selectPeriods(query string, origin string) (map[time.Time]struct{}, error) {
+func (db *PostgresqlDatabase) selectPeriods(query string, origin string, completeRatio float64) (map[time.Time]struct{}, error) {
 	result := map[time.Time]struct{}{}
-	rows, err := db.GetConnection().Query(context.Background(), query, origin)
+	rows, err := db.GetConnection().Query(context.Background(), query, origin, completeRatio)
 	if err != nil {
 		return result, err
 	}

@@ -1,2 +1,5 @@
 ---
 defaultInterval: "1s"
+rateLimits:
+  - path: "propulsion.main.revolutions"
+    interval: "0.5s"

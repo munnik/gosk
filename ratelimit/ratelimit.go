@@ -14,11 +14,15 @@ import (
 type MappedRateLimiter struct {
 	config       *config.RateLimitConfig
 	timestampMap map[string]map[string]time.Time
-	// frequencyMap map[string]time.Duration
+	frequencyMap map[string]time.Duration
 }
 
 func NewMappedRateLimiter(c *config.RateLimitConfig) (*MappedRateLimiter, error) {
-	return &MappedRateLimiter{config: c, timestampMap: make(map[string]map[string]time.Time, 0)}, nil
+	frequencyMap := make(map[string]time.Duration)
+	for _, mapping := range c.Ratelimits {
+		frequencyMap[mapping.Path] = mapping.Interval
+	}
+	return &MappedRateLimiter{config: c, timestampMap: make(map[string]map[string]time.Time, 0), frequencyMap: frequencyMap}, nil
 }
 
 func (m *MappedRateLimiter) RateLimit(subscriber mangos.Socket, publisher mangos.Socket) {
@@ -74,7 +78,11 @@ func (m *MappedRateLimiter) doForward(in message.SingleValueMapped) bool {
 		pathMap[in.Path] = in.Timestamp
 		return true
 	}
-	if timestamp.Before(in.Timestamp.Add(-m.config.DefaultInterval)) {
+	interval := m.config.DefaultInterval
+	if pathInterval, present := m.frequencyMap[in.Path]; present {
+		interval = pathInterval
+	}
+	if timestamp.Before(in.Timestamp.Add(-interval)) {
 		return true
 	} else {
 		return false

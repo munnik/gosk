@@ -315,7 +315,7 @@ type RateLimitsConfig struct {
 
 type RateLimitConfig struct {
 	Ratelimits      []RateLimitsConfig `mapstructure:"rateLimits"`
-	DefaultInterval time.Duration      `mapstructure:"defaultInterval"`
+	DefaultInterval time.Duration      `mapstructure:"defaultInterval" default:"1s"`
 }
 
 func NewRateLimitConfig(configFilePath string) *RateLimitConfig {

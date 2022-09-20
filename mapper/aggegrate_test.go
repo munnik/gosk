@@ -11,14 +11,14 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("DoMap aggegrate same update", func() {
-	mapper, _ := NewAggegrateMapper(
+var _ = Describe("DoMap aggregate same update", func() {
+	mapper, _ := NewAggregateMapper(
 		config.MapperConfig{Context: "testingContext"},
-		config.NewAggegrateMappingConfig("aggegrate_test.yaml"),
+		config.NewAggregateMappingConfig("aggregate_test.yaml"),
 	)
 	now := time.Now()
 	DescribeTable("Messages",
-		func(m *AggegrateMapper, input *message.Mapped, expected *message.Mapped, expectError bool) {
+		func(m *AggregateMapper, input *message.Mapped, expected *message.Mapped, expectError bool) {
 			result, err := m.DoMap(input)
 			if expectError {
 				Expect(err).To(HaveOccurred())

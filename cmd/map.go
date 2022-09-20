@@ -72,8 +72,8 @@ func doMap(cmd *cobra.Command, args []string) {
 		cmc := config.NewCanBusMappingConfig(cfgFile)
 		m, err = mapper.NewCanBusMapper(c2, cmc)
 	case config.SignalKType:
-		amc := config.NewAggegrateMappingConfig(cfgFile)
-		m, err = mapper.NewAggegrateMapper(c, amc)
+		amc := config.NewAggregateMappingConfig(cfgFile)
+		m, err = mapper.NewAggregateMapper(c, amc)
 
 	default:
 		logger.GetLogger().Fatal(

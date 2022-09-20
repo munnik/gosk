@@ -11,32 +11,32 @@ import (
 	"go.nanomsg.org/mangos/v3"
 )
 
-type AggegrateMapper struct {
+type AggregateMapper struct {
 	config            config.MapperConfig
 	protocol          string
-	aggegrateMappings map[string][]config.AggegrateMappingConfig
+	aggregateMappings map[string][]config.AggregateMappingConfig
 	env               map[string]interface{}
 }
 
-func NewAggegrateMapper(c config.MapperConfig, amc []config.AggegrateMappingConfig) (*AggegrateMapper, error) {
-	mappings := make(map[string][]config.AggegrateMappingConfig)
+func NewAggregateMapper(c config.MapperConfig, amc []config.AggregateMappingConfig) (*AggregateMapper, error) {
+	mappings := make(map[string][]config.AggregateMappingConfig)
 	for _, m := range amc {
 		for _, s := range m.SourcePaths {
 			mappings[s] = append(mappings[s], m)
 		}
 	}
 	env := make(map[string]interface{})
-	return &AggegrateMapper{config: c, protocol: config.SignalKType, aggegrateMappings: mappings, env: env}, nil
+	return &AggregateMapper{config: c, protocol: config.SignalKType, aggregateMappings: mappings, env: env}, nil
 }
-func (m *AggegrateMapper) Map(subscriber mangos.Socket, publisher mangos.Socket) {
+func (m *AggregateMapper) Map(subscriber mangos.Socket, publisher mangos.Socket) {
 	processMapped(subscriber, publisher, m)
 }
 
-func (m *AggegrateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) {
+func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) {
 	s := message.NewSource().WithLabel("signalk").WithType(m.protocol).WithUuid(uuid.Nil)
 	u := message.NewUpdate().WithSource(*s).WithTimestamp(time.Time{}) // initialize with empty timestamp instead of hidden now
 	for _, svm := range input.ToSingleValueMapped() {
-		mappings, present := m.aggegrateMappings[svm.Path]
+		mappings, present := m.aggregateMappings[svm.Path]
 		if present {
 			if svm.Timestamp.After(u.Timestamp) { // take most recent timestamp from relevant data
 				u.WithTimestamp(svm.Timestamp)
@@ -54,7 +54,6 @@ func (m *AggegrateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 					}
 				}
 			}
-
 		}
 	}
 	if len(u.Values) > 0 {

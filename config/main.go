@@ -170,13 +170,13 @@ func NewJSONMappingConfig(configFilePath string) []JSONMappingConfig {
 	return result
 }
 
-type AggegrateMappingConfig struct {
+type AggregateMappingConfig struct {
 	MappingConfig `mapstructure:",squash"`
 	SourcePaths   []string `mapstructure:"sourcePaths"`
 }
 
-func NewAggegrateMappingConfig(configFilePath string) []AggegrateMappingConfig {
-	var result []AggegrateMappingConfig
+func NewAggregateMappingConfig(configFilePath string) []AggregateMappingConfig {
+	var result []AggregateMappingConfig
 	readConfigFile(&result, configFilePath, "mappings")
 
 	for _, rmc := range result {

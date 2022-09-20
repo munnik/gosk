@@ -36,6 +36,7 @@ func readConfigFile(result interface{}, configFilePath string, subKeys ...string
 			viper.DecodeHook(
 				mapstructure.ComposeDecodeHookFunc(
 					mapstructure.StringToTimeHookFunc(time.RFC3339),
+					mapstructure.StringToTimeDurationHookFunc(),
 				),
 			),
 		)

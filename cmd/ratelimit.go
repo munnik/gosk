@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/ratelimit"
@@ -35,6 +36,7 @@ func doLimit(cmd *cobra.Command, args []string) {
 		)
 	}
 	publisher := nanomsg.NewPub(publishURL)
-	m, _ := ratelimit.NewMappedRateLimiter()
+	c := config.NewRateLimitConfig(cfgFile)
+	m, _ := ratelimit.NewMappedRateLimiter(c)
 	m.RateLimit(subscriber, publisher)
 }

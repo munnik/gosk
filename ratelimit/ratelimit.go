@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
 	"go.nanomsg.org/mangos/v3"
@@ -11,17 +12,17 @@ import (
 )
 
 type MappedRateLimiter struct {
+	config       *config.RateLimitConfig
 	timestampMap map[string]map[string]time.Time
 	// frequencyMap map[string]time.Duration
 }
 
-func NewMappedRateLimiter() (*MappedRateLimiter, error) {
-	return &MappedRateLimiter{timestampMap: make(map[string]map[string]time.Time, 0)}, nil
+func NewMappedRateLimiter(c *config.RateLimitConfig) (*MappedRateLimiter, error) {
+	return &MappedRateLimiter{config: c, timestampMap: make(map[string]map[string]time.Time, 0)}, nil
 }
 
 func (m *MappedRateLimiter) RateLimit(subscriber mangos.Socket, publisher mangos.Socket) {
 	in := &message.Mapped{}
-	// var out *message.Mapped
 	var bytes []byte
 	for {
 		received, err := subscriber.Recv()
@@ -73,7 +74,7 @@ func (m *MappedRateLimiter) doForward(in message.SingleValueMapped) bool {
 		pathMap[in.Path] = in.Timestamp
 		return true
 	}
-	if timestamp.Before(in.Timestamp.Add(-time.Second)) {
+	if timestamp.Before(in.Timestamp.Add(-m.config.DefaultInterval)) {
 		return true
 	} else {
 		return false

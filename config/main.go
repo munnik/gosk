@@ -307,3 +307,20 @@ func NewEventConfig(configFilePath string) *EventConfig {
 
 	return result
 }
+
+type RateLimitsConfig struct {
+	Path     string        `mapstructure:"path"`
+	Interval time.Duration `mapstructure:"interval"`
+}
+
+type RateLimitConfig struct {
+	Ratelimits      []RateLimitsConfig `mapstructure:"rateLimits"`
+	DefaultInterval time.Duration      `mapstructure:"defaultInterval"`
+}
+
+func NewRateLimitConfig(configFilePath string) *RateLimitConfig {
+	result := &RateLimitConfig{}
+	readConfigFile(result, configFilePath)
+
+	return result
+}

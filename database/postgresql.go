@@ -44,7 +44,7 @@ type PostgresqlDatabase struct {
 	connectionMutex sync.Mutex
 	rawCache        *cache.Cache[time.Time, []message.Raw]
 	mappedCache     *cache.Cache[time.Time, []message.SingleValueMapped]
-	batch           pgx.Batch
+	batch           *pgx.Batch
 	batchSize       int
 	lastFlush       time.Time
 	flushMutex      sync.Mutex
@@ -58,6 +58,7 @@ func NewPostgresqlDatabase(c *config.PostgresqlConfig) *PostgresqlDatabase {
 		mappedCache:   cache.New(cache.AsFIFO[time.Time, []message.SingleValueMapped](fifo.WithCapacity(20 * 1024))),
 		batchSize:     c.BatchSize,
 		completeRatio: c.CompleteRatio,
+		batch:         &pgx.Batch{},
 	}
 	go func() {
 		ticker := time.NewTicker(time.Second * time.Duration(c.BatchFlushInterval))
@@ -216,6 +217,7 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 	db.mappedCache.Set(svm.Timestamp, append(cached, svm))
 	db.batch.Queue(mappedInsertQuery, svm.Timestamp, svm.Source.Label, svm.Source.Type, svm.Context, svm.Path, svm.Value, svm.Source.Uuid, svm.Origin)
 	if db.batch.Len() > db.batchSize {
+		fmt.Println("flush len ", time.Now())
 		go db.flushBatch()
 	}
 }
@@ -348,8 +350,10 @@ func (db *PostgresqlDatabase) DowngradeDatabase() error {
 
 func (db *PostgresqlDatabase) flushBatch() {
 	db.flushMutex.Lock()
+	batchPtr := db.batch
+	db.batch = &pgx.Batch{}
 	defer db.flushMutex.Unlock()
-	result := db.GetConnection().SendBatch(context.Background(), &db.batch)
+	result := db.GetConnection().SendBatch(context.Background(), batchPtr)
 	// todo, determine if inserts went well
 
 	if err := result.Close(); err != nil {

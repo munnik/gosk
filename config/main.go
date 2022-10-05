@@ -117,6 +117,18 @@ func NewCanBusMapperConfig(configFilePath string) CanBusMapperConfig {
 	return result
 }
 
+type CSVMapperConfig struct {
+	MapperConfig `mapstructure:",squash"`
+	Separator    string `mapstructure:"separator" default:","`
+}
+
+func NewCSVMapperConfig(configFilePath string) CSVMapperConfig {
+	result := CSVMapperConfig{}
+	readConfigFile(&result, configFilePath)
+
+	return result
+}
+
 type MappingConfig struct {
 	Expression         string `mapstructure:"expression"`
 	CompiledExpression *vm.Program

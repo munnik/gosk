@@ -1,0 +1,8 @@
+---
+context: "vessels.urn:mrn:imo:mmsi:123456789"
+protocol: "csv"
+separator: ";"
+mappings:
+  - expression: "stringValues[0]"
+    path: "propulsion.mainEngine.drive.power"
+    beginsWith: "VERSION"

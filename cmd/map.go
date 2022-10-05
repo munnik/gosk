@@ -57,8 +57,9 @@ func doMap(cmd *cobra.Command, args []string) {
 	var m mapper.Mapper
 	switch c.Protocol {
 	case config.CSVType:
+		c2 := config.NewCSVMapperConfig(cfgFile)
 		cmc := config.NewCSVMappingConfig(cfgFile)
-		m, err = mapper.NewCSVMapper(c, cmc)
+		m, err = mapper.NewCSVMapper(c2, cmc)
 	case config.JSONType:
 		jmc := config.NewJSONMappingConfig(cfgFile)
 		m, err = mapper.NewJSONMapper(c, jmc)

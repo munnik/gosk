@@ -15,12 +15,12 @@ import (
 )
 
 type CSVMapper struct {
-	config           config.MapperConfig
+	config           config.CSVMapperConfig
 	protocol         string
 	csvMappingConfig []config.CSVMappingConfig
 }
 
-func NewCSVMapper(c config.MapperConfig, cmc []config.CSVMappingConfig) (*CSVMapper, error) {
+func NewCSVMapper(c config.CSVMapperConfig, cmc []config.CSVMappingConfig) (*CSVMapper, error) {
 	return &CSVMapper{config: c, protocol: config.CSVType, csvMappingConfig: cmc}, nil
 }
 
@@ -44,7 +44,7 @@ func (m *CSVMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		stringValue = stringValue[len(cmc.BeginsWith):]
 
 		// setup env for expression
-		stringValues := strings.Split(stringValue, ",")
+		stringValues := strings.Split(stringValue, m.config.Separator)
 		floatValues := make([]float64, len(stringValues))
 		for i, v := range stringValues {
 			if fv, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {

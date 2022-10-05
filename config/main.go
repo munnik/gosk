@@ -25,6 +25,8 @@ const (
 
 	SignalKType = "signalk"
 
+	HttpType = "http"
+
 	ParityMap string = "NOE" // None, Odd, Even
 )
 
@@ -75,6 +77,18 @@ type RegisterGroupConfig struct {
 func NewRegisterGroupsConfig(configFilePath string) []RegisterGroupConfig {
 	var result []RegisterGroupConfig
 	readConfigFile(&result, configFilePath, "registerGroups")
+
+	return result
+}
+
+type UrlGroupConfig struct {
+	Url             string        `mapstructure:"url"`
+	PollingInterval time.Duration `mapstructure:"pollingInterval"`
+}
+
+func NewUrlGroupsConfig(configFilePath string) []UrlGroupConfig {
+	var result []UrlGroupConfig
+	readConfigFile(&result, configFilePath, "urlGroups")
 
 	return result
 }

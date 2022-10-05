@@ -1,0 +1,6 @@
+---
+name: "http test" # name is used in the key of the collected data
+protocol: "http"
+urlGroups: # groups of registers that should be read in one request
+  - url: "http://www.google.com/"
+    pollingInterval: 500000000 # interval between consecutive reads in ns [optional default is 1000000000 (1s)]

@@ -10,6 +10,7 @@ import (
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
 	"go.nanomsg.org/mangos/v3"
+	"go.uber.org/zap"
 
 	"github.com/brutella/can"
 	"go.einride.tech/can/pkg/dbc"
@@ -60,6 +61,12 @@ func (m *CanBusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 				output, err := runExpr(vm, env, mapping.MappingConfig)
 				if err == nil {
 					u.AddValue(message.NewValue().WithPath(mapping.Path).WithValue(output))
+				} else {
+					logger.GetLogger().Error(
+						"Could not map value",
+						zap.String("path", mapping.Path),
+						zap.String("error", err.Error()),
+					)
 				}
 			}
 		}

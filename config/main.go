@@ -120,6 +120,7 @@ func NewCanBusMapperConfig(configFilePath string) CanBusMapperConfig {
 type CSVMapperConfig struct {
 	MapperConfig `mapstructure:",squash"`
 	Separator    string `mapstructure:"separator" default:","`
+	SplitLines   bool   `mapstructure:"splitLines" default:"false"`
 }
 
 func NewCSVMapperConfig(configFilePath string) CSVMapperConfig {

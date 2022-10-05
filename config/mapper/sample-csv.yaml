@@ -2,6 +2,7 @@
 context: "vessels.urn:mrn:imo:mmsi:123456789"
 protocol: "csv"
 separator: ";"
+splitLines: false
 mappings:
   - expression: "stringValues[0]"
     path: "propulsion.mainEngine.drive.power"

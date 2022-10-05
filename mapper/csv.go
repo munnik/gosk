@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/antonmedv/expr"
 	"github.com/antonmedv/expr/vm"
@@ -53,13 +54,15 @@ func (m *CSVMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 			stringValues := strings.Split(stringValue, m.config.Separator)
 			floatValues := make([]float64, len(stringValues))
 			for i, v := range stringValues {
-				if fv, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+				trimmed := strings.TrimFunc(v, isDigit)
+				if fv, err := strconv.ParseFloat(trimmed, 64); err == nil {
 					floatValues[i] = fv
 				}
 			}
 			intValues := make([]int64, len(stringValues))
 			for i, v := range stringValues {
-				if iv, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil {
+				trimmed := strings.TrimFunc(v, isDigit)
+				if iv, err := strconv.ParseInt(trimmed, 10, 64); err == nil {
 					intValues[i] = iv
 				}
 			}
@@ -102,4 +105,7 @@ func (m *CSVMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	}
 
 	return result.AddUpdate(u), nil
+}
+func isDigit(r rune) bool {
+	return !(unicode.IsDigit(r) || r == '-')
 }

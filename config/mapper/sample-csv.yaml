@@ -2,8 +2,8 @@
 context: "vessels.urn:mrn:imo:mmsi:123456789"
 protocol: "csv"
 separator: ";"
-splitLines: false
+splitLines: true
 mappings:
-  - expression: "stringValues[0]"
+  - expression: "floatValues[1]"
     path: "propulsion.mainEngine.drive.power"
-    beginsWith: "VERSION"
+    beginsWith: "TANK:CT-1"

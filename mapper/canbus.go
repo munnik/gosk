@@ -25,7 +25,11 @@ type CanBusMapper struct {
 
 func NewCanBusMapper(c config.CanBusMapperConfig, cmc []config.CanBusMappingConfig) (*CanBusMapper, error) {
 	// parse DBC file and store mappings
-	dbc := readDBC(c.DbcFile)
+	dbc, err := readDBC(c.DbcFile)
+	if err != nil {
+		return nil, err
+	}
+	// map origin (frameID) map signal
 	mappings := make(map[string]map[string]config.CanBusMappingConfig)
 	for _, m := range cmc {
 		_, present := mappings[m.Origin]
@@ -130,18 +134,28 @@ type Signal struct {
 }
 type DBC map[uint32]*dbc.MessageDef
 
-func readDBC(filename string) DBC {
+func readDBC(filename string) (DBC, error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		logger.GetLogger().Error(err.Error())
+		return nil, err
 	}
 	defer file.Close()
 	source, err := ioutil.ReadAll(file)
 	if err != nil {
 		logger.GetLogger().Error(err.Error())
+		return nil, err
 	}
 	parser := dbc.NewParser(file.Name(), source)
-	parser.Parse()
+	errdbc := parser.Parse()
+	if errdbc != nil {
+		logger.GetLogger().Error(
+			"Could not parse DBC file",
+			zap.String("path", filename),
+			zap.Error(errdbc),
+		)
+		return nil, errdbc
+	}
 	messages := make(map[uint32]*dbc.MessageDef)
 	for _, def := range parser.Defs() {
 		switch def := def.(type) {
@@ -150,5 +164,5 @@ func readDBC(filename string) DBC {
 			messages[uint32(id)] = def
 		}
 	}
-	return messages
+	return messages, nil
 }

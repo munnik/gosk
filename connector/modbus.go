@@ -38,21 +38,25 @@ func NewModbusConnector(c *config.ConnectorConfig, rgcs []config.RegisterGroupCo
 	return &ModbusConnector{config: c, registerGroupsConfig: rgcs}, nil
 }
 
-func (r *ModbusConnector) Connect(publisher mangos.Socket) {
+func (m *ModbusConnector) Publish(publisher mangos.Socket) {
 	stream := make(chan []byte, 1)
 	defer close(stream)
 	go func() {
 		for {
-			if err := r.receive(stream); err != nil {
+			if err := m.receive(stream); err != nil {
 				logger.GetLogger().Warn(
 					"Error while receiving data for the stream",
-					zap.String("URL", r.config.URL.String()),
+					zap.String("URL", m.config.URL.String()),
 					zap.String("Error", err.Error()),
 				)
 			}
 		}
 	}()
-	process(stream, r.config.Name, r.config.Protocol, publisher)
+	process(stream, m.config.Name, m.config.Protocol, publisher)
+}
+
+func (*ModbusConnector) AddSubscriber(subscriber mangos.Socket) {
+	// do nothing
 }
 
 func (m *ModbusConnector) receive(stream chan<- []byte) error {

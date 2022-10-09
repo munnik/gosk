@@ -21,7 +21,7 @@ func NewHttpConnector(c *config.ConnectorConfig, ugc []config.UrlGroupConfig) (*
 	return &HttpConnector{config: c, urlGroups: ugc}, nil
 }
 
-func (r *HttpConnector) Connect(publisher mangos.Socket) {
+func (r *HttpConnector) Publish(publisher mangos.Socket) {
 	stream := make(chan []byte, 1)
 	defer close(stream)
 	go func() {
@@ -36,6 +36,10 @@ func (r *HttpConnector) Connect(publisher mangos.Socket) {
 		}
 	}()
 	process(stream, r.config.Name, r.config.Protocol, publisher)
+}
+
+func (*HttpConnector) AddSubscriber(subscriber mangos.Socket) {
+	// do nothing
 }
 
 func (h *HttpConnector) receive(stream chan<- []byte) error {

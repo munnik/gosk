@@ -19,7 +19,7 @@ func NewCanBusConnector(c *config.ConnectorConfig) (*CanBusConnector, error) {
 	return &CanBusConnector{config: c}, nil
 }
 
-func (r *CanBusConnector) Connect(publisher mangos.Socket) {
+func (r *CanBusConnector) Publish(publisher mangos.Socket) {
 	stream := make(chan []byte, 1)
 	defer close(stream)
 	go func() {
@@ -34,6 +34,10 @@ func (r *CanBusConnector) Connect(publisher mangos.Socket) {
 		}
 	}()
 	process(stream, r.config.Name, r.config.Protocol, publisher)
+}
+
+func (*CanBusConnector) AddSubscriber(subscriber mangos.Socket) {
+	// do nothing
 }
 
 func (r *CanBusConnector) receive(stream chan<- []byte) error {

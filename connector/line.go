@@ -24,7 +24,7 @@ func NewLineConnector(c *config.ConnectorConfig) (*LineConnector, error) {
 	return &LineConnector{config: c}, nil
 }
 
-func (r *LineConnector) Connect(publisher mangos.Socket) {
+func (r *LineConnector) Publish(publisher mangos.Socket) {
 	stream := make(chan []byte, 1)
 	defer close(stream)
 	go func() {
@@ -39,6 +39,10 @@ func (r *LineConnector) Connect(publisher mangos.Socket) {
 		}
 	}()
 	process(stream, r.config.Name, r.config.Protocol, publisher)
+}
+
+func (*LineConnector) AddSubscriber(subscriber mangos.Socket) {
+	// do nothing
 }
 
 func (l *LineConnector) receive(stream chan<- []byte) error {

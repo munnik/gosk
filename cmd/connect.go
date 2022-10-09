@@ -45,18 +45,18 @@ func init() {
 func doConnect(cmd *cobra.Command, args []string) {
 	var err error
 	c := config.NewConnectorConfig(cfgFile)
-	var reader connector.Connector
+	var conn connector.Connector
 	switch c.Protocol {
 	case config.CSVType, config.NMEA0183Type, config.JSONType:
-		reader, err = connector.NewLineConnector(c)
+		conn, err = connector.NewLineConnector(c)
 	case config.ModbusType:
 		rgc := config.NewRegisterGroupsConfig(cfgFile)
-		reader, err = connector.NewModbusConnector(c, rgc)
+		conn, err = connector.NewModbusConnector(c, rgc)
 	case config.CanBusType:
-		reader, err = connector.NewCanBusConnector(c)
+		conn, err = connector.NewCanBusConnector(c)
 	case config.HttpType:
 		ugc := config.NewUrlGroupsConfig(cfgFile)
-		reader, err = connector.NewHttpConnector(c, ugc)
+		conn, err = connector.NewHttpConnector(c, ugc)
 	default:
 		logger.GetLogger().Fatal(
 			"Not a supported protocol",
@@ -71,5 +71,5 @@ func doConnect(cmd *cobra.Command, args []string) {
 			zap.String("Error", err.Error()),
 		)
 	}
-	reader.Connect(nanomsg.NewPub(publishURL))
+	conn.Publish(nanomsg.NewPub(publishURL))
 }

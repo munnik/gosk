@@ -11,7 +11,8 @@ import (
 
 // Connector interface
 type Connector interface {
-	Connect(publisher mangos.Socket)
+	Publish(publisher mangos.Socket)
+	AddSubscriber(subscriber mangos.Socket)
 }
 
 func process(stream <-chan []byte, connector string, protocol string, publisher mangos.Socket) {

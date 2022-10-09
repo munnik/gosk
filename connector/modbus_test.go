@@ -1,8 +1,8 @@
-package collector_test
+package connector_test
 
 import (
-	. "github.com/munnik/gosk/collector"
 	"github.com/munnik/gosk/config"
+	. "github.com/munnik/gosk/connector"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

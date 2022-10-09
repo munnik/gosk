@@ -1,4 +1,4 @@
-package collector
+package connector
 
 import (
 	"encoding/json"
@@ -9,8 +9,8 @@ import (
 	"go.uber.org/zap"
 )
 
-// Collector interface
-type Collector interface {
+// Connector interface
+type Connector interface {
 	Collect(publisher mangos.Socket)
 }
 

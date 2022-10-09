@@ -1,4 +1,4 @@
-package collector
+package connector
 
 import (
 	"encoding/binary"
@@ -23,7 +23,7 @@ type ModbusCollector struct {
 	registerGroupsConfig []config.RegisterGroupConfig
 }
 
-func NewModbusCollector(c *config.CollectorConfig, rgcs []config.RegisterGroupConfig) (*ModbusCollector, error) {
+func NewModbusConnector(c *config.CollectorConfig, rgcs []config.RegisterGroupConfig) (*ModbusCollector, error) {
 	for _, rgc := range rgcs {
 		if rgc.FunctionCode == config.Coils || rgc.FunctionCode == config.DiscreteInputs {
 			if rgc.NumberOfCoilsRegisters > MaximumNumberOfCoils {

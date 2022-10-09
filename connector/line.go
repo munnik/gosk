@@ -1,4 +1,4 @@
-package collector
+package connector
 
 import (
 	"bufio"
@@ -20,7 +20,7 @@ type LineCollector struct {
 	config *config.CollectorConfig
 }
 
-func NewLineCollector(c *config.CollectorConfig) (*LineCollector, error) {
+func NewLineConnector(c *config.CollectorConfig) (*LineCollector, error) {
 	return &LineCollector{config: c}, nil
 }
 

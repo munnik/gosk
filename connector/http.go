@@ -1,4 +1,4 @@
-package collector
+package connector
 
 import (
 	"io"
@@ -17,7 +17,7 @@ type HttpCollector struct {
 	urlGroups []config.UrlGroupConfig
 }
 
-func NewHttpCollector(c *config.CollectorConfig, ugc []config.UrlGroupConfig) (*HttpCollector, error) {
+func NewHttpConnector(c *config.CollectorConfig, ugc []config.UrlGroupConfig) (*HttpCollector, error) {
 	return &HttpCollector{config: c, urlGroups: ugc}, nil
 }
 

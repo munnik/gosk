@@ -50,7 +50,7 @@ type CollectorConfig struct {
 	Protocol     string   `mapstructure:"protocol"`
 }
 
-func NewCollectorConfig(configFilePath string) *CollectorConfig {
+func NewConnectorConfig(configFilePath string) *CollectorConfig {
 	result := &CollectorConfig{
 		Listen:       false,
 		BaudRate:     4800,

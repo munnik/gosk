@@ -1,4 +1,4 @@
-package collector_test
+package connector_test
 
 import (
 	"testing"

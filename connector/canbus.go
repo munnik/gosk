@@ -1,4 +1,4 @@
-package collector
+package connector
 
 import (
 	"encoding/binary"
@@ -15,7 +15,7 @@ type CanBusCollector struct {
 	config *config.CollectorConfig
 }
 
-func NewCanBusCollector(c *config.CollectorConfig) (*CanBusCollector, error) {
+func NewCanBusConnector(c *config.CollectorConfig) (*CanBusCollector, error) {
 	return &CanBusCollector{config: c}, nil
 }
 

@@ -19,8 +19,8 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/munnik/gosk/collector"
 	"github.com/munnik/gosk/config"
+	"github.com/munnik/gosk/connector"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/spf13/cobra"
@@ -44,19 +44,19 @@ func init() {
 
 func doCollect(cmd *cobra.Command, args []string) {
 	var err error
-	c := config.NewCollectorConfig(cfgFile)
-	var reader collector.Collector
+	c := config.NewConnectorConfig(cfgFile)
+	var reader connector.Connector
 	switch c.Protocol {
 	case config.CSVType, config.NMEA0183Type, config.JSONType:
-		reader, err = collector.NewLineCollector(c)
+		reader, err = connector.NewLineConnector(c)
 	case config.ModbusType:
 		rgc := config.NewRegisterGroupsConfig(cfgFile)
-		reader, err = collector.NewModbusCollector(c, rgc)
+		reader, err = connector.NewModbusConnector(c, rgc)
 	case config.CanBusType:
-		reader, err = collector.NewCanBusCollector(c)
+		reader, err = connector.NewCanBusConnector(c)
 	case config.HttpType:
 		ugc := config.NewUrlGroupsConfig(cfgFile)
-		reader, err = collector.NewHttpCollector(c, ugc)
+		reader, err = connector.NewHttpConnector(c, ugc)
 	default:
 		logger.GetLogger().Fatal(
 			"Not a supported protocol",
@@ -66,7 +66,7 @@ func doCollect(cmd *cobra.Command, args []string) {
 	}
 	if err != nil {
 		logger.GetLogger().Fatal(
-			"Error while creating the collector",
+			"Error while creating the connector",
 			zap.String("Config file", cfgFile),
 			zap.String("Error", err.Error()),
 		)

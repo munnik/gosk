@@ -18,12 +18,12 @@ import (
 const MaximumNumberOfRegisters = 125
 const MaximumNumberOfCoils = 2000
 
-type ModbusCollector struct {
-	config               *config.CollectorConfig
+type ModbusConnector struct {
+	config               *config.ConnectorConfig
 	registerGroupsConfig []config.RegisterGroupConfig
 }
 
-func NewModbusConnector(c *config.CollectorConfig, rgcs []config.RegisterGroupConfig) (*ModbusCollector, error) {
+func NewModbusConnector(c *config.ConnectorConfig, rgcs []config.RegisterGroupConfig) (*ModbusConnector, error) {
 	for _, rgc := range rgcs {
 		if rgc.FunctionCode == config.Coils || rgc.FunctionCode == config.DiscreteInputs {
 			if rgc.NumberOfCoilsRegisters > MaximumNumberOfCoils {
@@ -35,10 +35,10 @@ func NewModbusConnector(c *config.CollectorConfig, rgcs []config.RegisterGroupCo
 			}
 		}
 	}
-	return &ModbusCollector{config: c, registerGroupsConfig: rgcs}, nil
+	return &ModbusConnector{config: c, registerGroupsConfig: rgcs}, nil
 }
 
-func (r *ModbusCollector) Collect(publisher mangos.Socket) {
+func (r *ModbusConnector) Connect(publisher mangos.Socket) {
 	stream := make(chan []byte, 1)
 	defer close(stream)
 	go func() {
@@ -55,7 +55,7 @@ func (r *ModbusCollector) Collect(publisher mangos.Socket) {
 	process(stream, r.config.Name, r.config.Protocol, publisher)
 }
 
-func (m *ModbusCollector) receive(stream chan<- []byte) error {
+func (m *ModbusConnector) receive(stream chan<- []byte) error {
 	client, err := m.createClient()
 	if err != nil {
 		return err
@@ -92,7 +92,7 @@ func (m *ModbusCollector) receive(stream chan<- []byte) error {
 	return nil
 }
 
-func (m ModbusCollector) createClient() (*ModbusClient, error) {
+func (m ModbusConnector) createClient() (*ModbusClient, error) {
 	client, err := modbus.NewClient(&modbus.ClientConfiguration{
 		URL:      m.config.URL.String(),
 		Speed:    uint(m.config.BaudRate),

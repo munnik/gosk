@@ -7,7 +7,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func TestCollector(t *testing.T) {
+func TestConnector(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Collector Suite")
+	RunSpecs(t, "Connector Suite")
 }

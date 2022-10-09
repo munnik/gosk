@@ -16,7 +16,7 @@ const (
 	NMEA0183Type = "nmea0183"
 	// ModbusType is used to identify the data as Modbus data
 	ModbusType = "modbus"
-	// CSVType is used to identify the data as comma seperated values data
+	// CSVType is used to identify the data as comma separated values data
 	CSVType = "csv"
 	// JSONType is used to identify the data as json messages
 	JSONType = "json"
@@ -37,7 +37,7 @@ const (
 	InputRegisters
 )
 
-type CollectorConfig struct {
+type ConnectorConfig struct {
 	Name         string   `mapstructure:"name"`
 	URL          *url.URL `mapstructure:"_"`
 	URLString    string   `mapstructure:"url"`
@@ -50,8 +50,8 @@ type CollectorConfig struct {
 	Protocol     string   `mapstructure:"protocol"`
 }
 
-func NewConnectorConfig(configFilePath string) *CollectorConfig {
-	result := &CollectorConfig{
+func NewConnectorConfig(configFilePath string) *ConnectorConfig {
+	result := &ConnectorConfig{
 		Listen:       false,
 		BaudRate:     4800,
 		DataBits:     8,

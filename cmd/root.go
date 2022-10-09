@@ -35,7 +35,7 @@ var (
 var rootCmd = &cobra.Command{
 	Use:   "gosk",
 	Short: "Gosk collects, processes, stores and publishes information from one or more vessels",
-	Long: `Gosk collects data using one or more collectors. There are specific collectors 
+	Long: `Gosk collects data using one or more connectors. There are specific connectors 
 for different protocols (e.g. NMEA0183, NMEA200, Canbus or Modbus). This raw data 
 can be stored in a database for later usage. The data can also be forwarded to a 
 mapper to process the data and convert it to SignalK key/value pairs. Finally the 

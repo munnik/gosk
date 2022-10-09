@@ -11,15 +11,15 @@ import (
 	"github.com/brutella/can"
 )
 
-type CanBusCollector struct {
-	config *config.CollectorConfig
+type CanBusConnector struct {
+	config *config.ConnectorConfig
 }
 
-func NewCanBusConnector(c *config.CollectorConfig) (*CanBusCollector, error) {
-	return &CanBusCollector{config: c}, nil
+func NewCanBusConnector(c *config.ConnectorConfig) (*CanBusConnector, error) {
+	return &CanBusConnector{config: c}, nil
 }
 
-func (r *CanBusCollector) Collect(publisher mangos.Socket) {
+func (r *CanBusConnector) Connect(publisher mangos.Socket) {
 	stream := make(chan []byte, 1)
 	defer close(stream)
 	go func() {
@@ -36,7 +36,7 @@ func (r *CanBusCollector) Collect(publisher mangos.Socket) {
 	process(stream, r.config.Name, r.config.Protocol, publisher)
 }
 
-func (r *CanBusCollector) receive(stream chan<- []byte) error {
+func (r *CanBusConnector) receive(stream chan<- []byte) error {
 	bus, err := can.NewBusForInterfaceWithName(r.config.URL.Host)
 	if err != nil {
 		return err

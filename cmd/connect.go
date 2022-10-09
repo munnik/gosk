@@ -28,21 +28,21 @@ import (
 )
 
 var (
-	collectCmd = &cobra.Command{
-		Use:   "collect",
-		Short: "Collect data using a specific protocol",
-		Long:  fmt.Sprintf(`Collect data using a specific protocol, current supported protocols are %v, %v, %v and %v`, config.NMEA0183Type, config.ModbusType, config.CSVType, config.JSONType),
-		Run:   doCollect,
+	connectCmd = &cobra.Command{
+		Use:   "connect",
+		Short: "Connect data using a specific protocol",
+		Long:  fmt.Sprintf(`Connect to an interface using a specific protocol, current supported protocols are %v, %v, %v and %v`, config.NMEA0183Type, config.ModbusType, config.CSVType, config.JSONType),
+		Run:   doConnect,
 	}
 )
 
 func init() {
-	rootCmd.AddCommand(collectCmd)
-	collectCmd.Flags().StringVarP(&publishURL, "publishURL", "p", "", "Nanomsg URL, the URL is used to publish the data on. It listens for connections.")
-	collectCmd.MarkFlagRequired("publishURL")
+	rootCmd.AddCommand(connectCmd)
+	connectCmd.Flags().StringVarP(&publishURL, "publishURL", "p", "", "Nanomsg URL, the URL is used to publish the data on. It listens for connections.")
+	connectCmd.MarkFlagRequired("publishURL")
 }
 
-func doCollect(cmd *cobra.Command, args []string) {
+func doConnect(cmd *cobra.Command, args []string) {
 	var err error
 	c := config.NewConnectorConfig(cfgFile)
 	var reader connector.Connector
@@ -71,5 +71,5 @@ func doCollect(cmd *cobra.Command, args []string) {
 			zap.String("Error", err.Error()),
 		)
 	}
-	reader.Collect(nanomsg.NewPub(publishURL))
+	reader.Connect(nanomsg.NewPub(publishURL))
 }

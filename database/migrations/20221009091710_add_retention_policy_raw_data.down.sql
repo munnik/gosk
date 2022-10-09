@@ -1,0 +1,1 @@
+SELECT remove_retention_policy('raw_data');

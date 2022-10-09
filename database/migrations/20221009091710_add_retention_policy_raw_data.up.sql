@@ -1,0 +1,1 @@
+SELECT add_retention_policy('raw_data', INTERVAL '7 days');

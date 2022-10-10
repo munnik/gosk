@@ -2,12 +2,14 @@ package connector
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
+	"github.com/munnik/gosk/message"
 	"github.com/simonvetter/modbus"
 	"go.nanomsg.org/mangos/v3"
 	"go.uber.org/zap"
@@ -55,8 +57,29 @@ func (m *ModbusConnector) Publish(publisher mangos.Socket) {
 	process(stream, m.config.Name, m.config.Protocol, publisher)
 }
 
-func (*ModbusConnector) AddSubscriber(subscriber mangos.Socket) {
-	// do nothing
+func (c *ModbusConnector) AddSubscriber(subscriber mangos.Socket) {
+	go func(connector *ModbusConnector, subscriber mangos.Socket) {
+		raw := &message.Raw{}
+		for {
+			received, err := subscriber.Recv()
+			if err != nil {
+				logger.GetLogger().Warn(
+					"Could not receive a message from the publisher",
+					zap.String("Error", err.Error()),
+				)
+				continue
+			}
+			if err := json.Unmarshal(received, raw); err != nil {
+				logger.GetLogger().Warn(
+					"Could not unmarshal the received data",
+					zap.ByteString("Received", received),
+					zap.String("Error", err.Error()),
+				)
+				continue
+			}
+			// handle raw message
+		}
+	}(c, subscriber)
 }
 
 func (m *ModbusConnector) receive(stream chan<- []byte) error {

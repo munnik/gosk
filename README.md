@@ -1,22 +1,6 @@
-# GOSK <!-- omit in toc -->
+# GOSK
 
 Go SignalK implementation and more.
-
-- [1. Design](#1-design)
-  - [1.1. Micro services](#11-micro-services)
-    - [1.1.1. Collectors](#111-collectors)
-    - [1.1.2. Raw store](#112-raw-store)
-    - [1.1.3. Mappers](#113-mappers)
-    - [1.1.4. Mapped store](#114-mapped-store)
-    - [1.1.5. Transporters](#115-transporters)
-    - [1.1.6. Publish](#116-publish)
-  - [1.2. Communication between micro services](#12-communication-between-micro-services)
-    - [1.2.1. Header](#121-header)
-    - [1.2.2. Timestamp](#122-timestamp)
-    - [1.2.3. Body](#123-body)
-  - [1.3. Storage](#13-storage)
-    - [1.3.1. Raw data](#131-raw-data)
-    - [1.3.2. Mapped data](#132-mapped-data)
 
 ## 1. Design
 

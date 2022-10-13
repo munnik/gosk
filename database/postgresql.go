@@ -217,7 +217,6 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 	db.mappedCache.Set(svm.Timestamp, append(cached, svm))
 	db.batch.Queue(mappedInsertQuery, svm.Timestamp, svm.Source.Label, svm.Source.Type, svm.Context, svm.Path, svm.Value, svm.Source.Uuid, svm.Origin)
 	if db.batch.Len() > db.batchSize {
-		fmt.Println("flush len ", time.Now())
 		go db.flushBatch()
 	}
 }

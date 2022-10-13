@@ -170,6 +170,8 @@ func NewModbusMappingsConfig(configFilePath string) []ModbusMappingsConfig {
 
 type CSVMappingConfig struct {
 	BeginsWith    string `mapstructure:"beginsWith"`
+	Regex         string `mapstructure:"regex"`
+	ReplaceWith   string `mapstructure:"replaceWith"`
 	MappingConfig `mapstructure:",squash"`
 }
 

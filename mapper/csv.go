@@ -2,9 +2,9 @@ package mapper
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
-	"unicode"
 
 	"github.com/antonmedv/expr"
 	"github.com/antonmedv/expr/vm"
@@ -49,20 +49,30 @@ func (m *CSVMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 				continue
 			}
 			stringValue = stringValue[len(cmc.BeginsWith):]
-
+			var r *regexp.Regexp
+			if cmc.Regex != "" {
+				var err error
+				if r, err = regexp.Compile(cmc.Regex); err != nil {
+					logger.GetLogger().Warn(
+						"Could not compile the regular expression",
+						zap.String("Regex", cmc.Regex),
+						zap.String("Error", err.Error()),
+					)
+					continue
+				}
+			}
 			// setup env for expression
 			stringValues := strings.Split(stringValue, m.config.Separator)
 			floatValues := make([]float64, len(stringValues))
-			for i, v := range stringValues {
-				trimmed := strings.TrimFunc(v, notFloatElement)
-				if fv, err := strconv.ParseFloat(trimmed, 64); err == nil {
+			intValues := make([]int64, len(stringValues))
+			for i := range stringValues {
+				if r != nil {
+					stringValues[i] = r.ReplaceAllString(stringValues[i], cmc.ReplaceWith)
+				}
+				if fv, err := strconv.ParseFloat(stringValues[i], 64); err == nil {
 					floatValues[i] = fv
 				}
-			}
-			intValues := make([]int64, len(stringValues))
-			for i, v := range stringValues {
-				trimmed := strings.TrimFunc(v, notIntElement)
-				if iv, err := strconv.ParseInt(trimmed, 10, 64); err == nil {
+				if iv, err := strconv.ParseInt(stringValues[i], 10, 64); err == nil {
 					intValues[i] = iv
 				}
 			}
@@ -105,12 +115,4 @@ func (m *CSVMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	}
 
 	return result.AddUpdate(u), nil
-}
-
-func notIntElement(r rune) bool {
-	return !unicode.IsDigit(r) && r != '-'
-}
-
-func notFloatElement(r rune) bool {
-	return notIntElement(r) && r != '.'
 }

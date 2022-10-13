@@ -6,4 +6,6 @@ splitLines: true
 mappings:
   - expression: "floatValues[1]"
     path: "propulsion.mainEngine.drive.power"
-    beginsWith: "TANK:CT-1"
+    beginsWith: "TANK:CT-1;"
+    regex: "[A-Z]+:"
+    replaceWith: ""

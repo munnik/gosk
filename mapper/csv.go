@@ -54,14 +54,14 @@ func (m *CSVMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 			stringValues := strings.Split(stringValue, m.config.Separator)
 			floatValues := make([]float64, len(stringValues))
 			for i, v := range stringValues {
-				trimmed := strings.TrimFunc(v, isDigit)
+				trimmed := strings.TrimFunc(v, notFloatElement)
 				if fv, err := strconv.ParseFloat(trimmed, 64); err == nil {
 					floatValues[i] = fv
 				}
 			}
 			intValues := make([]int64, len(stringValues))
 			for i, v := range stringValues {
-				trimmed := strings.TrimFunc(v, isDigit)
+				trimmed := strings.TrimFunc(v, notIntElement)
 				if iv, err := strconv.ParseInt(trimmed, 10, 64); err == nil {
 					intValues[i] = iv
 				}
@@ -106,6 +106,11 @@ func (m *CSVMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 
 	return result.AddUpdate(u), nil
 }
-func isDigit(r rune) bool {
-	return !(unicode.IsDigit(r) || r == '-')
+
+func notIntElement(r rune) bool {
+	return !unicode.IsDigit(r) && r != '-'
+}
+
+func notFloatElement(r rune) bool {
+	return notIntElement(r) && r != '.'
 }

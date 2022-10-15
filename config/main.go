@@ -17,7 +17,7 @@ const (
 	NMEA0183Type = "nmea0183"
 	// ModbusType is used to identify the data as Modbus data
 	ModbusType = "modbus"
-	// CSVType is used to identify the data as comma seperated values data
+	// CSVType is used to identify the data as comma separated values data
 	CSVType = "csv"
 	// JSONType is used to identify the data as json messages
 	JSONType = "json"

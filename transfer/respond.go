@@ -10,6 +10,7 @@ import (
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/database"
 	"github.com/munnik/gosk/logger"
+	"github.com/munnik/gosk/reader"
 	"github.com/munnik/uniqueue"
 	"go.nanomsg.org/mangos/v3"
 	"go.uber.org/zap"
@@ -103,33 +104,12 @@ func (t *TransferResponder) startInjectDataWorkers() {
 }
 
 func (t *TransferResponder) injectData(period time.Time) {
-	deltas, err := t.db.ReadMapped(`WHERE "time" BETWEEN $1 AND $2`, period, period.Add(periodDuration))
-	if err != nil {
-		logger.GetLogger().Warn(
-			"Could not retrieve count of mapped data from database",
-			zap.String("Error", err.Error()),
-		)
-		return
-	}
-
-	for _, delta := range deltas {
-		bytes, err := json.Marshal(delta)
-		if err != nil {
-			logger.GetLogger().Warn(
-				"Could not marshal delta",
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
-		if err := t.publisher.Send(bytes); err != nil {
-			logger.GetLogger().Warn(
-				"Unable to send the message using NanoMSG",
-				zap.ByteString("Message", bytes),
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
-	}
+	replay := reader.NewMappedDatabaseReader(&config.DatabaseReaderConfig{
+		Start:            period,
+		End:              period.Add(periodDuration),
+		PostgresqlConfig: t.config.PostgresqlConfig,
+	})
+	replay.ReadMapped(t.publisher)
 
 	// after sending the period it can be removed from the list of todo periods
 	t.injectWorkerChannel.RemoveConstraint(period)

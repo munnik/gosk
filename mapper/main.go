@@ -9,6 +9,7 @@ import (
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
+	"github.com/munnik/gosk/nanomsg"
 	"go.nanomsg.org/mangos/v3"
 	"go.uber.org/zap"
 )
@@ -29,7 +30,6 @@ type MappedMapper interface {
 func process(subscriber mangos.Socket, publisher mangos.Socket, mapper RealMapper) {
 	raw := &message.Raw{}
 	var mapped *message.Mapped
-	var bytes []byte
 	for {
 		received, err := subscriber.Recv()
 		if err != nil {
@@ -55,27 +55,12 @@ func process(subscriber mangos.Socket, publisher mangos.Socket, mapper RealMappe
 			)
 			continue
 		}
-		if bytes, err = json.Marshal(mapped); err != nil {
-			logger.GetLogger().Warn(
-				"Could not marshal the mapped data",
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
-		if err := publisher.Send(bytes); err != nil {
-			logger.GetLogger().Warn(
-				"Unable to send the message using NanoMSG",
-				zap.ByteString("Message", bytes),
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
+		nanomsg.SendMapped(mapped, publisher)
 	}
 }
 func processMapped(subscriber mangos.Socket, publisher mangos.Socket, mapper MappedMapper) {
 	in := &message.Mapped{}
 	var out *message.Mapped
-	var bytes []byte
 	for {
 		received, err := subscriber.Recv()
 		if err != nil {
@@ -101,21 +86,7 @@ func processMapped(subscriber mangos.Socket, publisher mangos.Socket, mapper Map
 			)
 			continue
 		}
-		if bytes, err = json.Marshal(out); err != nil {
-			logger.GetLogger().Warn(
-				"Could not marshal the mapped data",
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
-		if err := publisher.Send(bytes); err != nil {
-			logger.GetLogger().Warn(
-				"Unable to send the message using NanoMSG",
-				zap.ByteString("Message", bytes),
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
+		nanomsg.SendMapped(out, publisher)
 	}
 }
 func runExpr(vm vm.VM, env map[string]interface{}, mapping config.MappingConfig) (interface{}, error) {

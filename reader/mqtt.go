@@ -10,6 +10,7 @@ import (
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
+	"github.com/munnik/gosk/nanomsg"
 	"go.nanomsg.org/mangos/v3"
 	"go.uber.org/zap"
 )
@@ -91,22 +92,7 @@ func (r *MqttReader) messageReceived(c mqtt.Client, m mqtt.Message) {
 	}
 
 	for _, delta := range deltas {
-		bytes, err := json.Marshal(delta)
-		if err != nil {
-			logger.GetLogger().Warn(
-				"Could not marshal delta",
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
-		if err := r.publisher.Send(bytes); err != nil {
-			logger.GetLogger().Warn(
-				"Unable to send the message using NanoMSG",
-				zap.ByteString("Message", bytes),
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
+		nanomsg.SendMapped(&delta, r.publisher)
 	}
 }
 func disconnectHandler(c mqtt.Client, e error) {

@@ -357,3 +357,9 @@ func NewRateLimitConfig(configFilePath string) *RateLimitConfig {
 
 	return result
 }
+
+type DatabaseReaderConfig struct {
+	Start            time.Time
+	End              time.Time
+	PostgresqlConfig PostgresqlConfig `mapstructure:"database"`
+}

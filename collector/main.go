@@ -1,10 +1,9 @@
 package collector
 
 import (
-	"encoding/json"
-
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
+	"github.com/munnik/gosk/nanomsg"
 	"go.nanomsg.org/mangos/v3"
 	"go.uber.org/zap"
 )
@@ -22,27 +21,6 @@ func process(stream <-chan []byte, collector string, protocol string, publisher 
 			zap.ByteString("Message", value),
 		)
 
-		m = message.NewRaw().WithCollector(collector).WithValue(value).WithType(protocol)
-		bytes, err := json.Marshal(m)
-		if err != nil {
-			logger.GetLogger().Warn(
-				"Unable to marshall the message to JSON",
-				zap.ByteString("Message", value),
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
-		if err := publisher.Send(bytes); err != nil {
-			logger.GetLogger().Warn(
-				"Unable to send the message using NanoMSG",
-				zap.ByteString("Message", bytes),
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
-		logger.GetLogger().Debug(
-			"Send the message on the NanoMSG socket",
-			zap.ByteString("Message", value),
-		)
+		nanomsg.SendRaw(m, publisher)
 	}
 }

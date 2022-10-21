@@ -13,6 +13,7 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/log/zapadapter"
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -24,12 +25,13 @@ import (
 
 const (
 	rawInsertQuery                 = `INSERT INTO "raw_data" ("time", "collector", "value", "uuid", "type") VALUES ($1, $2, $3, $4, $5)`
-	selectRawQuery                 = `SELECT "time", "collector", "value", "uuid", "type" FROM "raw_data"`
+	rawSelectQuery                 = `SELECT "time", "collector", "value", "uuid", "type" FROM "raw_data"`
 	mappedInsertQuery              = `INSERT INTO "mapped_data" ("time", "collector", "type", "context", "path", "value", "uuid", "origin") VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
-	selectMappedQuery              = `SELECT "time", "collector", "type", "context", "path", "value", "uuid", "origin" FROM "mapped_data"`
-	selectMappedDataPointsQuery    = `SELECT count(*) FROM "mapped_data" WHERE "time" BETWEEN $1 AND $2`
-	selectCompletePeriodsQuery     = `SELECT "start" FROM "remote_data" WHERE "origin" = $1 AND "local" >= "remote" * $2`
-	selectIncompletePeriodsQuery   = `SELECT "start" FROM "remote_data" WHERE "origin" = $1 AND "local" < "remote" * $2`
+	mappedSelectQuery              = `SELECT "time", "collector", "type", "context", "path", "value", "uuid", "origin" FROM "mapped_data"`
+	mappedDeleteQuery              = `DELETE FROM "mapped_data"`
+	dataPointsQuery                = `SELECT count(*) FROM "mapped_data" WHERE "time" BETWEEN $1 AND $2`
+	completePeriodsQuery           = `SELECT "start" FROM "remote_data" WHERE "origin" = $1 AND "local" >= "remote" * $2`
+	incompletePeriodsQuery         = `SELECT "start" FROM "remote_data" WHERE "origin" = $1 AND "local" < "remote" * $2`
 	insertOrUpdatePeriodQuery      = `INSERT INTO "remote_data" ("origin", "start", "end", "remote") VALUES ($1, $2, $3, $4) ON CONFLICT ("origin", "start", "end") DO UPDATE SET "remote" = $4`
 	updateLocalDataPoints          = `UPDATE "remote_data" SET "local" = $4 WHERE "origin" = $1 AND "start" = $2 AND "end" = $3`
 	selectLocalAndRemoteDataPoints = `SELECT count(mapped_data.*) AS "local", "remote" FROM "mapped_data", "remote_data" WHERE "remote_data"."origin" = $1 AND "start" = $2 AND "end" = $3 AND "mapped_data"."origin" = $1 AND "mapped_data"."time" BETWEEN $2 AND $3 GROUP BY "remote";`
@@ -129,7 +131,7 @@ func (db *PostgresqlDatabase) WriteRaw(raw message.Raw) {
 	if _, ok := db.mappedCache.Get(raw.Timestamp); !ok {
 		// create an empty list for the timestamp
 		db.rawCache.Set(raw.Timestamp, []message.Raw{})
-		rows, err := db.GetConnection().Query(context.Background(), selectRawQuery+` WHERE "time" = $1`, raw.Timestamp)
+		rows, err := db.GetConnection().Query(context.Background(), rawSelectQuery+` WHERE "time" = $1`, raw.Timestamp)
 		if err != nil {
 			return
 		}
@@ -181,7 +183,7 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 		// create an empty list for the timestamp
 		db.mappedCache.Set(svm.Timestamp, []message.SingleValueMapped{})
 
-		rows, err := db.GetConnection().Query(context.Background(), selectMappedQuery+` WHERE "time" = $1`, svm.Timestamp)
+		rows, err := db.GetConnection().Query(context.Background(), mappedSelectQuery+` WHERE "time" = $1`, svm.Timestamp)
 		if err != nil {
 			return
 		}
@@ -221,8 +223,31 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 	}
 }
 
+func (db *PostgresqlDatabase) ReadRaw(appendToQuery string, arguments ...interface{}) ([]message.Raw, error) {
+	rows, err := db.GetConnection().Query(context.Background(), fmt.Sprintf("%s %s", rawSelectQuery, appendToQuery), arguments...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make([]message.Raw, 0)
+	for rows.Next() {
+		m := message.NewRaw()
+		rows.Scan(
+			&m.Timestamp,
+			&m.Collector,
+			&m.Value,
+			&m.Uuid,
+			&m.Type,
+		)
+		result = append(result, *m)
+	}
+
+	return result, nil
+}
+
 func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...interface{}) ([]message.Mapped, error) {
-	rows, err := db.GetConnection().Query(context.Background(), fmt.Sprintf("%s %s", selectMappedQuery, appendToQuery), arguments...)
+	rows, err := db.GetConnection().Query(context.Background(), fmt.Sprintf("%s %s", mappedSelectQuery, appendToQuery), arguments...)
 	if err != nil {
 		return nil, err
 	}
@@ -253,8 +278,24 @@ func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...inte
 
 	return result, nil
 }
+
+func (db *PostgresqlDatabase) DeleteMapped(t time.Time, uuid uuid.UUID) error {
+	commandTag, err := db.GetConnection().Exec(context.Background(), mappedDeleteQuery+` WHERE "time" = $1 AND "uuid" = $2`, t, uuid)
+	if err != nil {
+		return err
+	}
+	if commandTag.RowsAffected() == 0 {
+		logger.GetLogger().Warn(
+			"No rows where deleted",
+			zap.Time("Time", t),
+			zap.String("Uuid", uuid.String()),
+		)
+	}
+	return nil
+}
+
 func (db *PostgresqlDatabase) ReadMappedCount(start time.Time, end time.Time) (int, error) {
-	rows, err := db.GetConnection().Query(context.Background(), selectMappedDataPointsQuery, start, end)
+	rows, err := db.GetConnection().Query(context.Background(), dataPointsQuery, start, end)
 	if err != nil {
 		return -1, err
 	}
@@ -268,12 +309,12 @@ func (db *PostgresqlDatabase) ReadMappedCount(start time.Time, end time.Time) (i
 
 // Returns the start timestamp of each period that has the same or more local rows than remote
 func (db *PostgresqlDatabase) SelectCompletePeriods(origin string) (map[time.Time]struct{}, error) {
-	return db.selectPeriods(selectCompletePeriodsQuery, origin, db.completeRatio)
+	return db.selectPeriods(completePeriodsQuery, origin, db.completeRatio)
 }
 
 // Returns the start timestamp of each period that has the same or more local rows than remote
 func (db *PostgresqlDatabase) SelectIncompletePeriods(origin string) (map[time.Time]struct{}, error) {
-	return db.selectPeriods(selectIncompletePeriodsQuery, origin, db.completeRatio)
+	return db.selectPeriods(incompletePeriodsQuery, origin, db.completeRatio)
 }
 
 // Returns the start timestamp of each period that has the same or more local rows than remote

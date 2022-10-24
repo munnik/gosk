@@ -1,6 +1,7 @@
 package mapper
 
 import (
+	"bufio"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -38,9 +39,15 @@ func (m *CSVMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 
 	for _, cmc := range m.csvMappingConfig {
 		stringInput := string(r.Value)
-		lines := []string{stringInput}
+		lines := make([]string, 0)
 		if m.config.SplitLines {
-			lines = strings.Split(stringInput, "\n")
+
+			sc := bufio.NewScanner(strings.NewReader(stringInput))
+			for sc.Scan() {
+				lines = append(lines, sc.Text())
+			}
+		} else {
+			lines = append(lines, stringInput)
 		}
 
 		for _, stringValue := range lines {

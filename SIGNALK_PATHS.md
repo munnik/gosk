@@ -27,15 +27,15 @@ If multiple instances of the same equipment exist then a location is added after
 
 Used locations in GOSK are:
 
-- `port` (cannot be used with `portInner` and `portOuter`)
+- `port` (cannot be used together with `portInner` and `portOuter`)
 - `portOuter`
 - `portInner`
-- `centerPort` (port of center, can be used `port` or with `portInner` and `portOuter`)
+- `centerPort` (port of center, can be used with `port` or with `portInner` and `portOuter`)
 - `center`
-- `centerStarboard` (starboard of center, can be used `starboard` or with `starboardInner` and `starboardOuter`)
+- `centerStarboard` (starboard of center, can be used with `starboard` or with `starboardInner` and `starboardOuter`)
 - `starboardInner`
 - `starboardOuter`
-- `starboard` (cannot be used with `starboardInner` and `starboardOuter`)
+- `starboard` (cannot be used together with `starboardInner` and `starboardOuter`)
 
 #### 1.2.2 Forward to aft
 
@@ -43,7 +43,7 @@ Used locations in GOSK are:
 
 - `forward` (in front of the cargo area)
 - `aft` (behind the cargo area)
-- `<number>` (can be added to a position to clarify a position, lower numbers are closer to the front of the ship, higher numbers are closer to the aft of the ship)
+- `<number>` (can be added to a position to clarify a position, lower numbers are closer to the front of the ship, higher numbers are closer to the aft of the ship, counting starts at 1)
 
 #### 1.2.3 Combining locations
 

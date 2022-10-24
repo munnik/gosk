@@ -104,6 +104,30 @@ func (left Alarm) Merge(right Merger) (Merger, error) {
 	return left, err
 }
 
+type Draft struct {
+	Current          *float64  `json:"current,omitempty"`
+	CurrentPort      []float64 `json:"currentPort,omitempty"`
+	CurrentStarboard []float64 `json:"currentStarboard,omitempty"`
+}
+
+func (left Draft) Merge(right Merger) (Merger, error) {
+	var err error
+	if right, ok := right.(Draft); !ok {
+		err = fmt.Errorf("right has type %T but should be type %T", right, left)
+	} else {
+		if right.Current != nil {
+			left.Current = right.Current
+		}
+		if len(right.CurrentPort) != 0 {
+			left.CurrentPort = right.CurrentPort
+		}
+		if len(right.CurrentStarboard) != 0 {
+			left.CurrentStarboard = right.CurrentStarboard
+		}
+	}
+	return left, err
+}
+
 func Decode(input interface{}) (interface{}, error) {
 	if i, ok := input.(int64); ok {
 		return i, nil
@@ -138,6 +162,12 @@ func Decode(input interface{}) (interface{}, error) {
 	metadata = mapstructure.Metadata{}
 	if err := mapstructure.DecodeMetadata(input, &a, &metadata); err == nil && len(metadata.Unused) == 0 {
 		return a, nil
+	}
+
+	d := Draft{}
+	metadata = mapstructure.Metadata{}
+	if err := mapstructure.DecodeMetadata(input, &d, &metadata); err == nil && len(metadata.Unused) == 0 {
+		return d, nil
 	}
 
 	return input, fmt.Errorf("don't know how to decode %v", input)

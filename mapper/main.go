@@ -176,3 +176,16 @@ func mergeEnvironments(left map[string]interface{}, right map[string]interface{}
 	}
 	return result, nil
 }
+
+func swapPointAndComma(input string) string {
+	result := []rune(input)
+
+	for i := range result {
+		if result[i] == '.' {
+			result[i] = ','
+		} else if result[i] == ',' {
+			result[i] = '.'
+		}
+	}
+	return string(result)
+}

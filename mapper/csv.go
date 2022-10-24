@@ -77,6 +77,8 @@ func (m *CSVMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 				}
 				if fv, err := strconv.ParseFloat(stringValues[i], 64); err == nil {
 					floatValues[i] = fv
+				} else if fv, err := strconv.ParseFloat(swapPointAndComma(stringValues[i]), 64); err == nil {
+					floatValues[i] = fv
 				}
 				if iv, err := strconv.ParseInt(stringValues[i], 10, 64); err == nil {
 					intValues[i] = iv

@@ -34,33 +34,99 @@ func pressureToHeight(pressure float64, density float64) float64 {
 // heights is in m, list of heights with corresponding volumes
 // volumes is in m3, list of volumes with corresponding heights
 // return value is in m3
-func heightToVolume(height float64, sensorOffset float64, heights []float64, volumes []float64) (result float64, err error) {
+func heightToVolume(height float64, sensorOffset float64, heights []interface{}, volumes []interface{}) (result float64, err error) {
 	if len(heights) != len(volumes) {
 		err = fmt.Errorf("The list of heights should have the same length as the list of volumes, the lengths are %d and %d", len(heights), len(volumes))
 		return
 	}
 
+	heightFloats := make([]float64, len(heights))
+	volumeFloats := make([]float64, len(volumes))
+
+	for i, h := range heights {
+		switch t := h.(type) {
+		case int:
+			heightFloats[i] = float64(t)
+		case uint:
+			heightFloats[i] = float64(t)
+		case int8:
+			heightFloats[i] = float64(t)
+		case uint8:
+			heightFloats[i] = float64(t)
+		case int16:
+			heightFloats[i] = float64(t)
+		case uint16:
+			heightFloats[i] = float64(t)
+		case int32:
+			heightFloats[i] = float64(t)
+		case uint32:
+			heightFloats[i] = float64(t)
+		case int64:
+			heightFloats[i] = float64(t)
+		case uint64:
+			heightFloats[i] = float64(t)
+		case float32:
+			heightFloats[i] = float64(t)
+		case float64:
+			heightFloats[i] = t
+		default:
+			err = fmt.Errorf("The height in position %d of the heights can not be converted to a float64", i)
+			return
+		}
+	}
+	for i, h := range volumes {
+		switch t := h.(type) {
+		case int:
+			volumeFloats[i] = float64(t)
+		case uint:
+			volumeFloats[i] = float64(t)
+		case int8:
+			volumeFloats[i] = float64(t)
+		case uint8:
+			volumeFloats[i] = float64(t)
+		case int16:
+			volumeFloats[i] = float64(t)
+		case uint16:
+			volumeFloats[i] = float64(t)
+		case int32:
+			volumeFloats[i] = float64(t)
+		case uint32:
+			volumeFloats[i] = float64(t)
+		case int64:
+			volumeFloats[i] = float64(t)
+		case uint64:
+			volumeFloats[i] = float64(t)
+		case float32:
+			volumeFloats[i] = float64(t)
+		case float64:
+			volumeFloats[i] = t
+		default:
+			err = fmt.Errorf("The volume in position %d of the volumes can not be converted to a float64", i)
+			return
+		}
+	}
+
 	for i := range heights {
-		if i > 0 && heights[i] <= heights[i-1] {
+		if i > 0 && heightFloats[i] <= heightFloats[i-1] {
 			err = fmt.Errorf("The list of heights should be in increasing order, height at position %d is equal or lower than the previous one", i)
 			return
 		}
-		if i > 0 && volumes[i] <= volumes[i-1] {
+		if i > 0 && volumeFloats[i] <= volumeFloats[i-1] {
 			err = fmt.Errorf("The list of volumes should be in increasing order, level at position %d is equal or lower than the previous one", i)
 			return
 		}
 	}
 
 	for i := range heights {
-		if (height + sensorOffset) < heights[i] {
+		if (height + sensorOffset) < heightFloats[i] {
 			if i == 0 {
 				break
 			}
-			ratioIncurrentHeight := (height + sensorOffset - heights[i-1]) / (heights[i] - heights[i-1])
-			result = ratioIncurrentHeight*(volumes[i]-volumes[i-1]) + volumes[i-1]
+			ratioIncurrentHeight := (height + sensorOffset - heightFloats[i-1]) / (heightFloats[i] - heightFloats[i-1])
+			result = ratioIncurrentHeight*(volumeFloats[i]-volumeFloats[i-1]) + volumeFloats[i-1]
 			break
 		}
-		result = volumes[i]
+		result = volumeFloats[i]
 	}
 	return
 }

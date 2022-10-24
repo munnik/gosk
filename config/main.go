@@ -134,9 +134,10 @@ func NewCSVMapperConfig(configFilePath string) CSVMapperConfig {
 }
 
 type MappingConfig struct {
-	Expression         string `mapstructure:"expression"`
-	CompiledExpression *vm.Program
-	Path               string `mapstructure:"path"`
+	Expression            string                 `mapstructure:"expression"`
+	ExpressionEnvironment map[string]interface{} `mapstructure:"expressionEnvironment"`
+	CompiledExpression    *vm.Program
+	Path                  string `mapstructure:"path"`
 }
 
 func (m *MappingConfig) verify() {
@@ -172,10 +173,10 @@ func NewModbusMappingsConfig(configFilePath string) []ModbusMappingsConfig {
 }
 
 type CSVMappingConfig struct {
+	MappingConfig `mapstructure:",squash"`
 	BeginsWith    string `mapstructure:"beginsWith"`
 	Regex         string `mapstructure:"regex"`
 	ReplaceWith   string `mapstructure:"replaceWith"`
-	MappingConfig `mapstructure:",squash"`
 }
 
 func NewCSVMappingConfig(configFilePath string) []CSVMappingConfig {

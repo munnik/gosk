@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/antonmedv/expr"
 	"github.com/antonmedv/expr/vm"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
@@ -76,37 +75,20 @@ func (m *CSVMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 					intValues[i] = iv
 				}
 			}
-			var env = map[string]interface{}{
-				"stringValues": stringValues,
-				"floatValues":  floatValues,
-				"intValues":    intValues,
-			}
 
-			if cmc.CompiledExpression == nil {
-				// TODO: each iteration the CompiledExpression is nil
-				var err error
-				if cmc.CompiledExpression, err = expr.Compile(cmc.Expression, expr.Env(env)); err != nil {
-					logger.GetLogger().Warn(
-						"Could not compile the mapping expression",
-						zap.String("Expression", cmc.Expression),
-						zap.String("Error", err.Error()),
-					)
-					continue
+			env := NewExpressionEnvironment()
+			env["stringValues"] = stringValues
+			env["floatValues"] = floatValues
+			env["intValues"] = intValues
+
+			output, err := runExpr(vm, env, cmc.MappingConfig)
+			if err == nil { // don't insert a path twice
+				if v := u.GetValueByPath(cmc.Path); v != nil {
+					v.WithValue(output)
+				} else {
+					u.AddValue(message.NewValue().WithPath(cmc.Path).WithValue(output))
 				}
 			}
-
-			// the compiled program exists, let's run it
-			output, err := vm.Run(cmc.CompiledExpression, env)
-			if err != nil {
-				logger.GetLogger().Warn(
-					"Could not run the mapping expression",
-					zap.String("Expression", cmc.Expression),
-					zap.String("Environment", fmt.Sprintf("%+v", env)),
-					zap.String("Error", err.Error()),
-				)
-				continue
-			}
-			u.AddValue(message.NewValue().WithPath(cmc.Path).WithValue(output))
 		}
 	}
 

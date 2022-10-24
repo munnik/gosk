@@ -118,29 +118,61 @@ func processMapped(subscriber mangos.Socket, publisher mangos.Socket, mapper Map
 		}
 	}
 }
-func runExpr(vm vm.VM, env map[string]interface{}, mapping config.MappingConfig) (interface{}, error) {
-	if mapping.CompiledExpression == nil {
+
+func runExpr(vm vm.VM, env map[string]interface{}, mappingConfig config.MappingConfig) (interface{}, error) {
+	env, err := mergeEnvironments(env, mappingConfig.ExpressionEnvironment)
+	if err != nil {
+		logger.GetLogger().Warn(
+			"Could not merge the environments",
+			zap.String("Error", err.Error()),
+		)
+		return nil, err
+	}
+
+	if mappingConfig.CompiledExpression == nil {
 		// TODO: each iteration the CompiledExpression is nil
 		var err error
-		if mapping.CompiledExpression, err = expr.Compile(mapping.Expression, expr.Env(env)); err != nil {
+		if mappingConfig.CompiledExpression, err = expr.Compile(mappingConfig.Expression, expr.Env(env)); err != nil {
 			logger.GetLogger().Warn(
 				"Could not compile the mapping expression",
-				zap.String("Expression", mapping.Expression),
+				zap.String("Expression", mappingConfig.Expression),
 				zap.String("Error", err.Error()),
 			)
 			return nil, err
 		}
 	}
 	// the compiled program exists, let's run it
-	output, err := vm.Run(mapping.CompiledExpression, env)
+	output, err := vm.Run(mappingConfig.CompiledExpression, env)
 	if err != nil {
 		logger.GetLogger().Warn(
 			"Could not run the mapping expression",
-			zap.String("Expression", mapping.Expression),
+			zap.String("Expression", mappingConfig.Expression),
 			zap.String("Environment", fmt.Sprintf("%+v", env)),
 			zap.String("Error", err.Error()),
 		)
 		return nil, err
 	}
+
+	// the value is a map so we could try to decode it
+	if m, ok := output.(map[string]interface{}); ok {
+		if decoded, err := message.Decode(m); err == nil {
+			output = decoded
+		}
+	}
+
 	return output, nil
+}
+
+func mergeEnvironments(left map[string]interface{}, right map[string]interface{}) (map[string]interface{}, error) {
+	result := make(map[string]interface{})
+	for k, v := range left {
+		result[k] = v
+	}
+	for k, v := range right {
+		if _, ok := left[k]; ok {
+			return map[string]interface{}{}, fmt.Errorf("Could not merge right into left because left already contains the key %s", k)
+		}
+		result[k] = v
+	}
+	return result, nil
 }

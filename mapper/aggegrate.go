@@ -25,7 +25,7 @@ func NewAggregateMapper(c config.MapperConfig, amc []config.AggregateMappingConf
 			mappings[s] = append(mappings[s], m)
 		}
 	}
-	env := make(map[string]interface{})
+	env := NewExpressionEnvironment()
 	return &AggregateMapper{config: c, protocol: config.SignalKType, aggregateMappings: mappings, env: env}, nil
 }
 func (m *AggregateMapper) Map(subscriber mangos.Socket, publisher mangos.Socket) {

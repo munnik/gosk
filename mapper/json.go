@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/antonmedv/expr"
 	"github.com/antonmedv/expr/vm"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
@@ -45,34 +44,18 @@ func (m *JSONMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 			)
 			continue
 		}
-		env := make(map[string]interface{})
+
+		env := NewExpressionEnvironment()
 		env["json"] = j
 
-		if jmc.CompiledExpression == nil {
-			// TODO: each iteration the CompiledExpression is nil
-			var err error
-			if jmc.CompiledExpression, err = expr.Compile(jmc.Expression, expr.Env(env)); err != nil {
-				logger.GetLogger().Warn(
-					"Could not compile the mapping expression",
-					zap.String("Expression", jmc.Expression),
-					zap.String("Error", err.Error()),
-				)
-				continue
+		output, err := runExpr(vm, env, jmc.MappingConfig)
+		if err == nil { // don't insert a path twice
+			if v := u.GetValueByPath(jmc.Path); v != nil {
+				v.WithValue(output)
+			} else {
+				u.AddValue(message.NewValue().WithPath(jmc.Path).WithValue(output))
 			}
 		}
-
-		// the compiled program exists, let's run it
-		output, err := vm.Run(jmc.CompiledExpression, env)
-		if err != nil {
-			logger.GetLogger().Warn(
-				"Could not run the mapping expression",
-				zap.String("Expression", jmc.Expression),
-				zap.String("Environment", fmt.Sprintf("%+v", env)),
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
-		u.AddValue(message.NewValue().WithPath(jmc.Path).WithValue(output))
 	}
 
 	if len(u.Values) == 0 {

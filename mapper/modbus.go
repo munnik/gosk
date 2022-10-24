@@ -6,24 +6,26 @@ import (
 	"math"
 	"time"
 
-	"github.com/antonmedv/expr"
 	"github.com/antonmedv/expr/vm"
 	"github.com/munnik/gosk/config"
-	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
 	"go.nanomsg.org/mangos/v3"
-	"go.uber.org/zap"
 )
 
 type ModbusMapper struct {
 	config               config.MapperConfig
 	protocol             string
 	modbusMappingsConfig []config.ModbusMappingsConfig
-	env                  map[string]interface{}
+	env                  ExpressionEnvironment
 }
 
 func NewModbusMapper(c config.MapperConfig, mmc []config.ModbusMappingsConfig) (*ModbusMapper, error) {
-	return &ModbusMapper{config: c, protocol: config.ModbusType, modbusMappingsConfig: mmc, env: map[string]interface{}{}}, nil
+	return &ModbusMapper{
+		config:               c,
+		protocol:             config.ModbusType,
+		modbusMappingsConfig: mmc,
+		env:                  NewExpressionEnvironment(),
+	}, nil
 }
 
 func (m *ModbusMapper) Map(subscriber mangos.Socket, publisher mangos.Socket) {
@@ -95,40 +97,14 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		if mmc.Address < address || mmc.Address+mmc.NumberOfCoilsOrRegisters > address+numberOfCoilsOrRegisters {
 			continue
 		}
-
-		// the raw message contains data that can be mapped with this register mapping
-		if mmc.CompiledExpression == nil {
-			// TODO: each iteration the CompiledExpression is nil
-			var err error
-			if mmc.CompiledExpression, err = expr.Compile(mmc.Expression, expr.Env(m.env)); err != nil {
-				logger.GetLogger().Warn(
-					"Could not compile the mapping expression",
-					zap.String("Expression", mmc.Expression),
-					zap.String("Error", err.Error()),
-				)
-				continue
+		output, err := runExpr(vm, m.env, mmc.MappingConfig)
+		if err == nil { // don't insert a path twice
+			if v := u.GetValueByPath(mmc.Path); v != nil {
+				v.WithValue(output)
+			} else {
+				u.AddValue(message.NewValue().WithPath(mmc.Path).WithValue(output))
 			}
 		}
-
-		// the compiled program exists, let's run it
-		output, err := vm.Run(mmc.CompiledExpression, m.env)
-		if err != nil {
-			logger.GetLogger().Warn(
-				"Could not run the mapping expression",
-				zap.String("Expression", mmc.Expression),
-				zap.String("Environment", fmt.Sprintf("%+v", m.env)),
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
-
-		// the value is a map so we could try to decode it
-		if m, ok := output.(map[string]interface{}); ok {
-			if decoded, err := message.Decode(m); err == nil {
-				output = decoded
-			}
-		}
-		u.AddValue(message.NewValue().WithPath(mmc.Path).WithValue(output))
 	}
 
 	if len(u.Values) == 0 {

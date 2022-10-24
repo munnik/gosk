@@ -56,7 +56,7 @@ func (m *CanBusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 			mapping, present := m.canbusMappings[val.origin][val.name]
 
 			if present {
-				var env = map[string]interface{}{}
+				var env = NewExpressionEnvironment()
 				env["value"] = val.value
 				output, err := runExpr(vm, env, mapping.MappingConfig)
 				if err == nil {

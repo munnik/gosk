@@ -15,8 +15,8 @@ func NewExpressionEnvironment() ExpressionEnvironment {
 // Returns the 4-20mA input signal to a ratio, 4000uA => 0.0, 8000uA => 0.25, 12000uA => 0.5, 16000uA => 0.75, 20000uA => 1.0
 // current is in uA (1000000uA is 1A)
 // return value is a ratio (0.0 .. 1.0)
-func currentToRatio(current int) float64 {
-	return float64(current-4000) / 16000
+func currentToRatio(current float64) float64 {
+	return (current - 4000) / 16000
 }
 
 // Converts a pressure and density to a height

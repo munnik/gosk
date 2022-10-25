@@ -3,7 +3,6 @@ package writer
 import (
 	"encoding/json"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/allegro/bigcache/v3"
@@ -28,7 +27,6 @@ type MqttWriter struct {
 	mqttClient mqtt.Client
 	cache      *bigcache.BigCache
 	encoder    *zstd.Encoder
-	mu         sync.Mutex
 }
 
 func NewMqttWriter(c *config.MQTTConfig) *MqttWriter {
@@ -58,9 +56,6 @@ func (w *MqttWriter) createClientOptions() *mqtt.ClientOptions {
 // When this method is called either the interval to flush or the maximum cache size is reached
 func (w *MqttWriter) onRemove(key string, entry []byte) {
 	go func(entry []byte) {
-		w.mu.Lock()
-		defer w.mu.Unlock()
-
 		var m message.Mapped
 		if err := json.Unmarshal(entry, &m); err != nil {
 			logger.GetLogger().Warn(
@@ -146,9 +141,12 @@ func (w *MqttWriter) WriteMapped(subscriber mangos.Socket) {
 			)
 			continue
 		}
-		w.mu.Lock()
-		w.cache.Set(uuid.NewString(), received)
-		w.mu.Unlock()
+		if err := w.cache.Set(uuid.NewString(), received); err != nil {
+			logger.GetLogger().Warn(
+				"Could not add the entry to the cache",
+				zap.String("Error", err.Error()),
+			)
+		}
 	}
 }
 

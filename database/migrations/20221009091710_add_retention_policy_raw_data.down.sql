@@ -1,1 +1,1 @@
-SELECT remove_retention_policy('raw_data');
+SELECT public.remove_retention_policy('raw_data');

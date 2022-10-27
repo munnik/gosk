@@ -3,4 +3,4 @@ CREATE TABLE "raw_data" (
     "_key" CHARACTER VARYING [] NOT NULL,
     "_value" BYTEA NOT NULL
 );
-SELECT create_hypertable('raw_data', '_time');
+SELECT public.create_hypertable('raw_data', '_time');

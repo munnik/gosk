@@ -5,4 +5,4 @@ CREATE TABLE "key_value_data" (
     "_path" CHARACTER VARYING NOT NULL,
     "_value" CHARACTER VARYING NOT NULL
 );
-SELECT create_hypertable('key_value_data', '_time');
+SELECT public.create_hypertable('key_value_data', '_time');

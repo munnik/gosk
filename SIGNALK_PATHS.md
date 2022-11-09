@@ -93,7 +93,7 @@ Current SignalK specs don't have all paths for information about cargo. GOSK use
   - Description: Amount of cargo loaded in the vessel in relation to the capacity
 - `/vessels/<RegExp>/cargo/tank/<RegExp>/` _(new)_
   - Description: Tanks are used to store gas, liquid or powder cargo
-- `/vessels/<RegExp>/vessels/<RegExp>/cargo/tank/<RegExp>/capacity` _(new)_
+- `/vessels/<RegExp>/cargo/tank/<RegExp>/capacity` _(new)_
   - Units: m3 (Cubic meter)
   - Description: Capacity of the tank
 - `/vessels/<RegExp>/cargo/tank/<RegExp>/currentLevel` _(new)_

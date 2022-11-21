@@ -3,12 +3,12 @@ module github.com/munnik/gosk
 go 1.18
 
 require (
-	github.com/Code-Hex/go-generics-cache v1.2.0
+	github.com/Code-Hex/go-generics-cache v1.2.1
 	github.com/Jeffail/gabs v1.4.0
-	github.com/allegro/bigcache/v3 v3.0.2
+	github.com/allegro/bigcache/v3 v3.1.0
 	github.com/antonmedv/expr v1.9.0
 	github.com/brutella/can v0.0.2
-	github.com/eclipse/paho.mqtt.golang v1.4.1
+	github.com/eclipse/paho.mqtt.golang v1.4.2
 	github.com/fgrosse/zaptest v1.1.0
 	github.com/go-chi/chi/v5 v5.0.7
 	github.com/goburrow/serial v0.1.0
@@ -16,16 +16,16 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/jackc/pgx/v4 v4.17.2
-	github.com/klauspost/compress v1.15.11
+	github.com/klauspost/compress v1.15.12
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/munnik/go-nmea v1.5.0
 	github.com/munnik/uniqueue v0.0.2
 	github.com/onsi/ginkgo/v2 v2.1.2
 	github.com/onsi/gomega v1.18.1
-	github.com/simonvetter/modbus v1.5.1
-	github.com/spf13/cobra v1.6.0
-	github.com/spf13/viper v1.13.0
-	go.einride.tech/can v0.2.2
+	github.com/simonvetter/modbus v1.6.0
+	github.com/spf13/cobra v1.6.1
+	github.com/spf13/viper v1.14.0
+	go.einride.tech/can v0.5.0
 	go.nanomsg.org/mangos/v3 v3.4.2
 	go.uber.org/zap v1.23.0
 	nhooyr.io/websocket v1.8.7
@@ -51,25 +51,25 @@ require (
 	github.com/jackc/puddle v1.3.0 // indirect
 	github.com/lib/pq v1.10.7 // indirect
 	github.com/magiconair/properties v1.8.6 // indirect
-	github.com/martinlindhe/unit v0.0.0-20220817221856-f7b595b5f97e // indirect
+	github.com/martinlindhe/unit v0.0.0-20221119104754-49d25a6e149e // indirect
 	github.com/onsi/ginkgo v1.16.5 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
-	github.com/pelletier/go-toml/v2 v2.0.5 // indirect
-	github.com/spf13/afero v1.9.2 // indirect
+	github.com/pelletier/go-toml/v2 v2.0.6 // indirect
+	github.com/spf13/afero v1.9.3 // indirect
 	github.com/spf13/cast v1.5.0 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/subosito/gotenv v1.4.1 // indirect
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/multierr v1.8.0 // indirect
-	golang.org/x/crypto v0.0.0-20221012134737-56aed061732a // indirect
-	golang.org/x/exp v0.0.0-20221012211006-4de253d81b95 // indirect
-	golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4 // indirect
-	golang.org/x/net v0.0.0-20221012135044-0b7e1fb9d458 // indirect
-	golang.org/x/sync v0.0.0-20220929204114-8fcdb60fdcc0 // indirect
-	golang.org/x/sys v0.0.0-20221013171732-95e765b1cc43 // indirect
-	golang.org/x/text v0.3.8 // indirect
-	golang.org/x/tools v0.1.12 // indirect
+	golang.org/x/crypto v0.3.0 // indirect
+	golang.org/x/exp v0.0.0-20221114191408-850992195362 // indirect
+	golang.org/x/mod v0.7.0 // indirect
+	golang.org/x/net v0.2.0 // indirect
+	golang.org/x/sync v0.1.0 // indirect
+	golang.org/x/sys v0.2.0 // indirect
+	golang.org/x/text v0.4.0 // indirect
+	golang.org/x/tools v0.3.0 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

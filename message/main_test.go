@@ -26,24 +26,24 @@ var _ = Describe("Raw", func() {
 		})
 		Context("with an empty value", func() {
 			BeforeEach(func() {
-				raw = NewRaw().WithCollector("CAT 3512").WithValue([]byte{}).WithType(config.ModbusType)
+				raw = NewRaw().WithConnector("CAT 3512").WithValue([]byte{}).WithType(config.ModbusType)
 			})
 			It("returns no errors", func() {
 				Expect(err).NotTo(HaveOccurred())
 			})
 			It("equals a correct json document", func() {
-				Expect(marshaled).To(Equal([]byte(`{"collector":"CAT 3512","timestamp":"2022-02-09T12:03:57.431272983Z","type":"modbus","uuid":"496aa0fb-d838-4631-a12f-dbad3cb27389","value":""}`)))
+				Expect(marshaled).To(Equal([]byte(`{"connector":"CAT 3512","timestamp":"2022-02-09T12:03:57.431272983Z","type":"modbus","uuid":"496aa0fb-d838-4631-a12f-dbad3cb27389","value":""}`)))
 			})
 		})
 		Context("with a set value", func() {
 			BeforeEach(func() {
-				raw = NewRaw().WithCollector("GPS").WithValue([]byte("$GPGLL,3723.2475,N,12158.3416,W,161229.487,A,A*41")).WithType(config.NMEA0183Type)
+				raw = NewRaw().WithConnector("GPS").WithValue([]byte("$GPGLL,3723.2475,N,12158.3416,W,161229.487,A,A*41")).WithType(config.NMEA0183Type)
 			})
 			It("returns no errors", func() {
 				Expect(err).NotTo(HaveOccurred())
 			})
 			It("equals a correct json document", func() {
-				Expect(marshaled).To(Equal([]byte(`{"collector":"GPS","timestamp":"2022-02-09T12:03:57.431272983Z","type":"nmea0183","uuid":"496aa0fb-d838-4631-a12f-dbad3cb27389","value":"JEdQR0xMLDM3MjMuMjQ3NSxOLDEyMTU4LjM0MTYsVywxNjEyMjkuNDg3LEEsQSo0MQ=="}`)))
+				Expect(marshaled).To(Equal([]byte(`{"connector":"GPS","timestamp":"2022-02-09T12:03:57.431272983Z","type":"nmea0183","uuid":"496aa0fb-d838-4631-a12f-dbad3cb27389","value":"JEdQR0xMLDM3MjMuMjQ3NSxOLDEyMTU4LjM0MTYsVywxNjEyMjkuNDg3LEEsQSo0MQ=="}`)))
 			})
 		})
 	})
@@ -53,10 +53,10 @@ var _ = Describe("Raw", func() {
 		})
 		Context("with an empty value", func() {
 			BeforeEach(func() {
-				expected = NewRaw().WithCollector("CAT 3512").WithValue([]byte{}).WithType(config.ModbusType)
+				expected = NewRaw().WithConnector("CAT 3512").WithValue([]byte{}).WithType(config.ModbusType)
 				expected.Timestamp = time.Date(2022, time.Month(2), 9, 12, 3, 57, 431272983, time.UTC)
 				expected.Uuid = uuid.MustParse("496aa0fb-d838-4631-a12f-dbad3cb27389")
-				marshaled = []byte(`{"collector":"CAT 3512","timestamp":"2022-02-09T12:03:57.431272983Z","uuid":"496aa0fb-d838-4631-a12f-dbad3cb27389","value":"","type":"modbus"}`)
+				marshaled = []byte(`{"connector":"CAT 3512","timestamp":"2022-02-09T12:03:57.431272983Z","uuid":"496aa0fb-d838-4631-a12f-dbad3cb27389","value":"","type":"modbus"}`)
 			})
 			It("returns no errors", func() {
 				Expect(err).NotTo(HaveOccurred())
@@ -67,10 +67,10 @@ var _ = Describe("Raw", func() {
 		})
 		Context("with a set value", func() {
 			BeforeEach(func() {
-				expected = NewRaw().WithCollector("GPS").WithValue([]byte("$GPGLL,3723.2475,N,12158.3416,W,161229.487,A,A*41")).WithType(config.NMEA0183Type)
+				expected = NewRaw().WithConnector("GPS").WithValue([]byte("$GPGLL,3723.2475,N,12158.3416,W,161229.487,A,A*41")).WithType(config.NMEA0183Type)
 				expected.Timestamp = time.Date(2022, time.Month(2), 9, 12, 3, 57, 431272983, time.UTC)
 				expected.Uuid = uuid.MustParse("496aa0fb-d838-4631-a12f-dbad3cb27389")
-				marshaled = []byte(`{"collector":"GPS","timestamp":"2022-02-09T12:03:57.431272983Z","uuid":"496aa0fb-d838-4631-a12f-dbad3cb27389","value":"JEdQR0xMLDM3MjMuMjQ3NSxOLDEyMTU4LjM0MTYsVywxNjEyMjkuNDg3LEEsQSo0MQ==","type":"nmea0183"}`)
+				marshaled = []byte(`{"connector":"GPS","timestamp":"2022-02-09T12:03:57.431272983Z","uuid":"496aa0fb-d838-4631-a12f-dbad3cb27389","value":"JEdQR0xMLDM3MjMuMjQ3NSxOLDEyMTU4LjM0MTYsVywxNjEyMjkuNDg3LEEsQSo0MQ==","type":"nmea0183"}`)
 			})
 			It("returns no errors", func() {
 				Expect(err).NotTo(HaveOccurred())

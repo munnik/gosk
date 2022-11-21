@@ -1,13 +1,15 @@
-package collector
+package connector
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
+	"github.com/munnik/gosk/message"
 	"github.com/simonvetter/modbus"
 	"go.nanomsg.org/mangos/v3"
 	"go.uber.org/zap"
@@ -18,12 +20,12 @@ import (
 const MaximumNumberOfRegisters = 125
 const MaximumNumberOfCoils = 2000
 
-type ModbusCollector struct {
-	config               *config.CollectorConfig
+type ModbusConnector struct {
+	config               *config.ConnectorConfig
 	registerGroupsConfig []config.RegisterGroupConfig
 }
 
-func NewModbusCollector(c *config.CollectorConfig, rgcs []config.RegisterGroupConfig) (*ModbusCollector, error) {
+func NewModbusConnector(c *config.ConnectorConfig, rgcs []config.RegisterGroupConfig) (*ModbusConnector, error) {
 	for _, rgc := range rgcs {
 		if rgc.FunctionCode == config.Coils || rgc.FunctionCode == config.DiscreteInputs {
 			if rgc.NumberOfCoilsRegisters > MaximumNumberOfCoils {
@@ -35,27 +37,52 @@ func NewModbusCollector(c *config.CollectorConfig, rgcs []config.RegisterGroupCo
 			}
 		}
 	}
-	return &ModbusCollector{config: c, registerGroupsConfig: rgcs}, nil
+	return &ModbusConnector{config: c, registerGroupsConfig: rgcs}, nil
 }
 
-func (r *ModbusCollector) Collect(publisher mangos.Socket) {
+func (m *ModbusConnector) Publish(publisher mangos.Socket) {
 	stream := make(chan []byte, 1)
 	defer close(stream)
 	go func() {
 		for {
-			if err := r.receive(stream); err != nil {
+			if err := m.receive(stream); err != nil {
 				logger.GetLogger().Warn(
 					"Error while receiving data for the stream",
-					zap.String("URL", r.config.URL.String()),
+					zap.String("URL", m.config.URL.String()),
 					zap.String("Error", err.Error()),
 				)
 			}
 		}
 	}()
-	process(stream, r.config.Name, r.config.Protocol, publisher)
+	process(stream, m.config.Name, m.config.Protocol, publisher)
 }
 
-func (m *ModbusCollector) receive(stream chan<- []byte) error {
+func (c *ModbusConnector) AddSubscriber(subscriber mangos.Socket) {
+	go func(connector *ModbusConnector, subscriber mangos.Socket) {
+		raw := &message.Raw{}
+		for {
+			received, err := subscriber.Recv()
+			if err != nil {
+				logger.GetLogger().Warn(
+					"Could not receive a message from the publisher",
+					zap.String("Error", err.Error()),
+				)
+				continue
+			}
+			if err := json.Unmarshal(received, raw); err != nil {
+				logger.GetLogger().Warn(
+					"Could not unmarshal the received data",
+					zap.ByteString("Received", received),
+					zap.String("Error", err.Error()),
+				)
+				continue
+			}
+			// handle raw message
+		}
+	}(c, subscriber)
+}
+
+func (m *ModbusConnector) receive(stream chan<- []byte) error {
 	client, err := m.createClient()
 	if err != nil {
 		return err
@@ -92,7 +119,7 @@ func (m *ModbusCollector) receive(stream chan<- []byte) error {
 	return nil
 }
 
-func (m ModbusCollector) createClient() (*ModbusClient, error) {
+func (m ModbusConnector) createClient() (*ModbusClient, error) {
 	client, err := modbus.NewClient(&modbus.ClientConfiguration{
 		URL:      m.config.URL.String(),
 		Speed:    uint(m.config.BaudRate),

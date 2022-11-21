@@ -1,4 +1,4 @@
-package collector
+package connector
 
 import (
 	"io"
@@ -12,16 +12,16 @@ import (
 	"go.uber.org/zap"
 )
 
-type HttpCollector struct {
-	config    *config.CollectorConfig
+type HttpConnector struct {
+	config    *config.ConnectorConfig
 	urlGroups []config.UrlGroupConfig
 }
 
-func NewHttpCollector(c *config.CollectorConfig, ugc []config.UrlGroupConfig) (*HttpCollector, error) {
-	return &HttpCollector{config: c, urlGroups: ugc}, nil
+func NewHttpConnector(c *config.ConnectorConfig, ugc []config.UrlGroupConfig) (*HttpConnector, error) {
+	return &HttpConnector{config: c, urlGroups: ugc}, nil
 }
 
-func (r *HttpCollector) Collect(publisher mangos.Socket) {
+func (r *HttpConnector) Publish(publisher mangos.Socket) {
 	stream := make(chan []byte, 1)
 	defer close(stream)
 	go func() {
@@ -38,8 +38,11 @@ func (r *HttpCollector) Collect(publisher mangos.Socket) {
 	process(stream, r.config.Name, r.config.Protocol, publisher)
 }
 
-func (h *HttpCollector) receive(stream chan<- []byte) error {
+func (*HttpConnector) AddSubscriber(subscriber mangos.Socket) {
+	// do nothing
+}
 
+func (h *HttpConnector) receive(stream chan<- []byte) error {
 	errors := make(chan error)
 	done := make(chan bool)
 	var wg sync.WaitGroup

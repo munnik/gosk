@@ -1,4 +1,4 @@
-package collector
+package connector
 
 import (
 	"encoding/json"
@@ -9,12 +9,13 @@ import (
 	"go.uber.org/zap"
 )
 
-// Collector interface
-type Collector interface {
-	Collect(publisher mangos.Socket)
+// Connector interface
+type Connector interface {
+	Publish(publisher mangos.Socket)
+	AddSubscriber(subscriber mangos.Socket)
 }
 
-func process(stream <-chan []byte, collector string, protocol string, publisher mangos.Socket) {
+func process(stream <-chan []byte, connector string, protocol string, publisher mangos.Socket) {
 	var m *message.Raw
 	for value := range stream {
 		logger.GetLogger().Debug(
@@ -22,7 +23,7 @@ func process(stream <-chan []byte, collector string, protocol string, publisher 
 			zap.ByteString("Message", value),
 		)
 
-		m = message.NewRaw().WithCollector(collector).WithValue(value).WithType(protocol)
+		m = message.NewRaw().WithConnector(connector).WithValue(value).WithType(protocol)
 		bytes, err := json.Marshal(m)
 		if err != nil {
 			logger.GetLogger().Warn(

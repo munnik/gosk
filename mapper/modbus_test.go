@@ -108,7 +108,7 @@ var _ = Describe("DoMap Modbus", func() {
 		Entry("With empty value",
 			mapper,
 			func() *message.Raw {
-				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{})
+				m := message.NewRaw().WithConnector("testingConnector").WithType(config.ModbusType).WithValue([]byte{})
 				m.Uuid = uuid.Nil
 				m.Timestamp = now
 				return m
@@ -119,7 +119,7 @@ var _ = Describe("DoMap Modbus", func() {
 		Entry("With invalid value",
 			mapper,
 			func() *message.Raw {
-				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0, 5, 34, 4})
+				m := message.NewRaw().WithConnector("testingConnector").WithType(config.ModbusType).WithValue([]byte{0, 5, 34, 4})
 				m.Uuid = uuid.Nil
 				m.Timestamp = now
 				return m
@@ -130,7 +130,7 @@ var _ = Describe("DoMap Modbus", func() {
 		Entry("With value without registers",
 			mapper,
 			func() *message.Raw {
-				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{1, 0, 2, 0, 40, 0, 1})
+				m := message.NewRaw().WithConnector("testingConnector").WithType(config.ModbusType).WithValue([]byte{1, 0, 2, 0, 40, 0, 1})
 				m.Uuid = uuid.Nil
 				m.Timestamp = now
 				return m
@@ -141,14 +141,14 @@ var _ = Describe("DoMap Modbus", func() {
 		Entry("With value all coils set to false",
 			mapper,
 			func() *message.Raw {
-				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x01, 0x00, 0x02, 0x00, 0x28, 0x00, 0x02, 0x00, 0x00})
+				m := message.NewRaw().WithConnector("testingConnector").WithType(config.ModbusType).WithValue([]byte{0x01, 0x00, 0x02, 0x00, 0x28, 0x00, 0x02, 0x00, 0x00})
 				m.Uuid = uuid.Nil
 				m.Timestamp = now
 				return m
 			}(),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType).WithUuid(uuid.Nil),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.ModbusType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -160,14 +160,14 @@ var _ = Describe("DoMap Modbus", func() {
 		Entry("With value all coils set to true",
 			mapper,
 			func() *message.Raw {
-				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x01, 0x00, 0x02, 0x00, 0x28, 0x00, 0x02, 0xc0, 0x00})
+				m := message.NewRaw().WithConnector("testingConnector").WithType(config.ModbusType).WithValue([]byte{0x01, 0x00, 0x02, 0x00, 0x28, 0x00, 0x02, 0xc0, 0x00})
 				m.Uuid = uuid.Nil
 				m.Timestamp = now
 				return m
 			}(),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType).WithUuid(uuid.Nil),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.ModbusType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -179,14 +179,14 @@ var _ = Describe("DoMap Modbus", func() {
 		Entry("With real data",
 			mapper,
 			func() *message.Raw {
-				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x02, 0x00, 0x02, 0x03, 0x20, 0x00, 0x09, 0xff, 0x80})
+				m := message.NewRaw().WithConnector("testingConnector").WithType(config.ModbusType).WithValue([]byte{0x02, 0x00, 0x02, 0x03, 0x20, 0x00, 0x09, 0xff, 0x80})
 				m.Uuid = uuid.Nil
 				m.Timestamp = now
 				return m
 			}(),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType).WithUuid(uuid.Nil),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.ModbusType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -227,7 +227,7 @@ var _ = Describe("DoMap Modbus", func() {
 		Entry("With empty value",
 			mapper,
 			func() *message.Raw {
-				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{})
+				m := message.NewRaw().WithConnector("testingConnector").WithType(config.ModbusType).WithValue([]byte{})
 				m.Uuid = uuid.Nil
 				m.Timestamp = now
 				return m
@@ -238,7 +238,7 @@ var _ = Describe("DoMap Modbus", func() {
 		Entry("With invalid value",
 			mapper,
 			func() *message.Raw {
-				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0, 5, 34, 4})
+				m := message.NewRaw().WithConnector("testingConnector").WithType(config.ModbusType).WithValue([]byte{0, 5, 34, 4})
 				m.Uuid = uuid.Nil
 				m.Timestamp = now
 				return m
@@ -249,7 +249,7 @@ var _ = Describe("DoMap Modbus", func() {
 		Entry("With value without registers",
 			mapper,
 			func() *message.Raw {
-				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{1, 0, 2, 0, 40, 0, 1})
+				m := message.NewRaw().WithConnector("testingConnector").WithType(config.ModbusType).WithValue([]byte{1, 0, 2, 0, 40, 0, 1})
 				m.Uuid = uuid.Nil
 				m.Timestamp = now
 				return m
@@ -260,14 +260,14 @@ var _ = Describe("DoMap Modbus", func() {
 		Entry("With value and actual registers",
 			mapper,
 			func() *message.Raw {
-				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{1, 0, 3, 0, 52, 0, 1, 15, 146})
+				m := message.NewRaw().WithConnector("testingConnector").WithType(config.ModbusType).WithValue([]byte{1, 0, 3, 0, 52, 0, 1, 15, 146})
 				m.Uuid = uuid.Nil
 				m.Timestamp = now
 				return m
 			}(),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType).WithUuid(uuid.Nil),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.ModbusType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -279,14 +279,14 @@ var _ = Describe("DoMap Modbus", func() {
 		Entry("With two registers",
 			mapper,
 			func() *message.Raw {
-				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x01, 0x00, 0x04, 0x00, 0x16, 0x00, 0x02, 0x0f, 0x92, 0x43, 0xea})
+				m := message.NewRaw().WithConnector("testingConnector").WithType(config.ModbusType).WithValue([]byte{0x01, 0x00, 0x04, 0x00, 0x16, 0x00, 0x02, 0x0f, 0x92, 0x43, 0xea})
 				m.Uuid = uuid.Nil
 				m.Timestamp = now
 				return m
 			}(),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType).WithUuid(uuid.Nil),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.ModbusType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -311,20 +311,20 @@ var _ = Describe("DoMap Modbus", func() {
 		Entry("no difference",
 			mapper,
 			func() *message.Raw {
-				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x16, 0x00, 0x01, 0x0f, 0x92})
+				m := message.NewRaw().WithConnector("testingConnector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x16, 0x00, 0x01, 0x0f, 0x92})
 				m.Uuid = uuid.Nil
 				m.Timestamp = now.Add(-time.Second)
 				return m
 			}(),
 			func() *message.Raw {
-				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x16, 0x00, 0x01, 0x0f, 0x92})
+				m := message.NewRaw().WithConnector("testingConnector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x16, 0x00, 0x01, 0x0f, 0x92})
 				m.Uuid = uuid.Nil
 				m.Timestamp = now
 				return m
 			}(),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType).WithUuid(uuid.Nil),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.ModbusType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -336,20 +336,20 @@ var _ = Describe("DoMap Modbus", func() {
 		Entry("small difference",
 			mapper,
 			func() *message.Raw {
-				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x16, 0x00, 0x01, 0x0f, 0x92})
+				m := message.NewRaw().WithConnector("testingConnector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x16, 0x00, 0x01, 0x0f, 0x92})
 				m.Uuid = uuid.Nil
 				m.Timestamp = now.Add(-time.Second)
 				return m
 			}(),
 			func() *message.Raw {
-				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x16, 0x00, 0x01, 0x0f, 0xf2})
+				m := message.NewRaw().WithConnector("testingConnector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x16, 0x00, 0x01, 0x0f, 0xf2})
 				m.Uuid = uuid.Nil
 				m.Timestamp = now
 				return m
 			}(),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType).WithUuid(uuid.Nil),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.ModbusType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -361,20 +361,20 @@ var _ = Describe("DoMap Modbus", func() {
 		Entry("negative difference",
 			mapper,
 			func() *message.Raw {
-				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x16, 0x00, 0x01, 0x0f, 0xf2})
+				m := message.NewRaw().WithConnector("testingConnector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x16, 0x00, 0x01, 0x0f, 0xf2})
 				m.Uuid = uuid.Nil
 				m.Timestamp = now.Add(-time.Second)
 				return m
 			}(),
 			func() *message.Raw {
-				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x16, 0x00, 0x01, 0x0f, 0x92})
+				m := message.NewRaw().WithConnector("testingConnector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x16, 0x00, 0x01, 0x0f, 0x92})
 				m.Uuid = uuid.Nil
 				m.Timestamp = now
 				return m
 			}(),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType).WithUuid(uuid.Nil),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.ModbusType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -386,20 +386,20 @@ var _ = Describe("DoMap Modbus", func() {
 		Entry("overflow",
 			mapper,
 			func() *message.Raw {
-				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x16, 0x00, 0x01, 0xff, 0xff})
+				m := message.NewRaw().WithConnector("testingConnector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x16, 0x00, 0x01, 0xff, 0xff})
 				m.Uuid = uuid.Nil
 				m.Timestamp = now.Add(-time.Second)
 				return m
 			}(),
 			func() *message.Raw {
-				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x16, 0x00, 0x01, 0x00, 0x01})
+				m := message.NewRaw().WithConnector("testingConnector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x16, 0x00, 0x01, 0x00, 0x01})
 				m.Uuid = uuid.Nil
 				m.Timestamp = now
 				return m
 			}(),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType).WithUuid(uuid.Nil),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.ModbusType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -411,20 +411,20 @@ var _ = Describe("DoMap Modbus", func() {
 		Entry("underflow",
 			mapper,
 			func() *message.Raw {
-				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x16, 0x00, 0x01, 0x00, 0x01})
+				m := message.NewRaw().WithConnector("testingConnector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x16, 0x00, 0x01, 0x00, 0x01})
 				m.Uuid = uuid.Nil
 				m.Timestamp = now.Add(-time.Second)
 				return m
 			}(),
 			func() *message.Raw {
-				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x16, 0x00, 0x01, 0xff, 0xff})
+				m := message.NewRaw().WithConnector("testingConnector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x16, 0x00, 0x01, 0xff, 0xff})
 				m.Uuid = uuid.Nil
 				m.Timestamp = now
 				return m
 			}(),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType).WithUuid(uuid.Nil),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.ModbusType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -436,20 +436,20 @@ var _ = Describe("DoMap Modbus", func() {
 		Entry("time difference",
 			mapper,
 			func() *message.Raw {
-				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x17, 0x00, 0x01, 0x00, 0x01})
+				m := message.NewRaw().WithConnector("testingConnector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x17, 0x00, 0x01, 0x00, 0x01})
 				m.Uuid = uuid.Nil
 				m.Timestamp = now.Add(-1 * time.Second)
 				return m
 			}(),
 			func() *message.Raw {
-				m := message.NewRaw().WithCollector("testingCollector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x17, 0x00, 0x01, 0xff, 0xff})
+				m := message.NewRaw().WithConnector("testingConnector").WithType(config.ModbusType).WithValue([]byte{0x03, 0x00, 0x04, 0x00, 0x17, 0x00, 0x01, 0xff, 0xff})
 				m.Uuid = uuid.Nil
 				m.Timestamp = now
 				return m
 			}(),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingCollector").WithType(config.ModbusType).WithUuid(uuid.Nil),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.ModbusType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(

@@ -23,10 +23,10 @@ import (
 )
 
 const (
-	rawInsertQuery                 = `INSERT INTO "raw_data" ("time", "collector", "value", "uuid", "type") VALUES ($1, $2, $3, $4, $5)`
-	selectRawQuery                 = `SELECT "time", "collector", "value", "uuid", "type" FROM "raw_data"`
-	mappedInsertQuery              = `INSERT INTO "mapped_data" ("time", "collector", "type", "context", "path", "value", "uuid", "origin") VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
-	selectMappedQuery              = `SELECT "time", "collector", "type", "context", "path", "value", "uuid", "origin" FROM "mapped_data"`
+	rawInsertQuery                 = `INSERT INTO "raw_data" ("time", "connector", "value", "uuid", "type") VALUES ($1, $2, $3, $4, $5)`
+	selectRawQuery                 = `SELECT "time", "connector", "value", "uuid", "type" FROM "raw_data"`
+	mappedInsertQuery              = `INSERT INTO "mapped_data" ("time", "connector", "type", "context", "path", "value", "uuid", "origin") VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+	selectMappedQuery              = `SELECT "time", "connector", "type", "context", "path", "value", "uuid", "origin" FROM "mapped_data"`
 	selectMappedDataPointsQuery    = `SELECT count(*) FROM "mapped_data" WHERE "time" BETWEEN $1 AND $2`
 	selectCompletePeriodsQuery     = `SELECT "start" FROM "remote_data" WHERE "origin" = $1 AND "local" >= "remote" * $2`
 	selectIncompletePeriodsQuery   = `SELECT "start" FROM "remote_data" WHERE "origin" = $1 AND "local" < "remote" * $2`
@@ -139,7 +139,7 @@ func (db *PostgresqlDatabase) WriteRaw(raw message.Raw) {
 			inDatabase := message.NewRaw()
 			rows.Scan(
 				&inDatabase.Timestamp,
-				&inDatabase.Collector,
+				&inDatabase.Connector,
 				&inDatabase.Value,
 				&inDatabase.Uuid,
 				&inDatabase.Type,
@@ -160,7 +160,7 @@ func (db *PostgresqlDatabase) WriteRaw(raw message.Raw) {
 
 	// value is not in cache, insert into the database and add to the cache
 	db.rawCache.Set(raw.Timestamp, append(cached, raw))
-	db.batch.Queue(rawInsertQuery, raw.Timestamp, raw.Collector, raw.Value, raw.Uuid, raw.Type)
+	db.batch.Queue(rawInsertQuery, raw.Timestamp, raw.Connector, raw.Value, raw.Uuid, raw.Type)
 	if db.batch.Len() > db.batchSize {
 		go db.flushBatch()
 	}

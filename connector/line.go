@@ -50,7 +50,7 @@ func (r *LineConnector) Publish(publisher mangos.Socket) {
 	process(stream, r.config.Name, r.config.Protocol, publisher)
 }
 
-func (r *LineConnector) AddSubscriber(subscriber mangos.Socket) {
+func (r *LineConnector) Subscribe(subscriber mangos.Socket) {
 	go func() {
 		raw := &message.Raw{}
 		for {

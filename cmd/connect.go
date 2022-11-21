@@ -86,7 +86,7 @@ func doConnect(cmd *cobra.Command, args []string) {
 		for {
 			subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
 			if err == nil {
-				conn.AddSubscriber(subscriber)
+				conn.Subscribe(subscriber)
 				return // subscriber has been added
 			}
 

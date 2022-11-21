@@ -57,7 +57,7 @@ func (m *ModbusConnector) Publish(publisher mangos.Socket) {
 	process(stream, m.config.Name, m.config.Protocol, publisher)
 }
 
-func (c *ModbusConnector) AddSubscriber(subscriber mangos.Socket) {
+func (c *ModbusConnector) Subscribe(subscriber mangos.Socket) {
 	go func(connector *ModbusConnector, subscriber mangos.Socket) {
 		raw := &message.Raw{}
 		for {

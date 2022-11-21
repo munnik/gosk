@@ -36,7 +36,7 @@ func (r *CanBusConnector) Publish(publisher mangos.Socket) {
 	process(stream, r.config.Name, r.config.Protocol, publisher)
 }
 
-func (*CanBusConnector) AddSubscriber(subscriber mangos.Socket) {
+func (*CanBusConnector) Subscribe(subscriber mangos.Socket) {
 	// do nothing
 }
 

@@ -38,7 +38,7 @@ func (r *HttpConnector) Publish(publisher mangos.Socket) {
 	process(stream, r.config.Name, r.config.Protocol, publisher)
 }
 
-func (*HttpConnector) AddSubscriber(subscriber mangos.Socket) {
+func (*HttpConnector) Subscribe(subscriber mangos.Socket) {
 	// do nothing
 }
 

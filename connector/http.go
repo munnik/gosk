@@ -43,7 +43,6 @@ func (*HttpConnector) AddSubscriber(subscriber mangos.Socket) {
 }
 
 func (h *HttpConnector) receive(stream chan<- []byte) error {
-
 	errors := make(chan error)
 	done := make(chan bool)
 	var wg sync.WaitGroup

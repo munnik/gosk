@@ -18,6 +18,7 @@ package cmd
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/connector"
@@ -25,6 +26,10 @@ import (
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
+)
+
+const (
+	RETRY_SUBSCRIPTION_SLEEP = 5
 )
 
 var (
@@ -38,6 +43,7 @@ var (
 
 func init() {
 	rootCmd.AddCommand(connectCmd)
+	connectCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
 	connectCmd.Flags().StringVarP(&publishURL, "publishURL", "p", "", "Nanomsg URL, the URL is used to publish the data on. It listens for connections.")
 	connectCmd.MarkFlagRequired("publishURL")
 }
@@ -46,6 +52,7 @@ func doConnect(cmd *cobra.Command, args []string) {
 	var err error
 	c := config.NewConnectorConfig(cfgFile)
 	var conn connector.Connector
+
 	switch c.Protocol {
 	case config.CSVType, config.NMEA0183Type, config.JSONType:
 		conn, err = connector.NewLineConnector(c)
@@ -71,5 +78,26 @@ func doConnect(cmd *cobra.Command, args []string) {
 			zap.String("Error", err.Error()),
 		)
 	}
+
+	go func() {
+		if subscribeURL == "" {
+			return // nothing to subscribe to
+		}
+		for {
+			subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
+			if err == nil {
+				conn.AddSubscriber(subscriber)
+				return // subscriber has been added
+			}
+
+			logger.GetLogger().Warn(
+				"Could not subscribe, sleeping",
+				zap.String("URL", subscribeURL),
+				zap.String("Error", err.Error()),
+			)
+			time.Sleep(RETRY_SUBSCRIPTION_SLEEP * time.Second)
+		}
+	}()
+
 	conn.Publish(nanomsg.NewPub(publishURL))
 }

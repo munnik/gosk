@@ -70,7 +70,7 @@ func (r *LineConnector) Subscribe(subscriber mangos.Socket) {
 				)
 				continue
 			}
-			r.connection.Write(append(raw.Value, '\r', '\n'))
+			r.connection.Write(raw.Value)
 		}
 	}()
 }

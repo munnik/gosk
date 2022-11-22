@@ -183,7 +183,7 @@ func (w *LWEWriter) createTagBlock(raw message.Raw) []byte {
 		tagBlock += "s:" + w.SourceIdentification + ","
 	}
 	if w.IncludeTimestamp {
-		tagBlock += "t:" + fmt.Sprint(raw.Timestamp.Unix()) + ","
+		tagBlock += "c:" + fmt.Sprint(raw.Timestamp.Unix()) + ","
 	}
 	if w.IncludeLineCount {
 		w.mu.Lock()
@@ -204,5 +204,5 @@ func (w *LWEWriter) createTagBlock(raw message.Raw) []byte {
 	for _, c := range tagBlock {
 		tagBlockChecksum ^= int(c)
 	}
-	return []byte("\\" + tagBlock + "*" + fmt.Sprint(tagBlockChecksum) + "\\")
+	return []byte("\\" + tagBlock + "*" + fmt.Sprintf("%02X", tagBlockChecksum) + "\\")
 }

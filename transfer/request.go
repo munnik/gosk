@@ -9,6 +9,7 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/google/uuid"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/database"
 	"github.com/munnik/gosk/logger"
@@ -16,14 +17,24 @@ import (
 )
 
 type TransferRequester struct {
-	db         *database.PostgresqlDatabase
-	mqttConfig *config.MQTTConfig
-	mqttClient mqtt.Client
-	origins    []config.OriginsConfig
+	db                 *database.PostgresqlDatabase
+	mqttConfig         *config.MQTTConfig
+	mqttClient         mqtt.Client
+	origins            []config.OriginsConfig
+	countRequestPeriod time.Duration `mapstructure:"count_request_period"`
+	dataRequestPeriod  time.Duration `mapstructure:"data_request_period"`
+	loadReduction      bool          `mapstructure:"load_reduction"`
 }
 
 func NewTransferRequester(c *config.TransferConfig) *TransferRequester {
-	return &TransferRequester{db: database.NewPostgresqlDatabase(&c.PostgresqlConfig), mqttConfig: &c.MQTTConfig, origins: c.Origins}
+	return &TransferRequester{
+		db:                 database.NewPostgresqlDatabase(&c.PostgresqlConfig),
+		mqttConfig:         &c.MQTTConfig,
+		origins:            c.Origins,
+		countRequestPeriod: c.CountRequestPeriod,
+		dataRequestPeriod:  c.DataRequestPeriod,
+		loadReduction:      c.LoadReduction,
+	}
 }
 
 func (t *TransferRequester) Run() {
@@ -44,14 +55,14 @@ func (t *TransferRequester) Run() {
 	// send count requests
 	go func() {
 		for {
-			t.sendCountRequests(30 * time.Minute)
+			t.sendCountRequests(t.countRequestPeriod)
 		}
 	}()
 
 	// send data requests
 	go func() {
 		for {
-			t.sendDataRequests(2 * time.Hour)
+			t.sendDataRequests(t.dataRequestPeriod)
 		}
 	}()
 
@@ -145,6 +156,9 @@ func (t *TransferRequester) sendDataRequests(interval time.Duration) {
 				t.db.UpdateLocalDataPoints(origin, period, period.Add(periodDuration), localDataPoints)
 				// check if local data points are still less after update
 				if localDataPoints < remoteDataPoints {
+					// TODO log request for data to DB
+					uuid := uuid.New()
+					t.db.LogTransferRequest(time.Now(), uuid, origin, period, period.Add(periodDuration), localDataPoints, remoteDataPoints)
 					t.sendMQTTCommand(origin, period, requestDataCmd)
 				}
 			}

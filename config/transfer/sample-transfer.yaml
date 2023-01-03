@@ -1,7 +1,7 @@
 ---
 origin: "vessels.urn:mrn:imo:mmsi:244770688"
 database:
-  url: "postgres://gosk:gosk@localhost:5432/gosk2sslmode=disable"
+  url: "postgres://gosk:gosk@localhost:5432/gosk2?sslmode=disable"
 mqtt: 
   username: "unknown"
   password: "unknown"

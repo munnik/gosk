@@ -304,14 +304,20 @@ type OriginsConfig struct {
 }
 
 type TransferConfig struct {
-	PostgresqlConfig PostgresqlConfig `mapstructure:"database"`
-	MQTTConfig       MQTTConfig       `mapstructure:"mqtt"`
-	Origin           string           `mapstructure:"origin"`
-	Origins          []OriginsConfig  `mapstructure:"origins"`
+	PostgresqlConfig   PostgresqlConfig `mapstructure:"database"`
+	MQTTConfig         MQTTConfig       `mapstructure:"mqtt"`
+	Origin             string           `mapstructure:"origin"`
+	Origins            []OriginsConfig  `mapstructure:"origins"`
+	CountRequestPeriod time.Duration    `mapstructure:"count_request_period"`
+	DataRequestPeriod  time.Duration    `mapstructure:"data_request_period"`
+	LoadReduction      bool             `mapstructure:"load_reduction"`
 }
 
 func NewTransferConfig(configFilePath string) *TransferConfig {
 	result := &TransferConfig{}
+	viper.SetDefault("data_request_period", 2*time.Hour)
+	viper.SetDefault("count_request_period", 30*time.Minute)
+	viper.SetDefault("load_reduction", false)
 	readConfigFile(result, configFilePath)
 
 	return result

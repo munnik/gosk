@@ -13,6 +13,7 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/log/zapadapter"
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -33,6 +34,7 @@ const (
 	insertOrUpdatePeriodQuery      = `INSERT INTO "remote_data" ("origin", "start", "end", "remote") VALUES ($1, $2, $3, $4) ON CONFLICT ("origin", "start", "end") DO UPDATE SET "remote" = $4`
 	updateLocalDataPoints          = `UPDATE "remote_data" SET "local" = $4 WHERE "origin" = $1 AND "start" = $2 AND "end" = $3`
 	selectLocalAndRemoteDataPoints = `SELECT count(mapped_data.*) AS "local", "remote" FROM "mapped_data", "remote_data" WHERE "remote_data"."origin" = $1 AND "start" = $2 AND "end" = $3 AND "mapped_data"."origin" = $1 AND "mapped_data"."time" BETWEEN $2 AND $3 GROUP BY "remote";`
+	logRequestQuery                = `INSERT INTO "transfer_log" ("time", "uuid", "origin", "start", "end", "local" "remote") VALUES ($1, $2, $3, $4, $5, $6, $7)`
 )
 
 //go:embed migrations/*.sql
@@ -315,6 +317,12 @@ func (db *PostgresqlDatabase) SelectLocalAndRemoteDataPoints(origin string, star
 	rows.Next()
 	rows.Scan(&local, &remote)
 	return local, remote, nil
+}
+
+// Log the transfer request
+func (db *PostgresqlDatabase) LogTransferRequest(time time.Time, uuid uuid.UUID, origin string, start time.Time, end time.Time, local int, remote int) error {
+	_, err := db.GetConnection().Exec(context.Background(), logRequestQuery, time, uuid, origin, start, end, local, remote)
+	return err
 }
 
 func (db *PostgresqlDatabase) UpgradeDatabase() error {

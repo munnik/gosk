@@ -39,6 +39,7 @@ func NewTransferRequester(c *config.TransferConfig) *TransferRequester {
 
 func (t *TransferRequester) Run() {
 	rand.Seed(time.Now().UnixNano())
+	logger.GetLogger().Info("starting requester", zap.Duration("count", t.countRequestPeriod), zap.Duration("data", t.dataRequestPeriod))
 
 	// listen for responses
 	t.mqttClient = mqtt.NewClient(t.createClientOptions())
@@ -84,8 +85,9 @@ func (t *TransferRequester) sendCountRequests(interval time.Duration) {
 	for _, origin := range t.origins {
 		go func(origin string, epoch time.Time) {
 			// wait random amount of time before processing to spread the workload
-			time.Sleep(time.Duration(rand.Intn(int(interval))))
-
+			if !t.loadReduction {
+				time.Sleep(time.Duration(rand.Intn(int(interval))))
+			}
 			completePeriods, err := t.db.SelectCompletePeriods(origin)
 			if err != nil {
 				logger.GetLogger().Warn(
@@ -110,7 +112,6 @@ func (t *TransferRequester) sendCountRequests(interval time.Duration) {
 				if _, ok := incompletePeriods[period]; ok {
 					continue // no need to send a count request because we already now the remote data points
 				}
-
 				t.sendMQTTCommand(origin, period, requestCountCmd)
 			}
 			wg.Done()
@@ -122,7 +123,7 @@ func (t *TransferRequester) sendCountRequests(interval time.Duration) {
 func (t *TransferRequester) sendDataRequests(interval time.Duration) {
 	wg := new(sync.WaitGroup)
 	wg.Add(len(t.origins) + 1)
-
+	logger.GetLogger().Info("starting data request")
 	go func() {
 		time.Sleep(interval)
 		wg.Done()
@@ -131,9 +132,12 @@ func (t *TransferRequester) sendDataRequests(interval time.Duration) {
 	for _, origin := range t.origins {
 		go func(origin string) {
 			// wait random amount of time before processing to spread the workload
-			time.Sleep(time.Duration(rand.Intn(int(interval))))
+			if !t.loadReduction {
+				time.Sleep(time.Duration(rand.Intn(int(interval))))
+			}
 
 			incompletePeriods, err := t.db.SelectIncompletePeriods(origin)
+			// logger.GetLogger().Info("checking period", zap.Any("periods", incompletePeriods))
 			if err != nil {
 				logger.GetLogger().Warn(
 					"Could not retrieve not completed periods from database",
@@ -153,10 +157,12 @@ func (t *TransferRequester) sendDataRequests(interval time.Duration) {
 					)
 					continue
 				}
+				logger.GetLogger().Info("checking period", zap.Time("period", period), zap.Any("local", localDataPoints), zap.Any("remote", remoteDataPoints))
 				t.db.UpdateLocalDataPoints(origin, period, period.Add(periodDuration), localDataPoints)
 				// check if local data points are still less after update
 				if localDataPoints < remoteDataPoints {
 					// TODO log request for data to DB
+					logger.GetLogger().Info("getting data")
 					uuid := uuid.New()
 					t.db.LogTransferRequest(time.Now(), uuid, origin, period, period.Add(periodDuration), localDataPoints, remoteDataPoints)
 					t.sendMQTTCommand(origin, period, requestDataCmd)

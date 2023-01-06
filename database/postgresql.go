@@ -291,6 +291,7 @@ func (db *PostgresqlDatabase) selectPeriods(query string, origin string, complet
 		rows.Scan(&completedPeriod)
 		result[completedPeriod] = struct{}{}
 	}
+	// logger.GetLogger().Info("periods", zap.Any("map", result), zap.Any("ratio", completeRatio), zap.Any("query", query))
 	return result, nil
 }
 

@@ -8,7 +8,6 @@ import (
 
 	"github.com/antonmedv/expr/vm"
 	"github.com/munnik/gosk/logger"
-	"github.com/spf13/viper"
 	"go.uber.org/zap"
 )
 
@@ -120,14 +119,14 @@ func NewCanBusMapperConfig(configFilePath string) CanBusMapperConfig {
 
 type CSVMapperConfig struct {
 	MapperConfig `mapstructure:",squash"`
-	Separator    string `mapstructure:"separator"`
-	SplitLines   bool   `mapstructure:"splitLines"`
+	Separator    string `mapstructure:"separator" default:","`
+	SplitLines   bool   `mapstructure:"splitLines" default:"false"`
 }
 
 func NewCSVMapperConfig(configFilePath string) CSVMapperConfig {
 	result := CSVMapperConfig{}
-	viper.SetDefault("separator", ",")
-	viper.SetDefault("splitLines", false)
+	// viper.SetDefault("separator", ",")
+	// viper.SetDefault("splitLines", false)
 	readConfigFile(&result, configFilePath)
 
 	return result
@@ -252,12 +251,12 @@ type PostgresqlConfig struct {
 	URLString          string  `mapstructure:"url"`
 	BatchSize          int     `mapstructure:"batch_size"`
 	BatchFlushInterval int     `mapstructure:"batch_flush_interval"`
-	CompleteRatio      float64 `mapstructure:"complete_ratio"` // a period is considered complete when local / remote >= CompleteRatio
+	CompleteRatio      float64 `mapstructure:"complete_ratio" default:"1.0"` // a period is considered complete when local / remote >= CompleteRatio
 }
 
 func NewPostgresqlConfig(configFilePath string) *PostgresqlConfig {
 	result := PostgresqlConfig{}
-	viper.SetDefault("complete_ratio", 1.0)
+	// viper.SetDefault("complete_ratio", 1.0)
 	readConfigFile(&result, configFilePath)
 
 	return &result
@@ -308,16 +307,16 @@ type TransferConfig struct {
 	MQTTConfig         MQTTConfig       `mapstructure:"mqtt"`
 	Origin             string           `mapstructure:"origin"`
 	Origins            []OriginsConfig  `mapstructure:"origins"`
-	CountRequestPeriod time.Duration    `mapstructure:"count_request_period"`
-	DataRequestPeriod  time.Duration    `mapstructure:"data_request_period"`
-	LoadReduction      bool             `mapstructure:"load_reduction"`
+	CountRequestPeriod time.Duration    `mapstructure:"count_request_period" default:"30m"`
+	DataRequestPeriod  time.Duration    `mapstructure:"data_request_period" default:"2h"`
+	LoadReduction      bool             `mapstructure:"load_reduction" default:"false"`
 }
 
 func NewTransferConfig(configFilePath string) *TransferConfig {
 	result := &TransferConfig{}
-	viper.SetDefault("data_request_period", 2*time.Hour)
-	viper.SetDefault("count_request_period", 30*time.Minute)
-	viper.SetDefault("load_reduction", false)
+	// viper.SetDefault("data_request_period", 2*time.Hour)
+	// viper.SetDefault("count_request_period", 30*time.Minute)
+	// viper.SetDefault("load_reduction", false)
 	readConfigFile(result, configFilePath)
 
 	return result

@@ -21,9 +21,9 @@ type TransferRequester struct {
 	mqttConfig         *config.MQTTConfig
 	mqttClient         mqtt.Client
 	origins            []config.OriginsConfig
-	countRequestPeriod time.Duration `mapstructure:"count_request_period"`
-	dataRequestPeriod  time.Duration `mapstructure:"data_request_period"`
-	loadReduction      bool          `mapstructure:"load_reduction"`
+	countRequestPeriod time.Duration
+	dataRequestPeriod  time.Duration
+	loadReduction      bool
 }
 
 func NewTransferRequester(c *config.TransferConfig) *TransferRequester {
@@ -39,7 +39,6 @@ func NewTransferRequester(c *config.TransferConfig) *TransferRequester {
 
 func (t *TransferRequester) Run() {
 	rand.Seed(time.Now().UnixNano())
-	logger.GetLogger().Info("starting requester", zap.Duration("count", t.countRequestPeriod), zap.Duration("data", t.dataRequestPeriod))
 
 	// listen for responses
 	t.mqttClient = mqtt.NewClient(t.createClientOptions())
@@ -112,7 +111,7 @@ func (t *TransferRequester) sendCountRequests(interval time.Duration) {
 				if _, ok := incompletePeriods[period]; ok {
 					continue // no need to send a count request because we already now the remote data points
 				}
-				t.sendMQTTCommand(origin, period, requestCountCmd)
+				t.sendMQTTCommand(origin, period, requestCountCmd, uuid.Nil)
 			}
 			wg.Done()
 		}(origin.Origin, origin.Epoch)
@@ -123,7 +122,6 @@ func (t *TransferRequester) sendCountRequests(interval time.Duration) {
 func (t *TransferRequester) sendDataRequests(interval time.Duration) {
 	wg := new(sync.WaitGroup)
 	wg.Add(len(t.origins) + 1)
-	logger.GetLogger().Info("starting data request")
 	go func() {
 		time.Sleep(interval)
 		wg.Done()
@@ -137,7 +135,6 @@ func (t *TransferRequester) sendDataRequests(interval time.Duration) {
 			}
 
 			incompletePeriods, err := t.db.SelectIncompletePeriods(origin)
-			// logger.GetLogger().Info("checking period", zap.Any("periods", incompletePeriods))
 			if err != nil {
 				logger.GetLogger().Warn(
 					"Could not retrieve not completed periods from database",
@@ -157,15 +154,12 @@ func (t *TransferRequester) sendDataRequests(interval time.Duration) {
 					)
 					continue
 				}
-				logger.GetLogger().Info("checking period", zap.Time("period", period), zap.Any("local", localDataPoints), zap.Any("remote", remoteDataPoints))
 				t.db.UpdateLocalDataPoints(origin, period, period.Add(periodDuration), localDataPoints)
 				// check if local data points are still less after update
 				if localDataPoints < remoteDataPoints {
-					// TODO log request for data to DB
-					logger.GetLogger().Info("getting data")
 					uuid := uuid.New()
 					t.db.LogTransferRequest(time.Now(), uuid, origin, period, period.Add(periodDuration), localDataPoints, remoteDataPoints)
-					t.sendMQTTCommand(origin, period, requestDataCmd)
+					t.sendMQTTCommand(origin, period, requestDataCmd, uuid)
 				}
 			}
 			wg.Done()
@@ -178,10 +172,11 @@ func (t *TransferRequester) responseReceived(origin string, response ResponseMes
 	t.db.CreatePeriod(origin, response.PeriodStart, response.PeriodStart.Add(periodDuration), response.DataPoints)
 }
 
-func (t *TransferRequester) sendMQTTCommand(origin string, start time.Time, command string) {
+func (t *TransferRequester) sendMQTTCommand(origin string, start time.Time, command string, uuid uuid.UUID) {
 	message := RequestMessage{
 		Command:     command,
 		PeriodStart: start,
+		UUID:        uuid,
 	}
 	bytes, err := json.Marshal(message)
 	if err != nil {

@@ -23,5 +23,4 @@ type RequestMessage struct {
 type ResponseMessage struct {
 	DataPoints  int       `json:"data_points"`
 	PeriodStart time.Time `json:"period_start"`
-	UUID        uuid.UUID `json:"uuid"`
 }

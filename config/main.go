@@ -124,9 +124,7 @@ type CSVMapperConfig struct {
 }
 
 func NewCSVMapperConfig(configFilePath string) CSVMapperConfig {
-	result := CSVMapperConfig{}
-	// viper.SetDefault("separator", ",")
-	// viper.SetDefault("splitLines", false)
+	result := CSVMapperConfig{SplitLines: false}
 	readConfigFile(&result, configFilePath)
 
 	return result
@@ -251,14 +249,12 @@ type PostgresqlConfig struct {
 	URLString          string  `mapstructure:"url"`
 	BatchSize          int     `mapstructure:"batch_size"`
 	BatchFlushInterval int     `mapstructure:"batch_flush_interval"`
-	CompleteRatio      float64 `mapstructure:"complete_ratio" default:"1.0"` // a period is considered complete when local / remote >= CompleteRatio
+	CompleteRatio      float64 `mapstructure:"complete_ratio"` // a period is considered complete when local / remote >= CompleteRatio
 }
 
 func NewPostgresqlConfig(configFilePath string) *PostgresqlConfig {
 	result := PostgresqlConfig{}
-	// viper.SetDefault("complete_ratio", 1.0)
 	readConfigFile(&result, configFilePath)
-
 	return &result
 }
 
@@ -313,10 +309,7 @@ type TransferConfig struct {
 }
 
 func NewTransferConfig(configFilePath string) *TransferConfig {
-	result := &TransferConfig{}
-	// viper.SetDefault("data_request_period", 2*time.Hour)
-	// viper.SetDefault("count_request_period", 30*time.Minute)
-	// viper.SetDefault("load_reduction", false)
+	result := &TransferConfig{PostgresqlConfig: PostgresqlConfig{CompleteRatio: 1.0}, CountRequestPeriod: 30 * time.Minute, DataRequestPeriod: 2 * time.Hour, LoadReduction: false}
 	readConfigFile(result, configFilePath)
 
 	return result

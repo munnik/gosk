@@ -103,12 +103,11 @@ func (t *TransferRequester) sendCountRequests(interval time.Duration) {
 				)
 				return
 			}
-
 			for period := epoch; period.Before(time.Now().Add(-2 * periodDuration)); period = period.Add(periodDuration) {
-				if _, ok := completePeriods[period]; ok {
+				if _, ok := completePeriods[period.Unix()]; ok {
 					continue // no need to send a count request because the period is already complete
 				}
-				if _, ok := incompletePeriods[period]; ok {
+				if _, ok := incompletePeriods[period.Unix()]; ok {
 					continue // no need to send a count request because we already now the remote data points
 				}
 				t.sendMQTTCommand(origin, period, requestCountCmd, uuid.Nil)
@@ -142,7 +141,7 @@ func (t *TransferRequester) sendDataRequests(interval time.Duration) {
 				)
 				return
 			}
-			for period := range incompletePeriods {
+			for _, period := range incompletePeriods {
 				localDataPoints, remoteDataPoints, err := t.db.SelectLocalAndRemoteDataPoints(origin, period, period.Add(periodDuration))
 				if err != nil {
 					logger.GetLogger().Warn(

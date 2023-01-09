@@ -269,18 +269,18 @@ func (db *PostgresqlDatabase) ReadMappedCount(start time.Time, end time.Time) (i
 }
 
 // Returns the start timestamp of each period that has the same or more local rows than remote
-func (db *PostgresqlDatabase) SelectCompletePeriods(origin string) (map[time.Time]struct{}, error) {
+func (db *PostgresqlDatabase) SelectCompletePeriods(origin string) (map[int64]time.Time, error) {
 	return db.selectPeriods(selectCompletePeriodsQuery, origin, db.completeRatio)
 }
 
 // Returns the start timestamp of each period that has the same or more local rows than remote
-func (db *PostgresqlDatabase) SelectIncompletePeriods(origin string) (map[time.Time]struct{}, error) {
+func (db *PostgresqlDatabase) SelectIncompletePeriods(origin string) (map[int64]time.Time, error) {
 	return db.selectPeriods(selectIncompletePeriodsQuery, origin, db.completeRatio)
 }
 
 // Returns the start timestamp of each period that has the same or more local rows than remote
-func (db *PostgresqlDatabase) selectPeriods(query string, origin string, completeRatio float64) (map[time.Time]struct{}, error) {
-	result := map[time.Time]struct{}{}
+func (db *PostgresqlDatabase) selectPeriods(query string, origin string, completeRatio float64) (map[int64]time.Time, error) {
+	result := map[int64]time.Time{}
 	rows, err := db.GetConnection().Query(context.Background(), query, origin, completeRatio)
 	if err != nil {
 		return result, err
@@ -289,7 +289,7 @@ func (db *PostgresqlDatabase) selectPeriods(query string, origin string, complet
 	var completedPeriod time.Time
 	for rows.Next() {
 		rows.Scan(&completedPeriod)
-		result[completedPeriod] = struct{}{}
+		result[completedPeriod.Unix()] = completedPeriod
 	}
 	// logger.GetLogger().Info("periods", zap.Any("map", result), zap.Any("ratio", completeRatio), zap.Any("query", query))
 	return result, nil

@@ -33,8 +33,8 @@ const (
 	selectIncompletePeriodsQuery   = `SELECT "start" FROM "remote_data" WHERE "origin" = $1 AND "local" < "remote" * $2`
 	insertOrUpdatePeriodQuery      = `INSERT INTO "remote_data" ("origin", "start", "end", "remote") VALUES ($1, $2, $3, $4) ON CONFLICT ("origin", "start", "end") DO UPDATE SET "remote" = $4`
 	updateLocalDataPoints          = `UPDATE "remote_data" SET "local" = $4 WHERE "origin" = $1 AND "start" = $2 AND "end" = $3`
-	selectLocalAndRemoteDataPoints = `SELECT count(mapped_data.*) AS "local", "remote" FROM "mapped_data", "remote_data" WHERE "remote_data"."origin" = $1 AND "start" = $2 AND "end" = $3 AND "mapped_data"."origin" = $1 AND "mapped_data"."time" BETWEEN $2 AND $3 GROUP BY "remote";`
-	logRequestQuery                = `INSERT INTO "transfer_log" ("time", "uuid", "origin", "start", "end", "local" "remote") VALUES ($1, $2, $3, $4, $5, $6, $7)`
+	selectLocalAndRemoteDataPoints = `select local, remote from (select "remote" FROM "remote_data" WHERE "remote_data"."origin" = $1  AND "start" = $2 AND "end" = $3) as a,( SELECT count(*) AS "local" FROM "mapped_data" WHERE "origin" = $1 AND "mapped_data"."time" BETWEEN $2 AND $3) as b;`
+	logRequestQuery                = `INSERT INTO "transfer_log" ("time", "uuid", "origin", "start", "end", "local", "remote") VALUES ($1, $2, $3, $4, $5, $6, $7)`
 )
 
 //go:embed migrations/*.sql

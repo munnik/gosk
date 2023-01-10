@@ -7,6 +7,7 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/google/uuid"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/database"
 	"github.com/munnik/gosk/logger"
@@ -28,10 +29,12 @@ type TransferResponder struct {
 	mqttClient          mqtt.Client
 	publisher           mangos.Socket
 	injectWorkerChannel *uniqueue.UQ[time.Time]
+	uuidMap             map[int64]uuid.UUID
 }
 
 func NewTransferResponder(c *config.TransferConfig) *TransferResponder {
-	return &TransferResponder{db: database.NewPostgresqlDatabase(&c.PostgresqlConfig), config: c}
+	uuidMap := make(map[int64]uuid.UUID)
+	return &TransferResponder{db: database.NewPostgresqlDatabase(&c.PostgresqlConfig), config: c, uuidMap: uuidMap}
 }
 
 func (t *TransferResponder) Run(publisher mangos.Socket) {
@@ -63,6 +66,7 @@ func (t *TransferResponder) requestReceived(request RequestMessage) {
 		t.respondWithCount(request.PeriodStart)
 
 	case requestDataCmd:
+		t.uuidMap[request.PeriodStart.Unix()] = request.UUID
 		t.injectWorkerChannel.Back() <- request.PeriodStart
 	default:
 		logger.GetLogger().Warn(
@@ -94,7 +98,9 @@ func (t *TransferResponder) startInjectDataWorkers() {
 	for i := 0; i < noOfWorkers; i++ {
 		go func() {
 			for period := range t.injectWorkerChannel.Front() {
-				t.injectData(period)
+				uuid := t.uuidMap[period.Unix()]
+				t.injectData(period, uuid)
+				delete(t.uuidMap, period.Unix())
 			}
 			wg.Done()
 		}()
@@ -102,7 +108,7 @@ func (t *TransferResponder) startInjectDataWorkers() {
 	wg.Wait()
 }
 
-func (t *TransferResponder) injectData(period time.Time) {
+func (t *TransferResponder) injectData(period time.Time, uuid uuid.UUID) {
 	deltas, err := t.db.ReadMapped(`WHERE "time" BETWEEN $1 AND $2`, period, period.Add(periodDuration))
 	if err != nil {
 		logger.GetLogger().Warn(
@@ -113,6 +119,10 @@ func (t *TransferResponder) injectData(period time.Time) {
 	}
 
 	for _, delta := range deltas {
+		for i := range delta.Updates {
+			delta.Updates[i].Source.TransferUuid = uuid
+		}
+		fmt.Println(delta)
 		bytes, err := json.Marshal(delta)
 		if err != nil {
 			logger.GetLogger().Warn(

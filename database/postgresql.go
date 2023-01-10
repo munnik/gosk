@@ -26,8 +26,8 @@ import (
 const (
 	rawInsertQuery                 = `INSERT INTO "raw_data" ("time", "connector", "value", "uuid", "type") VALUES ($1, $2, $3, $4, $5)`
 	selectRawQuery                 = `SELECT "time", "connector", "value", "uuid", "type" FROM "raw_data"`
-	mappedInsertQuery              = `INSERT INTO "mapped_data" ("time", "connector", "type", "context", "path", "value", "uuid", "origin") VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
-	selectMappedQuery              = `SELECT "time", "connector", "type", "context", "path", "value", "uuid", "origin" FROM "mapped_data"`
+	mappedInsertQuery              = `INSERT INTO "mapped_data" ("time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+	selectMappedQuery              = `SELECT "time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid" FROM "mapped_data"`
 	selectMappedDataPointsQuery    = `SELECT count(*) FROM "mapped_data" WHERE "time" BETWEEN $1 AND $2`
 	selectCompletePeriodsQuery     = `SELECT "start" FROM "remote_data" WHERE "origin" = $1 AND "local" >= "remote" * $2`
 	selectIncompletePeriodsQuery   = `SELECT "start" FROM "remote_data" WHERE "origin" = $1 AND "local" < "remote" * $2`
@@ -200,6 +200,7 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 				&inDatabase.Value,
 				&inDatabase.Source.Uuid,
 				&inDatabase.Origin,
+				&inDatabase.Source.TransferUuid,
 			)
 
 			cached, _ := db.mappedCache.Get(svm.Timestamp)
@@ -217,7 +218,7 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 
 	// value is not in cache, insert into the database and add to the cache
 	db.mappedCache.Set(svm.Timestamp, append(cached, svm))
-	db.batch.Queue(mappedInsertQuery, svm.Timestamp, svm.Source.Label, svm.Source.Type, svm.Context, svm.Path, svm.Value, svm.Source.Uuid, svm.Origin)
+	db.batch.Queue(mappedInsertQuery, svm.Timestamp, svm.Source.Label, svm.Source.Type, svm.Context, svm.Path, svm.Value, svm.Source.Uuid, svm.Origin, svm.Source.TransferUuid)
 	if db.batch.Len() > db.batchSize {
 		go db.flushBatch()
 	}
@@ -242,6 +243,7 @@ func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...inte
 			&m.Value,
 			&m.Source.Uuid,
 			&m.Origin,
+			&m.Source.TransferUuid,
 		)
 		if m.Value, err = message.Decode(m.Value); err != nil {
 			logger.GetLogger().Warn(

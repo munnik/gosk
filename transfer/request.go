@@ -157,7 +157,9 @@ func (t *TransferRequester) sendDataRequests(interval time.Duration) {
 				// check if local data points are still less after update
 				if localDataPoints < remoteDataPoints {
 					uuid := uuid.New()
-					t.db.LogTransferRequest(time.Now(), uuid, origin, period, period.Add(periodDuration), localDataPoints, remoteDataPoints)
+					timestamp := time.Now()
+					t.db.LogTransferRequest(timestamp, uuid, origin, period, period.Add(periodDuration), localDataPoints, remoteDataPoints)
+					t.db.UpdateStatistics(timestamp, origin, period, period.Add(periodDuration))
 					t.sendMQTTCommand(origin, period, requestDataCmd, uuid)
 				}
 			}

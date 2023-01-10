@@ -31,10 +31,11 @@ const (
 	selectMappedDataPointsQuery    = `SELECT count(*) FROM "mapped_data" WHERE "time" BETWEEN $1 AND $2`
 	selectCompletePeriodsQuery     = `SELECT "start" FROM "remote_data" WHERE "origin" = $1 AND "local" >= "remote" * $2`
 	selectIncompletePeriodsQuery   = `SELECT "start" FROM "remote_data" WHERE "origin" = $1 AND "local" < "remote" * $2`
-	insertOrUpdatePeriodQuery      = `INSERT INTO "remote_data" ("origin", "start", "end", "remote") VALUES ($1, $2, $3, $4) ON CONFLICT ("origin", "start", "end") DO UPDATE SET "remote" = $4`
+	insertOrUpdatePeriodQuery      = `INSERT INTO "remote_data" ("origin", "start", "end", "remote", "last_count_request") VALUES ($1, $2, $3, $4, $5) ON CONFLICT ("origin", "start", "end") DO UPDATE SET "remote" = $4, "last_count_request" = $5, "count_requests" = "remote_data"."count_requests" + 1`
 	updateLocalDataPoints          = `UPDATE "remote_data" SET "local" = $4 WHERE "origin" = $1 AND "start" = $2 AND "end" = $3`
 	selectLocalAndRemoteDataPoints = `select local, remote from (select "remote" FROM "remote_data" WHERE "remote_data"."origin" = $1  AND "start" = $2 AND "end" = $3) as a,( SELECT count(*) AS "local" FROM "mapped_data" WHERE "origin" = $1 AND "mapped_data"."time" BETWEEN $2 AND $3) as b;`
 	logRequestQuery                = `INSERT INTO "transfer_log" ("time", "uuid", "origin", "start", "end", "local", "remote") VALUES ($1, $2, $3, $4, $5, $6, $7)`
+	updateStatisticsQuery          = `UPDATE "remote_data" SET "last_data_request" = $1, "data_requests" = "data_requests" + 1 WHERE "origin" = $2 AND "start" = $3 AND "end" = $4`
 )
 
 //go:embed migrations/*.sql
@@ -299,7 +300,7 @@ func (db *PostgresqlDatabase) selectPeriods(query string, origin string, complet
 
 // Creates a period in the database, the default value for the local data points is -1
 func (db *PostgresqlDatabase) CreatePeriod(origin string, start time.Time, end time.Time, remote int) error {
-	_, err := db.GetConnection().Exec(context.Background(), insertOrUpdatePeriodQuery, origin, start, end, remote)
+	_, err := db.GetConnection().Exec(context.Background(), insertOrUpdatePeriodQuery, origin, start, end, remote, time.Now())
 	return err
 }
 
@@ -325,6 +326,11 @@ func (db *PostgresqlDatabase) SelectLocalAndRemoteDataPoints(origin string, star
 // Log the transfer request
 func (db *PostgresqlDatabase) LogTransferRequest(time time.Time, uuid uuid.UUID, origin string, start time.Time, end time.Time, local int, remote int) error {
 	_, err := db.GetConnection().Exec(context.Background(), logRequestQuery, time, uuid, origin, start, end, local, remote)
+	return err
+}
+
+func (db *PostgresqlDatabase) UpdateStatistics(time time.Time, origin string, start time.Time, end time.Time) error {
+	_, err := db.GetConnection().Exec(context.Background(), updateStatisticsQuery, time, origin, start, end)
 	return err
 }
 

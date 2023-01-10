@@ -30,11 +30,12 @@ type TransferResponder struct {
 	publisher           mangos.Socket
 	injectWorkerChannel *uniqueue.UQ[time.Time]
 	uuidMap             map[int64]uuid.UUID
+	uuidMapLock         sync.RWMutex
 }
 
 func NewTransferResponder(c *config.TransferConfig) *TransferResponder {
 	uuidMap := make(map[int64]uuid.UUID)
-	return &TransferResponder{db: database.NewPostgresqlDatabase(&c.PostgresqlConfig), config: c, uuidMap: uuidMap}
+	return &TransferResponder{db: database.NewPostgresqlDatabase(&c.PostgresqlConfig), config: c, uuidMap: uuidMap, uuidMapLock: sync.RWMutex{}}
 }
 
 func (t *TransferResponder) Run(publisher mangos.Socket) {
@@ -66,7 +67,9 @@ func (t *TransferResponder) requestReceived(request RequestMessage) {
 		t.respondWithCount(request.PeriodStart)
 
 	case requestDataCmd:
+		t.uuidMapLock.Lock()
 		t.uuidMap[request.PeriodStart.Unix()] = request.UUID
+		t.uuidMapLock.Unlock()
 		t.injectWorkerChannel.Back() <- request.PeriodStart
 	default:
 		logger.GetLogger().Warn(
@@ -98,9 +101,13 @@ func (t *TransferResponder) startInjectDataWorkers() {
 	for i := 0; i < noOfWorkers; i++ {
 		go func() {
 			for period := range t.injectWorkerChannel.Front() {
+				t.uuidMapLock.RLock()
 				uuid := t.uuidMap[period.Unix()]
+				t.uuidMapLock.RUnlock()
 				t.injectData(period, uuid)
+				t.uuidMapLock.Lock()
 				delete(t.uuidMap, period.Unix())
+				t.uuidMapLock.Unlock()
 			}
 			wg.Done()
 		}()
@@ -122,7 +129,6 @@ func (t *TransferResponder) injectData(period time.Time, uuid uuid.UUID) {
 		for i := range delta.Updates {
 			delta.Updates[i].Source.TransferUuid = uuid
 		}
-		fmt.Println(delta)
 		bytes, err := json.Marshal(delta)
 		if err != nil {
 			logger.GetLogger().Warn(

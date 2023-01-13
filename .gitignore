@@ -12,4 +12,5 @@ gosk*.log
 **/lcov.info
 dist/*
 config/**/*.yaml
+config/**/*.dbc
 !config/**/sample-*.yaml

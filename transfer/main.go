@@ -2,6 +2,8 @@ package transfer
 
 import (
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -15,6 +17,7 @@ const (
 type RequestMessage struct {
 	Command     string    `json:"command"`
 	PeriodStart time.Time `json:"period_start"`
+	UUID        uuid.UUID `json:"uuid"`
 }
 
 type ResponseMessage struct {

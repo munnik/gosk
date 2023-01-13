@@ -9,6 +9,7 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/google/uuid"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/database"
 	"github.com/munnik/gosk/logger"
@@ -16,14 +17,24 @@ import (
 )
 
 type TransferRequester struct {
-	db         *database.PostgresqlDatabase
-	mqttConfig *config.MQTTConfig
-	mqttClient mqtt.Client
-	origins    []config.OriginsConfig
+	db                 *database.PostgresqlDatabase
+	mqttConfig         *config.MQTTConfig
+	mqttClient         mqtt.Client
+	origins            []config.OriginsConfig
+	countRequestPeriod time.Duration
+	dataRequestPeriod  time.Duration
+	loadReduction      bool
 }
 
 func NewTransferRequester(c *config.TransferConfig) *TransferRequester {
-	return &TransferRequester{db: database.NewPostgresqlDatabase(&c.PostgresqlConfig), mqttConfig: &c.MQTTConfig, origins: c.Origins}
+	return &TransferRequester{
+		db:                 database.NewPostgresqlDatabase(&c.PostgresqlConfig),
+		mqttConfig:         &c.MQTTConfig,
+		origins:            c.Origins,
+		countRequestPeriod: c.CountRequestPeriod,
+		dataRequestPeriod:  c.DataRequestPeriod,
+		loadReduction:      c.LoadReduction,
+	}
 }
 
 func (t *TransferRequester) Run() {
@@ -44,14 +55,14 @@ func (t *TransferRequester) Run() {
 	// send count requests
 	go func() {
 		for {
-			t.sendCountRequests(30 * time.Minute)
+			t.sendCountRequests(t.countRequestPeriod)
 		}
 	}()
 
 	// send data requests
 	go func() {
 		for {
-			t.sendDataRequests(2 * time.Hour)
+			t.sendDataRequests(t.dataRequestPeriod)
 		}
 	}()
 
@@ -73,8 +84,9 @@ func (t *TransferRequester) sendCountRequests(interval time.Duration) {
 	for _, origin := range t.origins {
 		go func(origin string, epoch time.Time) {
 			// wait random amount of time before processing to spread the workload
-			time.Sleep(time.Duration(rand.Intn(int(interval))))
-
+			if !t.loadReduction {
+				time.Sleep(time.Duration(rand.Intn(int(interval))))
+			}
 			completePeriods, err := t.db.SelectCompletePeriods(origin)
 			if err != nil {
 				logger.GetLogger().Warn(
@@ -91,16 +103,14 @@ func (t *TransferRequester) sendCountRequests(interval time.Duration) {
 				)
 				return
 			}
-
 			for period := epoch; period.Before(time.Now().Add(-2 * periodDuration)); period = period.Add(periodDuration) {
-				if _, ok := completePeriods[period]; ok {
+				if _, ok := completePeriods[period.Unix()]; ok {
 					continue // no need to send a count request because the period is already complete
 				}
-				if _, ok := incompletePeriods[period]; ok {
+				if _, ok := incompletePeriods[period.Unix()]; ok {
 					continue // no need to send a count request because we already now the remote data points
 				}
-
-				t.sendMQTTCommand(origin, period, requestCountCmd)
+				t.sendMQTTCommand(origin, period, requestCountCmd, uuid.Nil)
 			}
 			wg.Done()
 		}(origin.Origin, origin.Epoch)
@@ -111,7 +121,6 @@ func (t *TransferRequester) sendCountRequests(interval time.Duration) {
 func (t *TransferRequester) sendDataRequests(interval time.Duration) {
 	wg := new(sync.WaitGroup)
 	wg.Add(len(t.origins) + 1)
-
 	go func() {
 		time.Sleep(interval)
 		wg.Done()
@@ -120,7 +129,9 @@ func (t *TransferRequester) sendDataRequests(interval time.Duration) {
 	for _, origin := range t.origins {
 		go func(origin string) {
 			// wait random amount of time before processing to spread the workload
-			time.Sleep(time.Duration(rand.Intn(int(interval))))
+			if !t.loadReduction {
+				time.Sleep(time.Duration(rand.Intn(int(interval))))
+			}
 
 			incompletePeriods, err := t.db.SelectIncompletePeriods(origin)
 			if err != nil {
@@ -130,7 +141,7 @@ func (t *TransferRequester) sendDataRequests(interval time.Duration) {
 				)
 				return
 			}
-			for period := range incompletePeriods {
+			for _, period := range incompletePeriods {
 				localDataPoints, remoteDataPoints, err := t.db.SelectLocalAndRemoteDataPoints(origin, period, period.Add(periodDuration))
 				if err != nil {
 					logger.GetLogger().Warn(
@@ -145,7 +156,11 @@ func (t *TransferRequester) sendDataRequests(interval time.Duration) {
 				t.db.UpdateLocalDataPoints(origin, period, period.Add(periodDuration), localDataPoints)
 				// check if local data points are still less after update
 				if localDataPoints < remoteDataPoints {
-					t.sendMQTTCommand(origin, period, requestDataCmd)
+					uuid := uuid.New()
+					timestamp := time.Now()
+					t.db.LogTransferRequest(timestamp, uuid, origin, period, period.Add(periodDuration), localDataPoints, remoteDataPoints)
+					t.db.UpdateStatistics(timestamp, origin, period, period.Add(periodDuration))
+					t.sendMQTTCommand(origin, period, requestDataCmd, uuid)
 				}
 			}
 			wg.Done()
@@ -158,10 +173,11 @@ func (t *TransferRequester) responseReceived(origin string, response ResponseMes
 	t.db.CreatePeriod(origin, response.PeriodStart, response.PeriodStart.Add(periodDuration), response.DataPoints)
 }
 
-func (t *TransferRequester) sendMQTTCommand(origin string, start time.Time, command string) {
+func (t *TransferRequester) sendMQTTCommand(origin string, start time.Time, command string, uuid uuid.UUID) {
 	message := RequestMessage{
 		Command:     command,
 		PeriodStart: start,
+		UUID:        uuid,
 	}
 	bytes, err := json.Marshal(message)
 	if err != nil {

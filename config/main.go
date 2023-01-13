@@ -8,7 +8,6 @@ import (
 
 	"github.com/antonmedv/expr/vm"
 	"github.com/munnik/gosk/logger"
-	"github.com/spf13/viper"
 	"go.uber.org/zap"
 )
 
@@ -120,14 +119,12 @@ func NewCanBusMapperConfig(configFilePath string) CanBusMapperConfig {
 
 type CSVMapperConfig struct {
 	MapperConfig `mapstructure:",squash"`
-	Separator    string `mapstructure:"separator"`
-	SplitLines   bool   `mapstructure:"splitLines"`
+	Separator    string `mapstructure:"separator" default:","`
+	SplitLines   bool   `mapstructure:"splitLines" default:"false"`
 }
 
 func NewCSVMapperConfig(configFilePath string) CSVMapperConfig {
-	result := CSVMapperConfig{}
-	viper.SetDefault("separator", ",")
-	viper.SetDefault("splitLines", false)
+	result := CSVMapperConfig{SplitLines: false}
 	readConfigFile(&result, configFilePath)
 
 	return result
@@ -257,9 +254,7 @@ type PostgresqlConfig struct {
 
 func NewPostgresqlConfig(configFilePath string) *PostgresqlConfig {
 	result := PostgresqlConfig{}
-	viper.SetDefault("complete_ratio", 1.0)
 	readConfigFile(&result, configFilePath)
-
 	return &result
 }
 
@@ -304,14 +299,17 @@ type OriginsConfig struct {
 }
 
 type TransferConfig struct {
-	PostgresqlConfig PostgresqlConfig `mapstructure:"database"`
-	MQTTConfig       MQTTConfig       `mapstructure:"mqtt"`
-	Origin           string           `mapstructure:"origin"`
-	Origins          []OriginsConfig  `mapstructure:"origins"`
+	PostgresqlConfig   PostgresqlConfig `mapstructure:"database"`
+	MQTTConfig         MQTTConfig       `mapstructure:"mqtt"`
+	Origin             string           `mapstructure:"origin"`
+	Origins            []OriginsConfig  `mapstructure:"origins"`
+	CountRequestPeriod time.Duration    `mapstructure:"count_request_period" default:"30m"`
+	DataRequestPeriod  time.Duration    `mapstructure:"data_request_period" default:"2h"`
+	LoadReduction      bool             `mapstructure:"load_reduction" default:"false"`
 }
 
 func NewTransferConfig(configFilePath string) *TransferConfig {
-	result := &TransferConfig{}
+	result := &TransferConfig{PostgresqlConfig: PostgresqlConfig{CompleteRatio: 1.0}, CountRequestPeriod: 30 * time.Minute, DataRequestPeriod: 2 * time.Hour, LoadReduction: false}
 	readConfigFile(result, configFilePath)
 
 	return result

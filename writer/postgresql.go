@@ -2,6 +2,7 @@ package writer
 
 import (
 	"encoding/json"
+	"sync"
 
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/database"
@@ -11,12 +12,35 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	bufferSize  = 100
+	noOfWorkers = 10
+)
+
 type PostgresqlWriter struct {
-	db *database.PostgresqlDatabase
+	db            *database.PostgresqlDatabase
+	mappedChannel chan message.Mapped
+	rawChannel    chan message.Raw
 }
 
 func NewPostgresqlWriter(c *config.PostgresqlConfig) *PostgresqlWriter {
-	return &PostgresqlWriter{db: database.NewPostgresqlDatabase(c)}
+	mappedChannel := make(chan message.Mapped, bufferSize)
+	rawChannel := make(chan message.Raw, bufferSize)
+	return &PostgresqlWriter{db: database.NewPostgresqlDatabase(c), mappedChannel: mappedChannel, rawChannel: rawChannel}
+}
+
+func (w *PostgresqlWriter) StartRawWorkers() {
+	var wg sync.WaitGroup
+	wg.Add(noOfWorkers)
+	for i := 0; i < noOfWorkers; i++ {
+		go func() {
+			for raw := range w.rawChannel {
+				w.db.WriteRaw(raw)
+			}
+			wg.Done()
+		}()
+	}
+	wg.Wait()
 }
 
 func (w *PostgresqlWriter) WriteRaw(subscriber mangos.Socket) {
@@ -38,8 +62,22 @@ func (w *PostgresqlWriter) WriteRaw(subscriber mangos.Socket) {
 			)
 			continue
 		}
-		go w.db.WriteRaw(raw)
+		w.rawChannel <- raw
 	}
+}
+
+func (w *PostgresqlWriter) StartMappedWorkers() {
+	var wg sync.WaitGroup
+	wg.Add(noOfWorkers)
+	for i := 0; i < noOfWorkers; i++ {
+		go func() {
+			for mapped := range w.mappedChannel {
+				w.db.WriteMapped(mapped)
+			}
+			wg.Done()
+		}()
+	}
+	wg.Wait()
 }
 
 func (w *PostgresqlWriter) WriteMapped(subscriber mangos.Socket) {
@@ -61,6 +99,6 @@ func (w *PostgresqlWriter) WriteMapped(subscriber mangos.Socket) {
 			)
 			continue
 		}
-		go w.db.WriteMapped(mapped)
+		w.mappedChannel <- mapped
 	}
 }

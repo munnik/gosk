@@ -249,7 +249,9 @@ type PostgresqlConfig struct {
 	URLString          string  `mapstructure:"url"`
 	BatchSize          int     `mapstructure:"batch_size"`
 	BatchFlushInterval int     `mapstructure:"batch_flush_interval"`
-	CompleteRatio      float64 `mapstructure:"complete_ratio"` // a period is considered complete when local / remote >= CompleteRatio
+	CompleteRatio      float64 `mapstructure:"complete_ratio"`                 // a period is considered complete when local / remote >= CompleteRatio
+	BufferSize         int     `mapstructure:"buffer_size" default:"100"`      // size of the buffer for incoming messages
+	NumberOfWorkers    int     `mapstructure:"number_of_workers" default:"10"` // number of workers to handle the incoming messages
 }
 
 func NewPostgresqlConfig(configFilePath string) *PostgresqlConfig {

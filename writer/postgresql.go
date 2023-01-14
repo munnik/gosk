@@ -12,27 +12,26 @@ import (
 	"go.uber.org/zap"
 )
 
-const (
-	bufferSize  = 100
-	noOfWorkers = 10
-)
-
 type PostgresqlWriter struct {
-	db            *database.PostgresqlDatabase
-	mappedChannel chan message.Mapped
-	rawChannel    chan message.Raw
+	db              *database.PostgresqlDatabase
+	mappedChannel   chan message.Mapped
+	rawChannel      chan message.Raw
+	numberOfWorkers int
 }
 
 func NewPostgresqlWriter(c *config.PostgresqlConfig) *PostgresqlWriter {
-	mappedChannel := make(chan message.Mapped, bufferSize)
-	rawChannel := make(chan message.Raw, bufferSize)
-	return &PostgresqlWriter{db: database.NewPostgresqlDatabase(c), mappedChannel: mappedChannel, rawChannel: rawChannel}
+	return &PostgresqlWriter{
+		db:              database.NewPostgresqlDatabase(c),
+		mappedChannel:   make(chan message.Mapped, c.BufferSize),
+		rawChannel:      make(chan message.Raw, c.BufferSize),
+		numberOfWorkers: c.NumberOfWorkers,
+	}
 }
 
 func (w *PostgresqlWriter) StartRawWorkers() {
 	var wg sync.WaitGroup
-	wg.Add(noOfWorkers)
-	for i := 0; i < noOfWorkers; i++ {
+	wg.Add(w.numberOfWorkers)
+	for i := 0; i < w.numberOfWorkers; i++ {
 		go func() {
 			for raw := range w.rawChannel {
 				w.db.WriteRaw(raw)
@@ -68,8 +67,8 @@ func (w *PostgresqlWriter) WriteRaw(subscriber mangos.Socket) {
 
 func (w *PostgresqlWriter) StartMappedWorkers() {
 	var wg sync.WaitGroup
-	wg.Add(noOfWorkers)
-	for i := 0; i < noOfWorkers; i++ {
+	wg.Add(w.numberOfWorkers)
+	for i := 0; i < w.numberOfWorkers; i++ {
 		go func() {
 			for mapped := range w.mappedChannel {
 				w.db.WriteMapped(mapped)

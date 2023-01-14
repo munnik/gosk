@@ -258,6 +258,7 @@ func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...inte
 
 	return result, nil
 }
+
 func (db *PostgresqlDatabase) ReadMappedCount(start time.Time, end time.Time) (int, error) {
 	rows, err := db.GetConnection().Query(context.Background(), selectMappedDataPointsQuery, start, end)
 	if err != nil {

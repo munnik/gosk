@@ -3,6 +3,7 @@ package message
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"time"
 )
 
@@ -101,7 +102,7 @@ func (s SingleValueMapped) ToMapped() Mapped {
 }
 
 func (s SingleValueMapped) Equals(other SingleValueMapped) bool {
-	return s.Context == other.Context && s.Path == other.Path && s.Value == other.Value
+	return s.Context == other.Context && s.Path == other.Path && reflect.DeepEqual(s.Value, other.Value)
 }
 
 // Merges left with right, if both left and right have the same property the value of the right property will be returned
@@ -157,7 +158,6 @@ func (s *SingleValueMapped) UnmarshalJSON(data []byte) error {
 	var bytes []byte
 	if bytes, err = json.Marshal(j["source"]); err != nil {
 		return fmt.Errorf("can't convert %v to a message.Source", j["source"])
-
 	}
 	if err = json.Unmarshal(bytes, &s.Source); err != nil {
 		return fmt.Errorf("can't convert %v to a message.Source", j["source"])

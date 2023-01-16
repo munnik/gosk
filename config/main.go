@@ -119,12 +119,12 @@ func NewCanBusMapperConfig(configFilePath string) CanBusMapperConfig {
 
 type CSVMapperConfig struct {
 	MapperConfig `mapstructure:",squash"`
-	Separator    string `mapstructure:"separator" default:","`
-	SplitLines   bool   `mapstructure:"splitLines" default:"false"`
+	Separator    string `mapstructure:"separator"`
+	SplitLines   bool   `mapstructure:"splitLines"`
 }
 
 func NewCSVMapperConfig(configFilePath string) CSVMapperConfig {
-	result := CSVMapperConfig{SplitLines: false}
+	result := CSVMapperConfig{SplitLines: false, Separator: ","}
 	readConfigFile(&result, configFilePath)
 
 	return result
@@ -249,9 +249,9 @@ type PostgresqlConfig struct {
 	URLString          string  `mapstructure:"url"`
 	BatchSize          int     `mapstructure:"batch_size"`
 	BatchFlushInterval int     `mapstructure:"batch_flush_interval"`
-	CompleteRatio      float64 `mapstructure:"complete_ratio"`                 // a period is considered complete when local / remote >= CompleteRatio
-	BufferSize         int     `mapstructure:"buffer_size" default:"100"`      // size of the buffer for incoming messages
-	NumberOfWorkers    int     `mapstructure:"number_of_workers" default:"10"` // number of workers to handle the incoming messages
+	CompleteRatio      float64 `mapstructure:"complete_ratio"`    // a period is considered complete when local / remote >= CompleteRatio
+	BufferSize         int     `mapstructure:"buffer_size"`       // size of the buffer for incoming messages
+	NumberOfWorkers    int     `mapstructure:"number_of_workers"` // number of workers to handle the incoming messages
 }
 
 func NewPostgresqlConfig(configFilePath string) *PostgresqlConfig {
@@ -305,13 +305,22 @@ type TransferConfig struct {
 	MQTTConfig         MQTTConfig       `mapstructure:"mqtt"`
 	Origin             string           `mapstructure:"origin"`
 	Origins            []OriginsConfig  `mapstructure:"origins"`
-	CountRequestPeriod time.Duration    `mapstructure:"count_request_period" default:"30m"`
-	DataRequestPeriod  time.Duration    `mapstructure:"data_request_period" default:"2h"`
-	LoadReduction      bool             `mapstructure:"load_reduction" default:"false"`
+	CountRequestPeriod time.Duration    `mapstructure:"count_request_period"`
+	DataRequestPeriod  time.Duration    `mapstructure:"data_request_period"`
+	LoadReduction      bool             `mapstructure:"load_reduction"`
 }
 
 func NewTransferConfig(configFilePath string) *TransferConfig {
-	result := &TransferConfig{PostgresqlConfig: PostgresqlConfig{CompleteRatio: 1.0}, CountRequestPeriod: 30 * time.Minute, DataRequestPeriod: 2 * time.Hour, LoadReduction: false}
+	result := &TransferConfig{
+		PostgresqlConfig: PostgresqlConfig{
+			CompleteRatio:   1.0,
+			BufferSize:      100,
+			NumberOfWorkers: 10,
+		},
+		CountRequestPeriod: 30 * time.Minute,
+		DataRequestPeriod:  2 * time.Hour,
+		LoadReduction:      false,
+	}
 	readConfigFile(result, configFilePath)
 
 	return result

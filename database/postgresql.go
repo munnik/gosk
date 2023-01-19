@@ -366,11 +366,27 @@ func (db *PostgresqlDatabase) DowngradeDatabase() error {
 
 func (db *PostgresqlDatabase) flushBatch() {
 	db.flushMutex.Lock()
-	batchPtr := db.batch
-	db.batch = &pgx.Batch{}
 	defer db.flushMutex.Unlock()
-	result := db.GetConnection().SendBatch(context.Background(), batchPtr)
-	// todo, determine if inserts went well
+
+	batchToFlush := db.batch
+	db.batch = &pgx.Batch{}
+	if batchToFlush == nil {
+		logger.GetLogger().Error(
+			"Batch is nil, nothing to do",
+		)
+		return
+	}
+
+	result := db.GetConnection().SendBatch(context.Background(), batchToFlush)
+
+	for i := 0; i < batchToFlush.Len(); i++ {
+		if _, err := result.Exec(); err != nil {
+			logger.GetLogger().Error(
+				"Could not execute the SQL statement",
+				zap.String("Error", err.Error()),
+			)
+		}
+	}
 
 	if err := result.Close(); err != nil {
 		logger.GetLogger().Error(

@@ -119,13 +119,16 @@ func (t *TransferResponder) injectData(period time.Time, uuid uuid.UUID) {
 	deltas, err := t.db.ReadMapped(`WHERE "time" BETWEEN $1 AND $2`, period, period.Add(periodDuration))
 	if err != nil {
 		logger.GetLogger().Warn(
-			"Could not retrieve count of mapped data from database",
+			"Could not retrieve mapped data from database",
 			zap.String("Error", err.Error()),
 		)
 		return
 	}
 
-	for _, delta := range deltas {
+	for j, delta := range deltas {
+		if (j % 100) == 0 {
+			time.Sleep(1 * time.Second)
+		}
 		for i := range delta.Updates {
 			delta.Updates[i].Source.TransferUuid = uuid
 		}

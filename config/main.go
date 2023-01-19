@@ -254,8 +254,15 @@ type PostgresqlConfig struct {
 	NumberOfWorkers    int     `mapstructure:"number_of_workers"` // number of workers to handle the incoming messages
 }
 
+func defaultPostgresqlConfig() PostgresqlConfig {
+	return PostgresqlConfig{
+		CompleteRatio:   1.0,
+		BufferSize:      100,
+		NumberOfWorkers: 10,
+	}
+}
 func NewPostgresqlConfig(configFilePath string) *PostgresqlConfig {
-	result := PostgresqlConfig{}
+	result := defaultPostgresqlConfig()
 	readConfigFile(&result, configFilePath)
 	return &result
 }
@@ -282,7 +289,11 @@ type SignalKConfig struct {
 }
 
 func NewSignalKConfig(configFilePath string) *SignalKConfig {
-	result := SignalKConfig{Version: "undefined"}
+	postgres := defaultPostgresqlConfig()
+	result := SignalKConfig{
+		Version:          "undefined",
+		PostgresqlConfig: &postgres,
+	}
 	readConfigFile(&result, configFilePath)
 
 	result.URL, _ = url.Parse(result.URLString)
@@ -312,11 +323,7 @@ type TransferConfig struct {
 
 func NewTransferConfig(configFilePath string) *TransferConfig {
 	result := &TransferConfig{
-		PostgresqlConfig: PostgresqlConfig{
-			CompleteRatio:   1.0,
-			BufferSize:      100,
-			NumberOfWorkers: 10,
-		},
+		PostgresqlConfig:   defaultPostgresqlConfig(),
 		CountRequestPeriod: 30 * time.Minute,
 		DataRequestPeriod:  2 * time.Hour,
 		LoadReduction:      false,

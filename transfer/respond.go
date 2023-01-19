@@ -124,10 +124,9 @@ func (t *TransferResponder) injectData(period time.Time, uuid uuid.UUID) {
 		)
 		return
 	}
-
 	for j, delta := range deltas {
-		if (j % 100) == 0 {
-			time.Sleep(1 * time.Second)
+		if (j % t.config.SleepEveryN) == 0 {
+			time.Sleep(t.config.SleepDuration)
 		}
 		for i := range delta.Updates {
 			delta.Updates[i].Source.TransferUuid = uuid

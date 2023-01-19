@@ -27,6 +27,7 @@ type TransferRequester struct {
 }
 
 func NewTransferRequester(c *config.TransferConfig) *TransferRequester {
+	fmt.Println(c)
 	return &TransferRequester{
 		db:                 database.NewPostgresqlDatabase(&c.PostgresqlConfig),
 		mqttConfig:         &c.MQTTConfig,
@@ -104,10 +105,10 @@ func (t *TransferRequester) sendCountRequests(interval time.Duration) {
 				return
 			}
 			for period := epoch; period.Before(time.Now().Add(-2 * periodDuration)); period = period.Add(periodDuration) {
-				if _, ok := completePeriods[period.Unix()]; ok {
+				if _, ok := completePeriods[period.UnixMicro()]; ok {
 					continue // no need to send a count request because the period is already complete
 				}
-				if _, ok := incompletePeriods[period.Unix()]; ok {
+				if _, ok := incompletePeriods[period.UnixMicro()]; ok {
 					continue // no need to send a count request because we already now the remote data points
 				}
 				t.sendMQTTCommand(origin, period, requestCountCmd, uuid.Nil)

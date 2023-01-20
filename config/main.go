@@ -319,8 +319,8 @@ type TransferConfig struct {
 	CountRequestPeriod time.Duration    `mapstructure:"count_request_period"`
 	DataRequestPeriod  time.Duration    `mapstructure:"data_request_period"`
 	LoadReduction      bool             `mapstructure:"load_reduction"`
-	SleepDuration      time.Duration
-	SleepEveryN        int
+	SleepDuration      time.Duration    `mapstructure:"sleep_duration"`
+	SleepEveryN        int              `mapstructure:"sleep_every_n"`
 }
 
 func NewTransferConfig(configFilePath string) *TransferConfig {

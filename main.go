@@ -20,6 +20,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	_ "net/http/pprof"
+
 	"github.com/munnik/gosk/cmd"
 	"github.com/munnik/gosk/logger"
 	"go.uber.org/zap"

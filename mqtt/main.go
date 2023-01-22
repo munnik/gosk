@@ -43,6 +43,17 @@ func New(config *config.MQTTConfig, publishHandler mqtt.MessageHandler, topic st
 	return result
 }
 
+func (c *Client) Publish(topic string, qos byte, retained bool, bytes []byte) {
+	if token := (*c.pahoClient).Publish(topic, 0, true, bytes); token.Wait() && token.Error() != nil {
+		logger.GetLogger().Warn(
+			"Could not publish a message via MQTT",
+			zap.String("Error", token.Error().Error()),
+			zap.String("Topic", topic),
+			zap.ByteString("Bytes", bytes),
+		)
+	}
+}
+
 func (c *Client) Disconnect() {
 	(*c.pahoClient).Disconnect(uint(disconnectWait.Milliseconds()))
 }
@@ -68,6 +79,14 @@ func (c *Client) onConnectHandler(pahoClient paho.Client) {
 	logger.GetLogger().Info(
 		"MQTT connection established",
 	)
+
+	if c.topic == "" {
+		logger.GetLogger().Info(
+			"Topic is empty so not subscribing",
+			zap.String("URL", c.config.URLString),
+		)
+		return
+	}
 
 	if token := pahoClient.Subscribe(c.topic, 1, nil); token.Wait() && token.Error() != nil {
 		logger.GetLogger().Fatal(

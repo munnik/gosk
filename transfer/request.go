@@ -20,7 +20,7 @@ import (
 type TransferRequester struct {
 	db                 *database.PostgresqlDatabase
 	mqttConfig         *config.MQTTConfig
-	pahoClient         paho.Client
+	mqttClient         *mqtt.Client
 	origins            []config.OriginsConfig
 	countRequestPeriod time.Duration
 	dataRequestPeriod  time.Duration
@@ -42,8 +42,8 @@ func NewTransferRequester(c *config.TransferConfig) *TransferRequester {
 func (t *TransferRequester) Run() {
 	rand.Seed(time.Now().UnixNano())
 
-	m := mqtt.New(t.mqttConfig, t.messageReceived, fmt.Sprintf(respondTopic, "#"))
-	defer m.Disconnect()
+	t.mqttClient = mqtt.New(t.mqttConfig, t.messageReceived, fmt.Sprintf(respondTopic, "#"))
+	defer t.mqttClient.Disconnect()
 
 	// send count requests
 	go func() {
@@ -181,13 +181,7 @@ func (t *TransferRequester) sendMQTTCommand(origin string, start time.Time, comm
 		return
 	}
 	topic := fmt.Sprintf(requestTopic, origin)
-	if token := t.pahoClient.Publish(topic, 0, true, bytes); token.Wait() && token.Error() != nil {
-		logger.GetLogger().Warn(
-			"Could not publish a message via MQTT",
-			zap.String("Error", token.Error().Error()),
-			zap.ByteString("Bytes", bytes),
-		)
-	}
+	t.mqttClient.Publish(topic, 0, true, bytes)
 }
 
 func (t *TransferRequester) messageReceived(c paho.Client, m paho.Message) {

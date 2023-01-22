@@ -25,7 +25,7 @@ const (
 type TransferResponder struct {
 	db                  *database.PostgresqlDatabase
 	config              *config.TransferConfig
-	mqttClient          paho.Client
+	mqttClient          *mqtt.Client
 	publisher           mangos.Socket
 	injectWorkerChannel *uniqueue.UQ[time.Time]
 
@@ -44,8 +44,8 @@ func (t *TransferResponder) Run(publisher mangos.Socket) {
 
 	// listen for requests
 	t.publisher = publisher
-	m := mqtt.New(&t.config.MQTTConfig, t.messageReceived, fmt.Sprintf(requestTopic, t.config.Origin))
-	defer m.Disconnect()
+	t.mqttClient = mqtt.New(&t.config.MQTTConfig, t.messageReceived, fmt.Sprintf(requestTopic, t.config.Origin))
+	defer t.mqttClient.Disconnect()
 
 	// never exit
 	wg := new(sync.WaitGroup)
@@ -160,13 +160,7 @@ func (t *TransferResponder) sendMQTTResponse(message ResponseMessage) {
 		return
 	}
 	topic := fmt.Sprintf(respondTopic, t.config.Origin)
-	if token := t.mqttClient.Publish(topic, 0, true, bytes); token.Wait() && token.Error() != nil {
-		logger.GetLogger().Warn(
-			"Could not publish a message via MQTT",
-			zap.String("Error", token.Error().Error()),
-			zap.ByteString("Bytes", bytes),
-		)
-	}
+	t.mqttClient.Publish(topic, 0, true, bytes)
 }
 
 func (t *TransferResponder) messageReceived(c paho.Client, m paho.Message) {

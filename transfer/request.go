@@ -42,7 +42,8 @@ func NewTransferRequester(c *config.TransferConfig) *TransferRequester {
 func (t *TransferRequester) Run() {
 	rand.Seed(time.Now().UnixNano())
 
-	mqtt.New(t.mqttConfig, t.messageReceived, fmt.Sprintf(respondTopic, "#"))
+	m := mqtt.New(t.mqttConfig, t.messageReceived, fmt.Sprintf(respondTopic, "#"))
+	defer m.Disconnect()
 
 	// send count requests
 	go func() {

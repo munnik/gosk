@@ -44,7 +44,8 @@ func (t *TransferResponder) Run(publisher mangos.Socket) {
 
 	// listen for requests
 	t.publisher = publisher
-	mqtt.New(&t.config.MQTTConfig, t.messageReceived, fmt.Sprintf(requestTopic, t.config.Origin))
+	m := mqtt.New(&t.config.MQTTConfig, t.messageReceived, fmt.Sprintf(requestTopic, t.config.Origin))
+	defer m.Disconnect()
 
 	// never exit
 	wg := new(sync.WaitGroup)

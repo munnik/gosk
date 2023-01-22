@@ -19,24 +19,31 @@ type Client struct {
 	config         *config.MQTTConfig
 	publishHandler mqtt.MessageHandler
 	topic          string
+	pahoClient     *paho.Client
 }
 
-func New(config *config.MQTTConfig, publishHandler mqtt.MessageHandler, topic string) {
-	c := Client{
+func New(config *config.MQTTConfig, publishHandler mqtt.MessageHandler, topic string) *Client {
+	result := &Client{
 		config:         config,
 		publishHandler: publishHandler,
 	}
 
-	pahoClient := paho.NewClient(c.createClientOptions())
+	pahoClient := paho.NewClient(result.createClientOptions())
 	if token := pahoClient.Connect(); token.Wait() && token.Error() != nil {
 		logger.GetLogger().Fatal(
 			"Could not connect to the MQTT broker",
 			zap.String("Error", token.Error().Error()),
 			zap.String("URL", config.URLString),
 		)
-		return
+		return nil
 	}
-	defer pahoClient.Disconnect(uint(disconnectWait.Milliseconds()))
+	result.pahoClient = &pahoClient
+
+	return result
+}
+
+func (c *Client) Disconnect() {
+	(*c.pahoClient).Disconnect(uint(disconnectWait.Milliseconds()))
 }
 
 func (c *Client) createClientOptions() *mqtt.ClientOptions {
@@ -57,17 +64,19 @@ func (c *Client) createClientOptions() *mqtt.ClientOptions {
 }
 
 func (c *Client) onConnectHandler(pahoClient paho.Client) {
-	logger.GetLogger().Info(
-		"MQTT connection established",
-	)
-
-	if token := pahoClient.Subscribe(c.topic, 1, nil); token.Wait() && token.Error() != nil {
-		logger.GetLogger().Fatal(
-			"Could not subscribe to the MQTT topic",
-			zap.String("Error", token.Error().Error()),
-			zap.String("URL", c.config.URLString),
+	if pahoClient.IsConnected() {
+		logger.GetLogger().Info(
+			"MQTT connection established",
 		)
-		return
+
+		if token := pahoClient.Subscribe(c.topic, 1, nil); token.Wait() && token.Error() != nil {
+			logger.GetLogger().Fatal(
+				"Could not subscribe to the MQTT topic",
+				zap.String("Error", token.Error().Error()),
+				zap.String("URL", c.config.URLString),
+			)
+			return
+		}
 	}
 }
 

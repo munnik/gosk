@@ -36,7 +36,8 @@ func NewMqttReader(c *config.MQTTConfig) *MqttReader {
 func (r *MqttReader) ReadMapped(publisher mangos.Socket) {
 	r.publisher = publisher
 
-	mqtt.New(r.mqttConfig, r.messageReceived, mqttTopic)
+	m := mqtt.New(r.mqttConfig, r.messageReceived, mqttTopic)
+	defer m.Disconnect()
 
 	// never exit
 	wg := new(sync.WaitGroup)

@@ -109,7 +109,7 @@ func (t *TransferRequester) sendCountRequests(interval time.Duration) {
 					continue // no need to send a count request because the period is already complete
 				}
 				if _, ok := incompletePeriods[period.UnixMicro()]; ok {
-					continue // no need to send a count request because we already now the remote data points
+					continue // no need to send a count request because we already know the remote data points
 				}
 				t.sendMQTTCommand(origin, period, requestCountCmd, uuid.Nil)
 			}

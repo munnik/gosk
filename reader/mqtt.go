@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
+	"go.uber.org/zap"
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/munnik/gosk/config"
@@ -12,17 +13,22 @@ import (
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/mqtt"
 	"go.nanomsg.org/mangos/v3"
-	"go.uber.org/zap"
 )
 
 const (
-	mqttTopic = "vessels/#"
+	mqttTopic                    = "vessels/#"
+	receivedBufferSize           = 100_000 // allow a lot of compressed data
+	numberOfDecompressionWorkers = 10
+	decompressedBufferSize       = 500
+	numberOfPublishWorkers       = 50
 )
 
 type MqttReader struct {
-	mqttConfig *config.MQTTConfig
-	publisher  mangos.Socket
-	decoder    *zstd.Decoder
+	mqttConfig         *config.MQTTConfig
+	publisher          mangos.Socket
+	decoder            *zstd.Decoder
+	receivedBuffer     chan []byte
+	decompressedBuffer chan []byte
 }
 
 func NewMqttReader(c *config.MQTTConfig) *MqttReader {
@@ -36,6 +42,17 @@ func NewMqttReader(c *config.MQTTConfig) *MqttReader {
 func (r *MqttReader) ReadMapped(publisher mangos.Socket) {
 	r.publisher = publisher
 
+	r.receivedBuffer = make(chan []byte, receivedBufferSize)
+	defer close(r.receivedBuffer)
+	for i := 0; i < numberOfDecompressionWorkers; i++ {
+		go r.decompressionWorker()
+	}
+	r.decompressedBuffer = make(chan []byte, decompressedBufferSize)
+	defer close(r.decompressedBuffer)
+	for i := 0; i < numberOfPublishWorkers; i++ {
+		go r.publishWorker()
+	}
+
 	m := mqtt.New(r.mqttConfig, r.messageReceived, mqttTopic)
 	defer m.Disconnect()
 
@@ -46,42 +63,68 @@ func (r *MqttReader) ReadMapped(publisher mangos.Socket) {
 }
 
 func (r *MqttReader) messageReceived(c paho.Client, m paho.Message) {
-	received, err := r.decoder.DecodeAll(m.Payload(), nil)
-	if err != nil {
+	select {
+	case r.receivedBuffer <- m.Payload():
+	default:
 		logger.GetLogger().Warn(
-			"Could not decompress payload",
-			zap.String("Error", err.Error()),
-			zap.ByteString("Bytes", m.Payload()),
+			"Could not add to the receivedBuffer, probably the buffer is full. Dropping message.",
+			zap.Int("Buffer size", len(r.receivedBuffer)),
 		)
-		return
 	}
+}
 
-	var deltas []message.Mapped
-	if err := json.Unmarshal(received, &deltas); err != nil {
-		logger.GetLogger().Warn(
-			"Could not unmarshal buffer",
-			zap.String("Error", err.Error()),
-			zap.ByteString("Bytes", received),
-		)
-		return
-	}
-
-	for _, delta := range deltas {
-		bytes, err := json.Marshal(delta)
+func (r *MqttReader) decompressionWorker() {
+	for bytes := range r.receivedBuffer {
+		decompressedBytes, err := r.decoder.DecodeAll(bytes, nil)
 		if err != nil {
 			logger.GetLogger().Warn(
-				"Could not marshal delta",
+				"Could not decompress payload",
 				zap.String("Error", err.Error()),
+				zap.ByteString("Bytes", bytes),
 			)
 			continue
 		}
-		if err := r.publisher.Send(bytes); err != nil {
+
+		select {
+		case r.decompressedBuffer <- decompressedBytes:
+		default:
 			logger.GetLogger().Warn(
-				"Unable to send the message using NanoMSG",
-				zap.ByteString("Message", bytes),
+				"Could not add to the decompressedBuffer, probably the buffer is full. Dropping message.",
+				zap.Int("Buffer size", len(r.decompressedBuffer)),
+			)
+		}
+	}
+}
+
+func (r *MqttReader) publishWorker() {
+	for bytes := range r.decompressedBuffer {
+		var deltas []message.Mapped
+		if err := json.Unmarshal(bytes, &deltas); err != nil {
+			logger.GetLogger().Warn(
+				"Could not unmarshal buffer",
 				zap.String("Error", err.Error()),
+				zap.ByteString("Bytes", bytes),
 			)
 			continue
+		}
+
+		for _, delta := range deltas {
+			bytes, err := json.Marshal(delta)
+			if err != nil {
+				logger.GetLogger().Warn(
+					"Could not marshal delta",
+					zap.String("Error", err.Error()),
+				)
+				continue
+			}
+			if err := r.publisher.Send(bytes); err != nil {
+				logger.GetLogger().Warn(
+					"Unable to send the message using NanoMSG",
+					zap.ByteString("Message", bytes),
+					zap.String("Error", err.Error()),
+				)
+				continue
+			}
 		}
 	}
 }

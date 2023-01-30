@@ -6,12 +6,12 @@ import (
 	"time"
 
 	"github.com/allegro/bigcache/v3"
-	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/google/uuid"
 	"github.com/klauspost/compress/zstd"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
+	"github.com/munnik/gosk/mqtt"
 	"go.nanomsg.org/mangos/v3"
 	"go.uber.org/zap"
 )
@@ -23,14 +23,14 @@ const (
 )
 
 type MqttWriter struct {
-	config     *config.MQTTConfig
-	mqttClient mqtt.Client
+	mqttConfig *config.MQTTConfig
+	mqttClient *mqtt.Client
 	cache      *bigcache.BigCache
 	encoder    *zstd.Encoder
 }
 
 func NewMqttWriter(c *config.MQTTConfig) *MqttWriter {
-	w := &MqttWriter{config: c}
+	w := &MqttWriter{mqttConfig: c}
 	cacheConfig := bigcache.DefaultConfig(time.Duration(c.Interval) * time.Second)
 	cacheConfig.HardMaxCacheSize = c.HardMaxCacheSize
 	cacheConfig.OnRemove = w.onRemove
@@ -39,18 +39,6 @@ func NewMqttWriter(c *config.MQTTConfig) *MqttWriter {
 	encoder, _ := zstd.NewWriter(nil)
 	w.encoder = encoder
 	return w
-}
-
-func (w *MqttWriter) createClientOptions() *mqtt.ClientOptions {
-	o := mqtt.NewClientOptions()
-	o.AddBroker(w.config.URLString)
-	o.SetCleanSession(true) // TODO: verify
-	o.SetUsername(w.config.Username)
-	o.SetPassword(w.config.Password)
-	o.SetOrderMatters(false)
-	o.SetKeepAlive(keepAlive)
-	o.SetConnectionLostHandler(disconnectHandler)
-	return o
 }
 
 // When this method is called either the interval to flush or the maximum cache size is reached
@@ -110,27 +98,13 @@ func (w *MqttWriter) sendMQTT(deltas []message.Mapped) {
 	}
 	go func(context string, bytes []byte) {
 		compressed := w.encoder.EncodeAll(bytes, make([]byte, 0, len(bytes)))
-		if token := w.mqttClient.Publish(context, 0, true, compressed); token.Wait() && token.Error() != nil {
-			logger.GetLogger().Warn(
-				"Could not publish a message via MQTT",
-				zap.String("Error", token.Error().Error()),
-				zap.ByteString("Bytes", bytes),
-			)
-		}
-	}(fmt.Sprintf(writeTopic, w.config.Username), bytes)
+		w.mqttClient.Publish(context, 0, true, compressed)
+	}(fmt.Sprintf(writeTopic, w.mqttConfig.Username), bytes)
 }
 
 func (w *MqttWriter) WriteMapped(subscriber mangos.Socket) {
-	w.mqttClient = mqtt.NewClient(w.createClientOptions())
-	if token := w.mqttClient.Connect(); token.Wait() && token.Error() != nil {
-		logger.GetLogger().Fatal(
-			"Could not connect to the MQTT broker",
-			zap.String("Error", token.Error().Error()),
-			zap.String("URL", w.config.URLString),
-		)
-		return
-	}
-	defer w.mqttClient.Disconnect(disconnectWait)
+	w.mqttClient = mqtt.New(w.mqttConfig, nil, "")
+	defer w.mqttClient.Disconnect()
 
 	for {
 		received, err := subscriber.Recv()
@@ -147,14 +121,5 @@ func (w *MqttWriter) WriteMapped(subscriber mangos.Socket) {
 				zap.String("Error", err.Error()),
 			)
 		}
-	}
-}
-
-func disconnectHandler(c mqtt.Client, e error) {
-	if e != nil {
-		logger.GetLogger().Warn(
-			"MQTT connection lost",
-			zap.String("Error", e.Error()),
-		)
 	}
 }

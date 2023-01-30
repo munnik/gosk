@@ -8,18 +8,19 @@ import (
 	"sync"
 	"time"
 
-	mqtt "github.com/eclipse/paho.mqtt.golang"
+	paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/google/uuid"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/database"
 	"github.com/munnik/gosk/logger"
+	"github.com/munnik/gosk/mqtt"
 	"go.uber.org/zap"
 )
 
 type TransferRequester struct {
 	db                 *database.PostgresqlDatabase
 	mqttConfig         *config.MQTTConfig
-	mqttClient         mqtt.Client
+	mqttClient         *mqtt.Client
 	origins            []config.OriginsConfig
 	countRequestPeriod time.Duration
 	dataRequestPeriod  time.Duration
@@ -41,17 +42,8 @@ func NewTransferRequester(c *config.TransferConfig) *TransferRequester {
 func (t *TransferRequester) Run() {
 	rand.Seed(time.Now().UnixNano())
 
-	// listen for responses
-	t.mqttClient = mqtt.NewClient(t.createClientOptions())
-	if token := t.mqttClient.Connect(); token.Wait() && token.Error() != nil {
-		logger.GetLogger().Fatal(
-			"Could not connect to the MQTT broker",
-			zap.String("Error", token.Error().Error()),
-			zap.String("URL", t.mqttConfig.URLString),
-		)
-		return
-	}
-	defer t.mqttClient.Disconnect(uint(disconnectWait.Milliseconds()))
+	t.mqttClient = mqtt.New(t.mqttConfig, t.messageReceived, fmt.Sprintf(respondTopic, "#"))
+	defer t.mqttClient.Disconnect()
 
 	// send count requests
 	go func() {
@@ -109,7 +101,7 @@ func (t *TransferRequester) sendCountRequests(interval time.Duration) {
 					continue // no need to send a count request because the period is already complete
 				}
 				if _, ok := incompletePeriods[period.UnixMicro()]; ok {
-					continue // no need to send a count request because we already now the remote data points
+					continue // no need to send a count request because we already know the remote data points
 				}
 				t.sendMQTTCommand(origin, period, requestCountCmd, uuid.Nil)
 			}
@@ -189,55 +181,10 @@ func (t *TransferRequester) sendMQTTCommand(origin string, start time.Time, comm
 		return
 	}
 	topic := fmt.Sprintf(requestTopic, origin)
-	if token := t.mqttClient.Publish(topic, 0, true, bytes); token.Wait() && token.Error() != nil {
-		logger.GetLogger().Warn(
-			"Could not publish a message via MQTT",
-			zap.String("Error", token.Error().Error()),
-			zap.ByteString("Bytes", bytes),
-		)
-	}
+	t.mqttClient.Publish(topic, 0, true, bytes)
 }
 
-func (t *TransferRequester) createClientOptions() *mqtt.ClientOptions {
-	o := mqtt.NewClientOptions()
-	o.AddBroker(t.mqttConfig.URLString)
-	o.SetCleanSession(true) // TODO: verify
-	o.SetUsername(t.mqttConfig.Username)
-	o.SetPassword(t.mqttConfig.Password)
-	o.SetOrderMatters(false)
-	o.SetKeepAlive(keepAlive)
-	o.SetDefaultPublishHandler(t.messageReceived)
-	o.SetConnectionLostHandler(t.disconnectHandler)
-	o.SetOnConnectHandler(t.connectHandler)
-
-	return o
-}
-
-func (t *TransferRequester) connectHandler(c mqtt.Client) {
-	logger.GetLogger().Info(
-		"MQTT connection established",
-	)
-	topic := fmt.Sprintf(respondTopic, "#")
-	if token := t.mqttClient.Subscribe(topic, 1, nil); token.Wait() && token.Error() != nil {
-		logger.GetLogger().Fatal(
-			"Could not subscribe to the MQTT topic",
-			zap.String("Error", token.Error().Error()),
-			zap.String("URL", t.mqttConfig.URLString),
-		)
-		return
-	}
-}
-
-func (t *TransferRequester) disconnectHandler(c mqtt.Client, e error) {
-	if e != nil {
-		logger.GetLogger().Warn(
-			"MQTT connection lost",
-			zap.String("Error", e.Error()),
-		)
-	}
-}
-
-func (t *TransferRequester) messageReceived(c mqtt.Client, m mqtt.Message) {
+func (t *TransferRequester) messageReceived(c paho.Client, m paho.Message) {
 	var response ResponseMessage
 	if err := json.Unmarshal(m.Payload(), &response); err != nil {
 		logger.GetLogger().Warn(

@@ -53,6 +53,7 @@ type PostgresqlDatabase struct {
 	lastFlush       time.Time
 	flushMutex      sync.Mutex
 	completeRatio   float64
+	upgradeDone     bool
 }
 
 func NewPostgresqlDatabase(c *config.PostgresqlConfig) *PostgresqlDatabase {
@@ -64,6 +65,7 @@ func NewPostgresqlDatabase(c *config.PostgresqlConfig) *PostgresqlDatabase {
 		completeRatio: c.CompleteRatio,
 		batch:         &pgx.Batch{},
 		lastFlush:     time.Now(),
+		upgradeDone:   false,
 	}
 	go func() {
 		ticker := time.NewTicker(time.Second * time.Duration(c.BatchFlushInterval))
@@ -335,6 +337,10 @@ func (db *PostgresqlDatabase) UpdateStatistics(time time.Time, origin string, st
 }
 
 func (db *PostgresqlDatabase) UpgradeDatabase() error {
+	if db.upgradeDone {
+		return nil
+	}
+
 	d, err := iofs.New(fs, "migrations")
 	if err != nil {
 		return err
@@ -343,9 +349,12 @@ func (db *PostgresqlDatabase) UpgradeDatabase() error {
 	if err != nil {
 		return err
 	}
+	defer m.Close()
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 		return err
 	}
+
+	db.upgradeDone = true
 	return nil
 }
 

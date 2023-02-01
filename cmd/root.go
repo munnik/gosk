@@ -17,7 +17,6 @@ limitations under the License.
 package cmd
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 
@@ -32,7 +31,7 @@ import (
 
 var (
 	cfgFile                 string
-	profilingAndMetricsPort int
+	profilingAndMetricsPort string
 	subscribeURL            string
 	publishURL              string
 )
@@ -71,7 +70,7 @@ func init() {
 	// will be global for your application.
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "path to config file")
-	rootCmd.PersistentFlags().IntVar(&profilingAndMetricsPort, "pmport", 0, "port to run the http server for pprof and prometheus")
+	rootCmd.PersistentFlags().StringVar(&profilingAndMetricsPort, "pmport", "", "port to run the http server for pprof and prometheus")
 }
 
 // initConfig reads in config file
@@ -90,22 +89,21 @@ func initConfig() {
 }
 
 func initProfilingAndMetrics() {
-	if profilingAndMetricsPort != 0 {
-		hostAndPort := fmt.Sprintf("localhost:%d", profilingAndMetricsPort)
+	if profilingAndMetricsPort != "" {
 		http.Handle("/metrics", promhttp.Handler())
 		go func() {
-			err := http.ListenAndServe(hostAndPort, nil)
+			err := http.ListenAndServe(profilingAndMetricsPort, nil)
 			if err != nil {
 				log.Fatal(
 					"Could not start profiling and metrics",
-					zap.String("Host and port", hostAndPort),
+					zap.String("Host and port", profilingAndMetricsPort),
 					zap.String("Error", err.Error()),
 				)
 			}
 		}()
 		logger.GetLogger().Info(
 			"Starting profiling and metrics",
-			zap.String("Host and port", hostAndPort),
+			zap.String("Host and port", profilingAndMetricsPort),
 		)
 	}
 }

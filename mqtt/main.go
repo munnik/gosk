@@ -3,7 +3,6 @@ package mqtt
 import (
 	"time"
 
-	mqtt "github.com/eclipse/paho.mqtt.golang"
 	paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
@@ -17,12 +16,12 @@ const (
 
 type Client struct {
 	config         *config.MQTTConfig
-	publishHandler mqtt.MessageHandler
+	publishHandler paho.MessageHandler
 	topic          string
 	pahoClient     *paho.Client
 }
 
-func New(config *config.MQTTConfig, publishHandler mqtt.MessageHandler, topic string) *Client {
+func New(config *config.MQTTConfig, publishHandler paho.MessageHandler, topic string) *Client {
 	result := &Client{
 		config:         config,
 		publishHandler: publishHandler,
@@ -58,8 +57,8 @@ func (c *Client) Disconnect() {
 	(*c.pahoClient).Disconnect(uint(disconnectWait.Milliseconds()))
 }
 
-func (c *Client) createClientOptions() *mqtt.ClientOptions {
-	result := mqtt.NewClientOptions()
+func (c *Client) createClientOptions() *paho.ClientOptions {
+	result := paho.NewClientOptions()
 	result.AddBroker(c.config.URLString)
 	result.SetUsername(c.config.Username)
 	result.SetPassword(c.config.Password)

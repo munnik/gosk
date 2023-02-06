@@ -5,6 +5,8 @@ import (
 	"sync"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/munnik/gosk/config"
@@ -19,17 +21,27 @@ const (
 	mqttTopic = "vessels/#"
 )
 
+// var mqttMessagesReceived =
+
 type MqttReader struct {
-	mqttConfig *config.MQTTConfig
-	publisher  mangos.Socket
-	decoder    *zstd.Decoder
+	mqttConfig               *config.MQTTConfig
+	publisher                mangos.Socket
+	decoder                  *zstd.Decoder
+	mqttMessagesReceived     prometheus.Counter
+	mqttMessagesDecompressed prometheus.Counter
+	mqttMessagesUnmarshalled prometheus.Counter
+	mqttDeltasSent           prometheus.Counter
 }
 
 func NewMqttReader(c *config.MQTTConfig) *MqttReader {
 	decoder, _ := zstd.NewReader(nil)
 	return &MqttReader{
-		mqttConfig: c,
-		decoder:    decoder,
+		mqttConfig:               c,
+		decoder:                  decoder,
+		mqttMessagesReceived:     promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_mqtt_messages_received_total", Help: "total number of received mqtt messages"}),
+		mqttMessagesDecompressed: promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_mqtt_messages_decompressed_total", Help: "total number of decompressed mqtt messages"}),
+		mqttMessagesUnmarshalled: promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_mqtt_messages_unmarshalled_total", Help: "total number of unmarshalled mqtt messages"}),
+		mqttDeltasSent:           promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_mqtt_deltas_sent_total", Help: "total number of deltas sent"}),
 	}
 }
 
@@ -46,6 +58,7 @@ func (r *MqttReader) ReadMapped(publisher mangos.Socket) {
 }
 
 func (r *MqttReader) messageReceived(c paho.Client, m paho.Message) {
+	r.mqttMessagesReceived.Inc()
 	received, err := r.decoder.DecodeAll(m.Payload(), nil)
 	if err != nil {
 		logger.GetLogger().Warn(
@@ -55,6 +68,7 @@ func (r *MqttReader) messageReceived(c paho.Client, m paho.Message) {
 		)
 		return
 	}
+	r.mqttMessagesDecompressed.Inc()
 
 	var deltas []message.Mapped
 	if err := json.Unmarshal(received, &deltas); err != nil {
@@ -65,6 +79,7 @@ func (r *MqttReader) messageReceived(c paho.Client, m paho.Message) {
 		)
 		return
 	}
+	r.mqttMessagesUnmarshalled.Inc()
 
 	for _, delta := range deltas {
 		bytes, err := json.Marshal(delta)
@@ -83,5 +98,6 @@ func (r *MqttReader) messageReceived(c paho.Client, m paho.Message) {
 			)
 			continue
 		}
+		r.mqttDeltasSent.Inc()
 	}
 }

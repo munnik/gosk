@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
-	"time"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/google/uuid"
@@ -12,36 +11,25 @@ import (
 	"github.com/munnik/gosk/database"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/mqtt"
-	"github.com/munnik/uniqueue"
 	"go.nanomsg.org/mangos/v3"
 	"go.uber.org/zap"
 )
 
-const (
-	noOfWorkers = 4
-	queueSize   = 1_000_000 // should cover almost 10 years of periods
-)
-
 type TransferResponder struct {
-	db                  *database.PostgresqlDatabase
-	config              *config.TransferConfig
-	mqttClient          *mqtt.Client
-	publisher           mangos.Socket
-	injectWorkerChannel *uniqueue.UQ[time.Time]
-
-	uuidMap     map[int64]uuid.UUID
-	uuidMapLock sync.RWMutex
+	db         *database.PostgresqlDatabase
+	config     *config.TransferConfig
+	mqttClient *mqtt.Client
+	publisher  mangos.Socket
 }
 
 func NewTransferResponder(c *config.TransferConfig) *TransferResponder {
-	uuidMap := make(map[int64]uuid.UUID)
-	return &TransferResponder{db: database.NewPostgresqlDatabase(&c.PostgresqlConfig), config: c, uuidMap: uuidMap, uuidMapLock: sync.RWMutex{}}
+	return &TransferResponder{
+		db:     database.NewPostgresqlDatabase(&c.PostgresqlConfig),
+		config: c,
+	}
 }
 
 func (t *TransferResponder) Run(publisher mangos.Socket) {
-	t.injectWorkerChannel = uniqueue.NewUQ[time.Time](queueSize)
-	go t.startInjectDataWorkers()
-
 	// listen for requests
 	t.publisher = publisher
 	t.mqttClient = mqtt.New(&t.config.MQTTConfig, t.messageReceived, fmt.Sprintf(requestTopic, t.config.Origin))
@@ -53,16 +41,22 @@ func (t *TransferResponder) Run(publisher mangos.Socket) {
 	wg.Wait()
 }
 
-func (t *TransferResponder) requestReceived(request RequestMessage) {
+func (t *TransferResponder) messageReceived(c paho.Client, m paho.Message) {
+	var request RequestMessage
+	if err := json.Unmarshal(m.Payload(), &request); err != nil {
+		logger.GetLogger().Warn(
+			"Could not unmarshal buffer",
+			zap.String("Error", err.Error()),
+			zap.ByteString("Bytes", m.Payload()),
+		)
+		return
+	}
+
 	switch request.Command {
 	case requestCountCmd:
-		t.respondWithCount(request.PeriodStart)
-
+		t.respondWithCount(request)
 	case requestDataCmd:
-		t.uuidMapLock.Lock()
-		t.uuidMap[request.PeriodStart.Unix()] = request.UUID
-		t.uuidMapLock.Unlock()
-		t.injectWorkerChannel.Back() <- request.PeriodStart
+		t.respondWithData(request)
 	default:
 		logger.GetLogger().Warn(
 			"Unknown command in request",
@@ -71,8 +65,8 @@ func (t *TransferResponder) requestReceived(request RequestMessage) {
 	}
 }
 
-func (t *TransferResponder) respondWithCount(period time.Time) {
-	count, err := t.db.ReadMappedCount(period, period.Add(periodDuration))
+func (t *TransferResponder) respondWithCount(request RequestMessage) {
+	count, err := t.db.SelectCountMapped(t.config.Origin, request.PeriodStart)
 	if err != nil {
 		logger.GetLogger().Warn(
 			"Could not retrieve count of mapped data from database",
@@ -82,38 +76,49 @@ func (t *TransferResponder) respondWithCount(period time.Time) {
 	}
 	response := ResponseMessage{
 		DataPoints:  count,
-		PeriodStart: period,
+		PeriodStart: request.PeriodStart,
 	}
-	t.sendMQTTResponse(response)
-}
-
-func (t *TransferResponder) startInjectDataWorkers() {
-	var wg sync.WaitGroup
-	wg.Add(noOfWorkers)
-	for i := 0; i < noOfWorkers; i++ {
-		go func() {
-			for period := range t.injectWorkerChannel.Front() {
-				t.injectData(period)
-			}
-			wg.Done()
-		}()
+	bytes, err := json.Marshal(response)
+	if err != nil {
+		logger.GetLogger().Warn(
+			"Could not marshall the response message",
+			zap.String("Error", err.Error()),
+		)
+		return
 	}
-	wg.Wait()
+	topic := fmt.Sprintf(respondTopic, t.config.Origin)
+	t.mqttClient.Publish(topic, 0, true, bytes)
 }
 
-func (t *TransferResponder) popUuid(period time.Time) uuid.UUID {
-	t.uuidMapLock.RLock()
-	defer t.uuidMapLock.RUnlock()
+func (t *TransferResponder) respondWithData(request RequestMessage) {
+	localCountsPerUuid, err := t.db.SelectCountPerUuid(t.config.Origin, request.PeriodStart)
+	if err != nil {
+		logger.GetLogger().Warn(
+			"Could not retrieve counts per uuid from database",
+			zap.String("Error", err.Error()),
+			zap.String("Origin", t.config.Origin),
+			zap.Time("Start", request.PeriodStart),
+		)
+		return
+	}
 
-	uuid := t.uuidMap[period.Unix()]
-	delete(t.uuidMap, period.Unix())
+	for uuid, count := range request.CountsPerUuid {
+		if _, ok := localCountsPerUuid[uuid]; ok && (localCountsPerUuid[uuid] <= count) {
+			// remove from list because remote already has complete set
+			delete(localCountsPerUuid, uuid)
+		}
+	}
 
-	return uuid
+	t.injectData(localCountsPerUuid, request.UUID)
 }
 
-func (t *TransferResponder) injectData(period time.Time) {
-	uuid := t.popUuid(period)
-	deltas, err := t.db.ReadMapped(`WHERE "time" BETWEEN $1 AND $2`, period, period.Add(periodDuration))
+func (t *TransferResponder) injectData(uuidsToTransmit map[uuid.UUID]int, transferUuid uuid.UUID) {
+	uuids := make([]uuid.UUID, len(uuidsToTransmit))
+	for uuid := range uuidsToTransmit {
+		uuids = append(uuids, uuid)
+	}
+
+	deltas, err := t.db.ReadMapped(`WHERE "uuid" IN ($1)`, uuids)
 	if err != nil {
 		logger.GetLogger().Warn(
 			"Could not retrieve mapped data from database",
@@ -121,12 +126,9 @@ func (t *TransferResponder) injectData(period time.Time) {
 		)
 		return
 	}
-	for j, delta := range deltas {
-		if (j % t.config.SleepEveryN) == 0 {
-			time.Sleep(t.config.SleepDuration)
-		}
+	for _, delta := range deltas {
 		for i := range delta.Updates {
-			delta.Updates[i].Source.TransferUuid = uuid
+			delta.Updates[i].Source.TransferUuid = transferUuid
 		}
 		bytes, err := json.Marshal(delta)
 		if err != nil {
@@ -145,33 +147,4 @@ func (t *TransferResponder) injectData(period time.Time) {
 			continue
 		}
 	}
-
-	// after sending the period it can be removed from the list of todo periods
-	t.injectWorkerChannel.RemoveConstraint(period)
-}
-
-func (t *TransferResponder) sendMQTTResponse(message ResponseMessage) {
-	bytes, err := json.Marshal(message)
-	if err != nil {
-		logger.GetLogger().Warn(
-			"Could not marshall the response message",
-			zap.String("Error", err.Error()),
-		)
-		return
-	}
-	topic := fmt.Sprintf(respondTopic, t.config.Origin)
-	t.mqttClient.Publish(topic, 0, true, bytes)
-}
-
-func (t *TransferResponder) messageReceived(c paho.Client, m paho.Message) {
-	var request RequestMessage
-	if err := json.Unmarshal(m.Payload(), &request); err != nil {
-		logger.GetLogger().Warn(
-			"Could not unmarshal buffer",
-			zap.String("Error", err.Error()),
-			zap.ByteString("Bytes", m.Payload()),
-		)
-		return
-	}
-	t.requestReceived(request)
 }

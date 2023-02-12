@@ -5,6 +5,8 @@ import (
 	"sync"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/zap"
 
 	"github.com/klauspost/compress/zstd"
@@ -23,35 +25,32 @@ const (
 	numberOfPublishWorkers       = 50
 )
 
+// var mqttMessagesReceived =
+
 type MqttReader struct {
-	mqttConfig         *config.MQTTConfig
-	publisher          mangos.Socket
-	decoder            *zstd.Decoder
-	receivedBuffer     chan []byte
-	decompressedBuffer chan []byte
+	mqttConfig               *config.MQTTConfig
+	publisher                mangos.Socket
+	decoder                  *zstd.Decoder
+	mqttMessagesReceived     prometheus.Counter
+	mqttMessagesDecompressed prometheus.Counter
+	mqttMessagesUnmarshalled prometheus.Counter
+	mqttDeltasSent           prometheus.Counter
 }
 
 func NewMqttReader(c *config.MQTTConfig) *MqttReader {
 	decoder, _ := zstd.NewReader(nil)
 	return &MqttReader{
-		mqttConfig: c,
-		decoder:    decoder,
+		mqttConfig:               c,
+		decoder:                  decoder,
+		mqttMessagesReceived:     promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_mqtt_messages_received_total", Help: "total number of received mqtt messages"}),
+		mqttMessagesDecompressed: promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_mqtt_messages_decompressed_total", Help: "total number of decompressed mqtt messages"}),
+		mqttMessagesUnmarshalled: promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_mqtt_messages_unmarshalled_total", Help: "total number of unmarshalled mqtt messages"}),
+		mqttDeltasSent:           promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_mqtt_deltas_sent_total", Help: "total number of deltas sent"}),
 	}
 }
 
 func (r *MqttReader) ReadMapped(publisher mangos.Socket) {
 	r.publisher = publisher
-
-	r.receivedBuffer = make(chan []byte, receivedBufferSize)
-	defer close(r.receivedBuffer)
-	for i := 0; i < numberOfDecompressionWorkers; i++ {
-		go r.decompressionWorker()
-	}
-	r.decompressedBuffer = make(chan []byte, decompressedBufferSize)
-	defer close(r.decompressedBuffer)
-	for i := 0; i < numberOfPublishWorkers; i++ {
-		go r.publishWorker()
-	}
 
 	m := mqtt.New(r.mqttConfig, r.messageReceived, mqttTopic)
 	defer m.Disconnect()
@@ -63,68 +62,46 @@ func (r *MqttReader) ReadMapped(publisher mangos.Socket) {
 }
 
 func (r *MqttReader) messageReceived(c paho.Client, m paho.Message) {
-	select {
-	case r.receivedBuffer <- m.Payload():
-	default:
+	r.mqttMessagesReceived.Inc()
+	received, err := r.decoder.DecodeAll(m.Payload(), nil)
+	if err != nil {
 		logger.GetLogger().Warn(
-			"Could not add to the receivedBuffer, probably the buffer is full. Dropping message.",
-			zap.Int("Buffer size", len(r.receivedBuffer)),
+			"Could not decompress payload",
+			zap.String("Error", err.Error()),
+			zap.ByteString("Bytes", m.Payload()),
 		)
+		return
 	}
-}
+	r.mqttMessagesDecompressed.Inc()
 
-func (r *MqttReader) decompressionWorker() {
-	for bytes := range r.receivedBuffer {
-		decompressedBytes, err := r.decoder.DecodeAll(bytes, nil)
+	var deltas []message.Mapped
+	if err := json.Unmarshal(received, &deltas); err != nil {
+		logger.GetLogger().Warn(
+			"Could not unmarshal buffer",
+			zap.String("Error", err.Error()),
+			zap.ByteString("Bytes", received),
+		)
+		return
+	}
+	r.mqttMessagesUnmarshalled.Inc()
+
+	for _, delta := range deltas {
+		bytes, err := json.Marshal(delta)
 		if err != nil {
 			logger.GetLogger().Warn(
-				"Could not decompress payload",
+				"Could not marshal delta",
 				zap.String("Error", err.Error()),
-				zap.ByteString("Bytes", bytes),
 			)
 			continue
 		}
-
-		select {
-		case r.decompressedBuffer <- decompressedBytes:
-		default:
+		if err := r.publisher.Send(bytes); err != nil {
 			logger.GetLogger().Warn(
-				"Could not add to the decompressedBuffer, probably the buffer is full. Dropping message.",
-				zap.Int("Buffer size", len(r.decompressedBuffer)),
-			)
-		}
-	}
-}
-
-func (r *MqttReader) publishWorker() {
-	for bytes := range r.decompressedBuffer {
-		var deltas []message.Mapped
-		if err := json.Unmarshal(bytes, &deltas); err != nil {
-			logger.GetLogger().Warn(
-				"Could not unmarshal buffer",
+				"Unable to send the message using NanoMSG",
+				zap.ByteString("Message", bytes),
 				zap.String("Error", err.Error()),
-				zap.ByteString("Bytes", bytes),
 			)
 			continue
 		}
-
-		for _, delta := range deltas {
-			bytes, err := json.Marshal(delta)
-			if err != nil {
-				logger.GetLogger().Warn(
-					"Could not marshal delta",
-					zap.String("Error", err.Error()),
-				)
-				continue
-			}
-			if err := r.publisher.Send(bytes); err != nil {
-				logger.GetLogger().Warn(
-					"Unable to send the message using NanoMSG",
-					zap.ByteString("Message", bytes),
-					zap.String("Error", err.Error()),
-				)
-				continue
-			}
-		}
+		r.mqttDeltasSent.Inc()
 	}
 }

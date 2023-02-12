@@ -17,8 +17,12 @@ limitations under the License.
 package cmd
 
 import (
+	"log"
+	"net/http"
+
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/version"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
@@ -26,9 +30,10 @@ import (
 )
 
 var (
-	cfgFile      string
-	subscribeURL string
-	publishURL   string
+	cfgFile                 string
+	profilingAndMetricsPort string
+	subscribeURL            string
+	publishURL              string
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -46,7 +51,6 @@ data can be published in different ways (e.g. HTTP or Websocket).`,
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
-
 	if err := rootCmd.Execute(); err != nil {
 		logger.GetLogger().Fatal(
 			"Could not execute the Cobra root command",
@@ -56,13 +60,17 @@ func Execute() {
 }
 
 func init() {
-	cobra.OnInitialize(initConfig)
+	cobra.OnInitialize(
+		initConfig,
+		initProfilingAndMetrics,
+	)
 
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "path to config file")
+	rootCmd.PersistentFlags().StringVar(&profilingAndMetricsPort, "pmport", "", "port to run the http server for pprof and prometheus")
 }
 
 // initConfig reads in config file
@@ -77,5 +85,25 @@ func initConfig() {
 				zap.String("File", viper.ConfigFileUsed()),
 			)
 		}
+	}
+}
+
+func initProfilingAndMetrics() {
+	if profilingAndMetricsPort != "" {
+		http.Handle("/metrics", promhttp.Handler())
+		go func() {
+			err := http.ListenAndServe(profilingAndMetricsPort, nil)
+			if err != nil {
+				log.Fatal(
+					"Could not start profiling and metrics",
+					zap.String("Host and port", profilingAndMetricsPort),
+					zap.String("Error", err.Error()),
+				)
+			}
+		}()
+		logger.GetLogger().Info(
+			"Starting profiling and metrics",
+			zap.String("Host and port", profilingAndMetricsPort),
+		)
 	}
 }

@@ -3,6 +3,7 @@ package reader
 import (
 	"encoding/json"
 	"sync"
+	"time"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
 	"go.uber.org/zap"
@@ -17,10 +18,10 @@ import (
 
 const (
 	mqttTopic                    = "vessels/#"
-	receivedBufferSize           = 100_000 // allow a lot of compressed data
+	receivedBufferSize           = 10000 // allow a lot of compressed data
 	numberOfDecompressionWorkers = 10
-	decompressedBufferSize       = 500
-	numberOfPublishWorkers       = 50
+	decompressedBufferSize       = 1000
+	numberOfPublishWorkers       = 200
 )
 
 type MqttReader struct {
@@ -52,6 +53,8 @@ func (r *MqttReader) ReadMapped(publisher mangos.Socket) {
 	for i := 0; i < numberOfPublishWorkers; i++ {
 		go r.publishWorker()
 	}
+
+	go r.reportBufferSizes()
 
 	m := mqtt.New(r.mqttConfig, r.messageReceived, mqttTopic)
 	defer m.Disconnect()
@@ -126,5 +129,16 @@ func (r *MqttReader) publishWorker() {
 				continue
 			}
 		}
+	}
+}
+
+func (r *MqttReader) reportBufferSizes() {
+	for {
+		logger.GetLogger().Warn(
+			"Current buffer sizes",
+			zap.Int("Received buffer", len(r.receivedBuffer)),
+			zap.Int("Decompressed buffer", len(r.decompressedBuffer)),
+		)
+		time.Sleep(10 * time.Second)
 	}
 }

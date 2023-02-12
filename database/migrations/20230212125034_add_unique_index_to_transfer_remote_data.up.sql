@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX "idx_transfer_remote_data_start_origin"
+ON "transfer_remote_data"("start", "origin");

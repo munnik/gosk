@@ -54,6 +54,10 @@ func (t *TransferRequester) Run() {
 			t.sendDataRequests()
 		}
 	}()
+
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
+	wg.Wait() // never exit
 }
 
 func (t *TransferRequester) sendCountRequests() {
@@ -114,9 +118,13 @@ func (t *TransferRequester) sendCountRequests() {
 			}
 
 			for _, period := range periods {
-				t.sendMQTTCommand(origin, period, requestCountCmd, uuid.Nil, nil)
-
-				// TODO log request
+				requestMessage := RequestMessage{
+					Command:     requestCountCmd,
+					UUID:        uuid.New(),
+					PeriodStart: period,
+				}
+				t.sendMQTTCommand(origin, requestMessage)
+				t.db.LogTransferRequest(origin, requestMessage)
 			}
 			wg.Done()
 		}(origin, start)
@@ -127,8 +135,7 @@ func (t *TransferRequester) sendCountRequests() {
 
 func (t *TransferRequester) countResponseReceived(origin string, response ResponseMessage) {
 	t.db.CreateRemoteCount(response.PeriodStart, origin, response.DataPoints)
-
-	// TODO log response
+	t.db.LogTransferRequest(origin, response)
 }
 
 func (t *TransferRequester) sendDataRequests() {
@@ -152,43 +159,38 @@ func (t *TransferRequester) sendDataRequests() {
 	}()
 
 	for origin, periods := range origins {
-		for _, start := range periods {
-			go func(origin string, start time.Time) {
+		go func(origin string, periods []time.Time) {
+			for _, period := range periods {
 				// wait random amount of time before processing to spread the workload
 				time.Sleep(time.Duration(rand.Intn(int(t.dataRequestSleepInterval))))
 
-				uuid := uuid.New()
-				timestamp := time.Now()
-				t.db.LogTransferRequest(timestamp, uuid, origin, start)
-
-				countsPerUuid, err := t.db.SelectCountPerUuid(origin, start)
+				countsPerUuid, err := t.db.SelectCountPerUuid(origin, period)
 				if err != nil {
 					logger.GetLogger().Warn(
 						"Could not retrieve counts per uuid from database",
 						zap.String("Error", err.Error()),
 						zap.String("Origin", origin),
-						zap.Time("Start", start),
+						zap.Time("Start", period),
 					)
 					return
 				}
-				t.sendMQTTCommand(origin, start, requestDataCmd, uuid, countsPerUuid)
 
-				// TODO log request
-
-				wg.Done()
-			}(origin, start)
-		}
+				requestMessage := RequestMessage{
+					Command:       requestCountCmd,
+					UUID:          uuid.New(),
+					PeriodStart:   period,
+					CountsPerUuid: countsPerUuid,
+				}
+				t.sendMQTTCommand(origin, requestMessage)
+				t.db.LogTransferRequest(origin, requestMessage)
+			}
+			wg.Done()
+		}(origin, periods)
 	}
 	wg.Wait()
 }
 
-func (t *TransferRequester) sendMQTTCommand(origin string, start time.Time, command string, uuid uuid.UUID, countsPerUuid map[uuid.UUID]int) {
-	message := RequestMessage{
-		Command:       command,
-		PeriodStart:   start,
-		UUID:          uuid,
-		CountsPerUuid: countsPerUuid,
-	}
+func (t *TransferRequester) sendMQTTCommand(origin string, message RequestMessage) {
 	bytes, err := json.Marshal(message)
 	if err != nil {
 		logger.GetLogger().Warn(

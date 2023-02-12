@@ -75,8 +75,10 @@ func (t *TransferResponder) respondWithCount(request RequestMessage) {
 		return
 	}
 	response := ResponseMessage{
+		Command:     requestDataCmd,
 		DataPoints:  count,
 		PeriodStart: request.PeriodStart,
+		UUID:        request.UUID,
 	}
 	bytes, err := json.Marshal(response)
 	if err != nil {

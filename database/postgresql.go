@@ -29,11 +29,11 @@ const (
 	mappedInsertQuery              = `INSERT INTO "mapped_data" ("time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
 	selectMappedQuery              = `SELECT "time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid" FROM "mapped_data"`
 	selectLocalCountQuery          = `SELECT "count" FROM "transfer_local_data" WHERE "origin" = $1 AND "start" = $2`
-	selectExistingRemoteCounts     = `SELECT "origin", start" FROM "transfer_remote_data" WHERE "start" >= $1`
-	selectIncompletePeriodsQuery   = `SELECT "origin", "start", "local_count", "remote_count" FROM "transfer_data" WHERE "local_count" < "remote_count" * $1`
+	selectExistingRemoteCounts     = `SELECT "origin", "start" FROM "transfer_remote_data" WHERE "start" >= $1`
+	selectIncompletePeriodsQuery   = `SELECT "origin", "start" FROM "transfer_data" WHERE "local_count" < "remote_count" * $1`
 	insertOrUpdateRemoteData       = `INSERT INTO "transfer_remote_data" ("start", "origin", "count") VALUES ($1, $2, $3) ON CONFLICT ("start", "origin") DO UPDATE SET "count" = $3`
-	logRequestQuery                = `INSERT INTO "transfer_log" ("time", "uuid", "origin", "start", "local", "remote") VALUES ($1, $2, $3, $4, $5, $6)`
-	selectMappedCountPerUuid       = `SELECT "uuid", COUNT("uuid") FROM "mapped_data" WHERE "origin" = '$1' AND "time" BETWEEN $2 AND $2 + '5m'::interval GROUP BY 1`
+	logTransferInsertQuery         = `INSERT INTO "transfer_log" ("time", "origin", "message") VALUES (NOW(), $1, $2)`
+	selectMappedCountPerUuid       = `SELECT "uuid", COUNT("uuid") FROM "mapped_data" WHERE "origin" = $1 AND "time" BETWEEN $2 AND $2 + '5m'::interval GROUP BY 1`
 	selectFirstMappedDataPerOrigin = `SELECT "origin", MIN("start") FROM "transfer_local_data" GROUP BY 1`
 )
 
@@ -392,8 +392,8 @@ func (db *PostgresqlDatabase) CreateRemoteCount(start time.Time, origin string, 
 }
 
 // Log the transfer request
-func (db *PostgresqlDatabase) LogTransferRequest(time time.Time, uuid uuid.UUID, origin string, start time.Time, local int, remote int) error {
-	_, err := db.GetConnection().Exec(context.Background(), logRequestQuery, time, uuid, origin, start, local, remote)
+func (db *PostgresqlDatabase) LogTransferRequest(origin string, message interface{}) error {
+	_, err := db.GetConnection().Exec(context.Background(), logTransferInsertQuery, origin, message)
 	return err
 }
 

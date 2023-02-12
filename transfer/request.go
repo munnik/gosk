@@ -119,7 +119,7 @@ func (t *TransferRequester) sendCountRequests() {
 
 			for _, period := range periods {
 				requestMessage := RequestMessage{
-					Command:     requestCountCmd,
+					Command:     countCmd,
 					UUID:        uuid.New(),
 					PeriodStart: period,
 				}
@@ -176,7 +176,7 @@ func (t *TransferRequester) sendDataRequests() {
 				}
 
 				requestMessage := RequestMessage{
-					Command:       requestCountCmd,
+					Command:       dataCmd,
 					UUID:          uuid.New(),
 					PeriodStart:   period,
 					CountsPerUuid: countsPerUuid,

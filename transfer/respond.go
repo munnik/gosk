@@ -53,9 +53,9 @@ func (t *TransferResponder) messageReceived(c paho.Client, m paho.Message) {
 	}
 
 	switch request.Command {
-	case requestCountCmd:
+	case countCmd:
 		t.respondWithCount(request)
-	case requestDataCmd:
+	case dataCmd:
 		t.respondWithData(request)
 	default:
 		logger.GetLogger().Warn(
@@ -75,7 +75,7 @@ func (t *TransferResponder) respondWithCount(request RequestMessage) {
 		return
 	}
 	response := ResponseMessage{
-		Command:     requestCountCmd,
+		Command:     countCmd,
 		DataPoints:  count,
 		PeriodStart: request.PeriodStart,
 		UUID:        request.UUID,

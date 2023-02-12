@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	requestCountCmd      = "count"
-	requestDataCmd       = "data"
+	countCmd             = "count"
+	dataCmd              = "data"
 	requestTopic         = "request/%s"
 	respondTopic         = "respond/%s"
 	periodDuration       = 5 * time.Minute

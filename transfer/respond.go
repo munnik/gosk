@@ -75,7 +75,7 @@ func (t *TransferResponder) respondWithCount(request RequestMessage) {
 		return
 	}
 	response := ResponseMessage{
-		Command:     requestDataCmd,
+		Command:     requestCountCmd,
 		DataPoints:  count,
 		PeriodStart: request.PeriodStart,
 		UUID:        request.UUID,

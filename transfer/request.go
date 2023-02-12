@@ -18,24 +18,20 @@ import (
 )
 
 type TransferRequester struct {
-	db                 *database.PostgresqlDatabase
-	mqttConfig         *config.MQTTConfig
-	mqttClient         *mqtt.Client
-	origins            []config.OriginsConfig
-	countRequestPeriod time.Duration
-	dataRequestPeriod  time.Duration
-	loadReduction      bool
+	db                        *database.PostgresqlDatabase
+	mqttConfig                *config.MQTTConfig
+	mqttClient                *mqtt.Client
+	countRequestSleepInterval time.Duration
+	dataRequestSleepInterval  time.Duration
 }
 
 func NewTransferRequester(c *config.TransferConfig) *TransferRequester {
 	fmt.Println(c)
 	return &TransferRequester{
-		db:                 database.NewPostgresqlDatabase(&c.PostgresqlConfig),
-		mqttConfig:         &c.MQTTConfig,
-		origins:            c.Origins,
-		countRequestPeriod: c.CountRequestPeriod,
-		dataRequestPeriod:  c.DataRequestPeriod,
-		loadReduction:      c.LoadReduction,
+		db:                        database.NewPostgresqlDatabase(&c.PostgresqlConfig),
+		mqttConfig:                &c.MQTTConfig,
+		countRequestSleepInterval: c.CountRequestSleepInterval,
+		dataRequestSleepInterval:  c.DataRequestSleepInterval,
 	}
 }
 
@@ -48,130 +44,153 @@ func (t *TransferRequester) Run() {
 	// send count requests
 	go func() {
 		for {
-			t.sendCountRequests(t.countRequestPeriod)
+			t.sendCountRequests()
 		}
 	}()
 
 	// send data requests
 	go func() {
 		for {
-			t.sendDataRequests(t.dataRequestPeriod)
+			t.sendDataRequests()
 		}
 	}()
 
-	// never exit
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
-	wg.Wait()
+	wg.Wait() // never exit
 }
 
-func (t *TransferRequester) sendCountRequests(interval time.Duration) {
-	wg := new(sync.WaitGroup)
-	wg.Add(len(t.origins) + 1)
+func (t *TransferRequester) sendCountRequests() {
+	origins, err := t.db.SelectFirstMappedDataPerOrigin()
+	if err != nil {
+		logger.GetLogger().Warn(
+			"Could not retrieve first mapped data per origin",
+			zap.String("Error", err.Error()),
+		)
 
-	go func() {
-		time.Sleep(interval)
-		wg.Done()
-	}()
-
-	for _, origin := range t.origins {
-		go func(origin string, epoch time.Time) {
-			// wait random amount of time before processing to spread the workload
-			if !t.loadReduction {
-				time.Sleep(time.Duration(rand.Intn(int(interval))))
-			}
-			completePeriods, err := t.db.SelectCompletePeriods(origin)
-			if err != nil {
-				logger.GetLogger().Warn(
-					"Could not retrieve completed periods from database",
-					zap.String("Error", err.Error()),
-				)
-				return
-			}
-			incompletePeriods, err := t.db.SelectIncompletePeriods(origin)
-			if err != nil {
-				logger.GetLogger().Warn(
-					"Could not retrieve completed periods from database",
-					zap.String("Error", err.Error()),
-				)
-				return
-			}
-			for period := epoch; period.Before(time.Now().Add(-2 * periodDuration)); period = period.Add(periodDuration) {
-				if _, ok := completePeriods[period.UnixMicro()]; ok {
-					continue // no need to send a count request because the period is already complete
-				}
-				if _, ok := incompletePeriods[period.UnixMicro()]; ok {
-					continue // no need to send a count request because we already know the remote data points
-				}
-				t.sendMQTTCommand(origin, period, requestCountCmd, uuid.Nil)
-			}
-			wg.Done()
-		}(origin.Origin, origin.Epoch)
+		time.Sleep(t.countRequestSleepInterval)
+		return
 	}
-	wg.Wait()
-}
 
-func (t *TransferRequester) sendDataRequests(interval time.Duration) {
+	minStart := time.Now()
+	for _, start := range origins {
+		if start.Before(minStart) {
+			minStart = start
+		}
+	}
+
+	existingRemoteCounts, err := t.db.SelectExistingRemoteCounts(minStart)
+	if err != nil {
+		logger.GetLogger().Warn(
+			"Could not retrieve existing remote counts",
+			zap.String("Error", err.Error()),
+		)
+
+		time.Sleep(t.countRequestSleepInterval)
+		return
+	}
+
 	wg := new(sync.WaitGroup)
-	wg.Add(len(t.origins) + 1)
+	wg.Add(len(origins) + 1)
+
 	go func() {
-		time.Sleep(interval)
+		time.Sleep(t.countRequestSleepInterval)
 		wg.Done()
 	}()
 
-	for _, origin := range t.origins {
-		go func(origin string) {
+	for origin, start := range origins {
+		go func(origin string, start time.Time) {
 			// wait random amount of time before processing to spread the workload
-			if !t.loadReduction {
-				time.Sleep(time.Duration(rand.Intn(int(interval))))
-			}
+			time.Sleep(time.Duration(rand.Intn(int(t.countRequestSleepInterval))))
 
-			incompletePeriods, err := t.db.SelectIncompletePeriods(origin)
-			if err != nil {
-				logger.GetLogger().Warn(
-					"Could not retrieve not completed periods from database",
-					zap.String("Error", err.Error()),
-				)
-				return
-			}
-			for _, period := range incompletePeriods {
-				localDataPoints, remoteDataPoints, err := t.db.SelectLocalAndRemoteDataPoints(origin, period, period.Add(periodDuration))
-				if err != nil {
-					logger.GetLogger().Warn(
-						"Could not retrieve local and remote data points from database",
-						zap.String("Origin", origin),
-						zap.Time("PeriodStart", period),
-						zap.Time("PeriodEnd", period.Add(periodDuration)),
-						zap.String("Error", err.Error()),
-					)
+			periods := make([]time.Time, 0)
+			for p := start; p.Before(time.Now().Add(-countRequestCoolDown)); p = p.Add(periodDuration) {
+				if _, ok := existingRemoteCounts[origin]; !ok {
+					// no remote counts at all for origin so add this period
+					periods = append(periods, p)
 					continue
 				}
-				t.db.UpdateLocalDataPoints(origin, period, period.Add(periodDuration), localDataPoints)
-				// check if local data points are still less after update
-				if localDataPoints < remoteDataPoints {
-					uuid := uuid.New()
-					timestamp := time.Now()
-					t.db.LogTransferRequest(timestamp, uuid, origin, period, period.Add(periodDuration), localDataPoints, remoteDataPoints)
-					t.db.UpdateStatistics(timestamp, origin, period, period.Add(periodDuration))
-					t.sendMQTTCommand(origin, period, requestDataCmd, uuid)
+				if _, ok := existingRemoteCounts[origin][start]; !ok {
+					// for this period there is no remote count so add this period
+					periods = append(periods, p)
+					continue
 				}
 			}
+
+			for _, period := range periods {
+				requestMessage := RequestMessage{
+					Command:     requestCountCmd,
+					UUID:        uuid.New(),
+					PeriodStart: period,
+				}
+				t.sendMQTTCommand(origin, requestMessage)
+				t.db.LogTransferRequest(origin, requestMessage)
+			}
 			wg.Done()
-		}(origin.Origin)
+		}(origin, start)
+	}
+
+	wg.Wait()
+}
+
+func (t *TransferRequester) countResponseReceived(origin string, response ResponseMessage) {
+	t.db.CreateRemoteCount(response.PeriodStart, origin, response.DataPoints)
+	t.db.LogTransferRequest(origin, response)
+}
+
+func (t *TransferRequester) sendDataRequests() {
+	origins, err := t.db.SelectIncompletePeriods()
+	if err != nil {
+		logger.GetLogger().Warn(
+			"Could not retrieve incomplete periods per origin",
+			zap.String("Error", err.Error()),
+		)
+
+		time.Sleep(t.dataRequestSleepInterval)
+		return
+	}
+
+	wg := new(sync.WaitGroup)
+	wg.Add(len(origins) + 1)
+
+	go func() {
+		time.Sleep(t.dataRequestSleepInterval)
+		wg.Done()
+	}()
+
+	for origin, periods := range origins {
+		go func(origin string, periods []time.Time) {
+			for _, period := range periods {
+				// wait random amount of time before processing to spread the workload
+				time.Sleep(time.Duration(rand.Intn(int(t.dataRequestSleepInterval))))
+
+				countsPerUuid, err := t.db.SelectCountPerUuid(origin, period)
+				if err != nil {
+					logger.GetLogger().Warn(
+						"Could not retrieve counts per uuid from database",
+						zap.String("Error", err.Error()),
+						zap.String("Origin", origin),
+						zap.Time("Start", period),
+					)
+					return
+				}
+
+				requestMessage := RequestMessage{
+					Command:       requestCountCmd,
+					UUID:          uuid.New(),
+					PeriodStart:   period,
+					CountsPerUuid: countsPerUuid,
+				}
+				t.sendMQTTCommand(origin, requestMessage)
+				t.db.LogTransferRequest(origin, requestMessage)
+			}
+			wg.Done()
+		}(origin, periods)
 	}
 	wg.Wait()
 }
 
-func (t *TransferRequester) responseReceived(origin string, response ResponseMessage) {
-	t.db.CreatePeriod(origin, response.PeriodStart, response.PeriodStart.Add(periodDuration), response.DataPoints)
-}
-
-func (t *TransferRequester) sendMQTTCommand(origin string, start time.Time, command string, uuid uuid.UUID) {
-	message := RequestMessage{
-		Command:     command,
-		PeriodStart: start,
-		UUID:        uuid,
-	}
+func (t *TransferRequester) sendMQTTCommand(origin string, message RequestMessage) {
 	bytes, err := json.Marshal(message)
 	if err != nil {
 		logger.GetLogger().Warn(
@@ -194,5 +213,5 @@ func (t *TransferRequester) messageReceived(c paho.Client, m paho.Message) {
 		)
 		return
 	}
-	t.responseReceived(strings.TrimPrefix(m.Topic(), fmt.Sprintf(respondTopic, "")), response)
+	t.countResponseReceived(strings.TrimPrefix(m.Topic(), fmt.Sprintf(respondTopic, "")), response)
 }

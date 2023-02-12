@@ -18,11 +18,7 @@ import (
 )
 
 const (
-	mqttTopic                    = "vessels/#"
-	receivedBufferSize           = 100_000 // allow a lot of compressed data
-	numberOfDecompressionWorkers = 10
-	decompressedBufferSize       = 500
-	numberOfPublishWorkers       = 50
+	mqttTopic = "vessels/#"
 )
 
 // var mqttMessagesReceived =

@@ -261,6 +261,7 @@ func defaultPostgresqlConfig() PostgresqlConfig {
 		NumberOfWorkers: 10,
 	}
 }
+
 func NewPostgresqlConfig(configFilePath string) *PostgresqlConfig {
 	result := defaultPostgresqlConfig()
 	readConfigFile(&result, configFilePath)
@@ -306,31 +307,19 @@ func (c *SignalKConfig) WithVersion(version string) *SignalKConfig {
 	return c
 }
 
-type OriginsConfig struct {
-	Origin string    `mapstructure:"origin"`
-	Epoch  time.Time `mapstructure:"epoch"`
-}
-
 type TransferConfig struct {
-	PostgresqlConfig   PostgresqlConfig `mapstructure:"database"`
-	MQTTConfig         MQTTConfig       `mapstructure:"mqtt"`
-	Origin             string           `mapstructure:"origin"`
-	Origins            []OriginsConfig  `mapstructure:"origins"`
-	CountRequestPeriod time.Duration    `mapstructure:"count_request_period"`
-	DataRequestPeriod  time.Duration    `mapstructure:"data_request_period"`
-	LoadReduction      bool             `mapstructure:"load_reduction"`
-	SleepDuration      time.Duration    `mapstructure:"sleep_duration"`
-	SleepEveryN        int              `mapstructure:"sleep_every_n"`
+	PostgresqlConfig          PostgresqlConfig `mapstructure:"database"`
+	MQTTConfig                MQTTConfig       `mapstructure:"mqtt"`
+	Origin                    string           `mapstructure:"origin"`
+	CountRequestSleepInterval time.Duration    `mapstructure:"count_request_sleep_interval"`
+	DataRequestSleepInterval  time.Duration    `mapstructure:"data_request_sleep_interval"`
 }
 
 func NewTransferConfig(configFilePath string) *TransferConfig {
 	result := &TransferConfig{
-		PostgresqlConfig:   defaultPostgresqlConfig(),
-		CountRequestPeriod: 30 * time.Minute,
-		DataRequestPeriod:  2 * time.Hour,
-		LoadReduction:      false,
-		SleepDuration:      1 * time.Second,
-		SleepEveryN:        1000,
+		PostgresqlConfig:          defaultPostgresqlConfig(),
+		CountRequestSleepInterval: 30 * time.Minute,
+		DataRequestSleepInterval:  2 * time.Hour,
 	}
 	readConfigFile(result, configFilePath)
 

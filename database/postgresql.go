@@ -24,19 +24,17 @@ import (
 )
 
 const (
-	rawInsertQuery    = `INSERT INTO "raw_data" ("time", "connector", "value", "uuid", "type") VALUES ($1, $2, $3, $4, $5)`
-	selectRawQuery    = `SELECT "time", "connector", "value", "uuid", "type" FROM "raw_data"`
-	mappedInsertQuery = `INSERT INTO "mapped_data" ("time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
-	// on conflict(time, context, path, value, uuid, origin) do nothing
+	rawInsertQuery                 = `INSERT INTO "raw_data" ("time", "connector", "value", "uuid", "type") VALUES ($1, $2, $3, $4, $5)`
+	selectRawQuery                 = `SELECT "time", "connector", "value", "uuid", "type" FROM "raw_data"`
+	mappedInsertQuery              = `INSERT INTO "mapped_data" ("time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
 	selectMappedQuery              = `SELECT "time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid" FROM "mapped_data"`
-	selectMappedDataPointsQuery    = `SELECT count(*) FROM "mapped_data" WHERE "time" BETWEEN $1 AND $2`
-	selectCompletePeriodsQuery     = `SELECT "start" FROM "remote_data" WHERE "origin" = $1 AND "local" >= "remote" * $2`
-	selectIncompletePeriodsQuery   = `SELECT "start" FROM "remote_data" WHERE "origin" = $1 AND "local" < "remote" * $2`
-	insertOrUpdatePeriodQuery      = `INSERT INTO "remote_data" ("origin", "start", "end", "remote", "last_count_request") VALUES ($1, $2, $3, $4, $5) ON CONFLICT ("origin", "start", "end") DO UPDATE SET "remote" = $4, "last_count_request" = $5, "count_requests" = "remote_data"."count_requests" + 1`
-	updateLocalDataPoints          = `UPDATE "remote_data" SET "local" = $4 WHERE "origin" = $1 AND "start" = $2 AND "end" = $3`
-	selectLocalAndRemoteDataPoints = `select local, remote from (select "remote" FROM "remote_data" WHERE "remote_data"."origin" = $1  AND "start" = $2 AND "end" = $3) as a,( SELECT count(*) AS "local" FROM "mapped_data" WHERE "origin" = $1 AND "mapped_data"."time" BETWEEN $2 AND $3) as b;`
-	logRequestQuery                = `INSERT INTO "transfer_log" ("time", "uuid", "origin", "start", "end", "local", "remote") VALUES ($1, $2, $3, $4, $5, $6, $7)`
-	updateStatisticsQuery          = `UPDATE "remote_data" SET "last_data_request" = $1, "data_requests" = "data_requests" + 1 WHERE "origin" = $2 AND "start" = $3 AND "end" = $4`
+	selectLocalCountQuery          = `SELECT "count" FROM "transfer_local_data" WHERE "origin" = $1 AND "start" = $2`
+	selectExistingRemoteCounts     = `SELECT "origin", "start" FROM "transfer_remote_data" WHERE "start" >= $1`
+	selectIncompletePeriodsQuery   = `SELECT "origin", "start" FROM "transfer_data" WHERE "local_count" < "remote_count" * $1`
+	insertOrUpdateRemoteData       = `INSERT INTO "transfer_remote_data" ("start", "origin", "count") VALUES ($1, $2, $3) ON CONFLICT ("start", "origin") DO UPDATE SET "count" = $3`
+	logTransferInsertQuery         = `INSERT INTO "transfer_log" ("time", "origin", "message") VALUES (NOW(), $1, $2)`
+	selectMappedCountPerUuid       = `SELECT "uuid", COUNT("uuid") FROM "mapped_data" WHERE "origin" = $1 AND "time" BETWEEN $2 AND $2 + '5m'::interval GROUP BY 1`
+	selectFirstMappedDataPerOrigin = `SELECT "origin", MIN("start") FROM "transfer_local_data" GROUP BY 1`
 )
 
 //go:embed migrations/*.sql
@@ -237,7 +235,7 @@ func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...inte
 	result := make([]message.Mapped, 0)
 	for rows.Next() {
 		m := message.NewSingleValueMapped()
-		rows.Scan(
+		err := rows.Scan(
 			&m.Timestamp,
 			&m.Source.Label,
 			&m.Source.Type,
@@ -248,6 +246,9 @@ func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...inte
 			&m.Origin,
 			&m.Source.TransferUuid,
 		)
+		if err != nil {
+			return nil, err
+		}
 		if m.Value, err = message.Decode(m.Value); err != nil {
 			logger.GetLogger().Warn(
 				"Could not decode value",
@@ -257,82 +258,142 @@ func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...inte
 		}
 		result = append(result, m.ToMapped())
 	}
+	// check for errors after last call to .Next()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	return result, nil
 }
 
-func (db *PostgresqlDatabase) ReadMappedCount(start time.Time, end time.Time) (int, error) {
-	rows, err := db.GetConnection().Query(context.Background(), selectMappedDataPointsQuery, start, end)
+// Returns the start timestamp of each period that has local count but no remote count
+func (db *PostgresqlDatabase) SelectFirstMappedDataPerOrigin() (map[string]time.Time, error) {
+	rows, err := db.GetConnection().Query(context.Background(), selectFirstMappedDataPerOrigin)
 	if err != nil {
-		return -1, err
+		return nil, err
 	}
 	defer rows.Close()
-	var count int
-	rows.Next()
-	rows.Scan(&count)
 
-	return count, nil
-}
-
-// Returns the start timestamp of each period that has the same or more local rows than remote
-func (db *PostgresqlDatabase) SelectCompletePeriods(origin string) (map[int64]time.Time, error) {
-	return db.selectPeriods(selectCompletePeriodsQuery, origin, db.completeRatio)
-}
-
-// Returns the start timestamp of each period that has the same or more local rows than remote
-func (db *PostgresqlDatabase) SelectIncompletePeriods(origin string) (map[int64]time.Time, error) {
-	return db.selectPeriods(selectIncompletePeriodsQuery, origin, db.completeRatio)
-}
-
-// Returns the start timestamp of each period that has the same or more local rows than remote
-func (db *PostgresqlDatabase) selectPeriods(query string, origin string, completeRatio float64) (map[int64]time.Time, error) {
-	result := map[int64]time.Time{}
-	rows, err := db.GetConnection().Query(context.Background(), query, origin, completeRatio)
-	if err != nil {
-		return result, err
-	}
-	defer rows.Close()
-	var completedPeriod time.Time
+	result := make(map[string]time.Time)
+	var origin string
+	var minStart time.Time
 	for rows.Next() {
-		rows.Scan(&completedPeriod)
-		result[completedPeriod.UnixMicro()] = completedPeriod
+		err := rows.Scan(&origin, &minStart)
+		if err != nil {
+			return nil, err
+		}
+		result[origin] = minStart
 	}
+	// check for errors after last call to .Next()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+func (db *PostgresqlDatabase) SelectExistingRemoteCounts(from time.Time) (map[string]map[time.Time]struct{}, error) {
+	rows, err := db.GetConnection().Query(context.Background(), selectExistingRemoteCounts, from)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]map[time.Time]struct{})
+	var origin string
+	var start time.Time
+	for rows.Next() {
+		err := rows.Scan(&origin, &start)
+		if err != nil {
+			return nil, err
+		}
+		if _, ok := result[origin]; !ok {
+			result[origin] = make(map[time.Time]struct{})
+		}
+		result[origin][start] = struct{}{}
+	}
+	// check for errors after last call to .Next()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+// Returns the start timestamp of each period that has the same or more local rows than remote
+func (db *PostgresqlDatabase) SelectIncompletePeriods() (map[string][]time.Time, error) {
+	rows, err := db.GetConnection().Query(context.Background(), selectIncompletePeriodsQuery, db.completeRatio)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string][]time.Time)
+	var origin string
+	var start time.Time
+	for rows.Next() {
+		err := rows.Scan(&origin, &start)
+		if err != nil {
+			return nil, err
+		}
+		if _, ok := result[origin]; !ok {
+			result[origin] = make([]time.Time, 0)
+		}
+		result[origin] = append(result[origin], start)
+	}
+	// check for errors after last call to .Next()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+func (db *PostgresqlDatabase) SelectCountMapped(origin string, start time.Time) (int, error) {
+	var result int
+	err := db.GetConnection().QueryRow(context.Background(), selectLocalCountQuery, origin, start).Scan(&result)
+	if err != nil {
+		return 0, err
+	}
+
+	return result, nil
+}
+
+// Return the number of rows per (raw) uuid in the mapped_data table
+func (db *PostgresqlDatabase) SelectCountPerUuid(origin string, start time.Time) (map[uuid.UUID]int, error) {
+	rows, err := db.GetConnection().Query(context.Background(), selectMappedCountPerUuid, origin, start)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[uuid.UUID]int)
+	var uuid uuid.UUID
+	var count int
+	for rows.Next() {
+		err := rows.Scan(&uuid, &count)
+		if err != nil {
+			return nil, err
+		}
+		result[uuid] = count
+	}
+	// check for errors after last call to .Next()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
 	return result, nil
 }
 
 // Creates a period in the database, the default value for the local data points is -1
-func (db *PostgresqlDatabase) CreatePeriod(origin string, start time.Time, end time.Time, remote int) error {
-	_, err := db.GetConnection().Exec(context.Background(), insertOrUpdatePeriodQuery, origin, start, end, remote, time.Now())
+func (db *PostgresqlDatabase) CreateRemoteCount(start time.Time, origin string, count int) error {
+	_, err := db.GetConnection().Exec(context.Background(), insertOrUpdateRemoteData, start, origin, count)
 	return err
-}
-
-// Update the local data points in the database
-func (db *PostgresqlDatabase) UpdateLocalDataPoints(origin string, start time.Time, end time.Time, dataPoints int) error {
-	_, err := db.GetConnection().Exec(context.Background(), updateLocalDataPoints, origin, start, end, dataPoints)
-	return err
-}
-
-func (db *PostgresqlDatabase) SelectLocalAndRemoteDataPoints(origin string, start time.Time, end time.Time) (int, int, error) {
-	rows, err := db.GetConnection().Query(context.Background(), selectLocalAndRemoteDataPoints, origin, start, end)
-	if err != nil {
-		return -1, -1, err
-	}
-	defer rows.Close()
-	var local int
-	var remote int
-	rows.Next()
-	rows.Scan(&local, &remote)
-	return local, remote, nil
 }
 
 // Log the transfer request
-func (db *PostgresqlDatabase) LogTransferRequest(time time.Time, uuid uuid.UUID, origin string, start time.Time, end time.Time, local int, remote int) error {
-	_, err := db.GetConnection().Exec(context.Background(), logRequestQuery, time, uuid, origin, start, end, local, remote)
-	return err
-}
-
-func (db *PostgresqlDatabase) UpdateStatistics(time time.Time, origin string, start time.Time, end time.Time) error {
-	_, err := db.GetConnection().Exec(context.Background(), updateStatisticsQuery, time, origin, start, end)
+func (db *PostgresqlDatabase) LogTransferRequest(origin string, message interface{}) error {
+	_, err := db.GetConnection().Exec(context.Background(), logTransferInsertQuery, origin, message)
 	return err
 }
 

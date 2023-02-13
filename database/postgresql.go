@@ -61,6 +61,7 @@ type PostgresqlDatabase struct {
 	writes          prometheus.Counter
 	timeouts        prometheus.Counter
 	batchSizeGauge  prometheus.Gauge
+	cacheMisses     prometheus.Counter
 }
 
 func NewPostgresqlDatabase(c *config.PostgresqlConfig) *PostgresqlDatabase {
@@ -78,6 +79,7 @@ func NewPostgresqlDatabase(c *config.PostgresqlConfig) *PostgresqlDatabase {
 		writes:         promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_writes_total", Help: "total number of deltas added to queue"}),
 		timeouts:       promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_timeouts_total", Help: "total number timeouts"}),
 		batchSizeGauge: promauto.NewGauge(prometheus.GaugeOpts{Name: "gosk_psql_batch_length", Help: "number of deltas in current batch"}),
+		cacheMisses:    promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_cache_misses_total", Help: "total number of cache misses"}),
 	}
 	go func() {
 		ticker := time.NewTicker(time.Second * time.Duration(c.BatchFlushInterval))
@@ -147,6 +149,7 @@ func (db *PostgresqlDatabase) WriteRaw(raw message.Raw) {
 	db.writes.Inc()
 	// check if timestamp is already in the cache, if not retrieve all existing rows from the database and fill the cache
 	if _, ok := db.mappedCache.Get(raw.Timestamp.UnixMicro()); !ok {
+		db.cacheMisses.Inc()
 		// create an empty list for the timestamp
 		db.rawCache.Set(raw.Timestamp.UnixMicro(), []message.Raw{})
 		ctx, cancel := context.WithTimeout(context.Background(), databaseTimeout)
@@ -206,6 +209,7 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 	}
 	// check if timestamp is already in the cache, if not retrieve all existing rows from the database and fill the cache
 	if _, ok := db.mappedCache.Get(svm.Timestamp.UnixMicro()); !ok {
+		db.cacheMisses.Inc()
 		// create an empty list for the timestamp
 		db.mappedCache.Set(svm.Timestamp.UnixMicro(), []message.SingleValueMapped{})
 		ctx, cancel := context.WithTimeout(context.Background(), databaseTimeout)

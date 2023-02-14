@@ -42,7 +42,7 @@ const (
 //go:embed migrations/*.sql
 var fs embed.FS
 
-const databaseTimeout time.Duration = 1 * time.Second
+// const databaseTimeout time.Duration = 1 * time.Second
 
 type PostgresqlDatabase struct {
 	url             string
@@ -56,6 +56,7 @@ type PostgresqlDatabase struct {
 	flushMutex      sync.Mutex
 	completeRatio   float64
 	upgradeDone     bool
+	databaseTimeout time.Duration
 	flushes         prometheus.Counter
 	lastFlushGauge  prometheus.Gauge
 	writes          prometheus.Counter
@@ -66,20 +67,21 @@ type PostgresqlDatabase struct {
 
 func NewPostgresqlDatabase(c *config.PostgresqlConfig) *PostgresqlDatabase {
 	result := &PostgresqlDatabase{
-		url:            c.URLString,
-		rawCache:       cache.New(cache.AsFIFO[int64, []message.Raw](fifo.WithCapacity(20 * 1024))),
-		mappedCache:    cache.New(cache.AsFIFO[int64, []message.SingleValueMapped](fifo.WithCapacity(20 * 1024))),
-		batchSize:      c.BatchSize,
-		completeRatio:  c.CompleteRatio,
-		batch:          &pgx.Batch{},
-		lastFlush:      time.Now(),
-		upgradeDone:    false,
-		flushes:        promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_flushes_total", Help: "total number batches flushed"}),
-		lastFlushGauge: promauto.NewGauge(prometheus.GaugeOpts{Name: "gosk_psql_last_flush_time", Help: "last db flush"}),
-		writes:         promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_writes_total", Help: "total number of deltas added to queue"}),
-		timeouts:       promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_timeouts_total", Help: "total number timeouts"}),
-		batchSizeGauge: promauto.NewGauge(prometheus.GaugeOpts{Name: "gosk_psql_batch_length", Help: "number of deltas in current batch"}),
-		cacheMisses:    promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_cache_misses_total", Help: "total number of cache misses"}),
+		url:             c.URLString,
+		rawCache:        cache.New(cache.AsFIFO[int64, []message.Raw](fifo.WithCapacity(20 * 1024))),
+		mappedCache:     cache.New(cache.AsFIFO[int64, []message.SingleValueMapped](fifo.WithCapacity(20 * 1024))),
+		batchSize:       c.BatchSize,
+		completeRatio:   c.CompleteRatio,
+		batch:           &pgx.Batch{},
+		lastFlush:       time.Now(),
+		upgradeDone:     false,
+		databaseTimeout: c.Timeout,
+		flushes:         promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_flushes_total", Help: "total number batches flushed"}),
+		lastFlushGauge:  promauto.NewGauge(prometheus.GaugeOpts{Name: "gosk_psql_last_flush_time", Help: "last db flush"}),
+		writes:          promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_writes_total", Help: "total number of deltas added to queue"}),
+		timeouts:        promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_timeouts_total", Help: "total number timeouts"}),
+		batchSizeGauge:  promauto.NewGauge(prometheus.GaugeOpts{Name: "gosk_psql_batch_length", Help: "number of deltas in current batch"}),
+		cacheMisses:     promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_cache_misses_total", Help: "total number of cache misses"}),
 	}
 	go func() {
 		ticker := time.NewTicker(time.Second * time.Duration(c.BatchFlushInterval))
@@ -152,7 +154,7 @@ func (db *PostgresqlDatabase) WriteRaw(raw message.Raw) {
 		db.cacheMisses.Inc()
 		// create an empty list for the timestamp
 		db.rawCache.Set(raw.Timestamp.UnixMicro(), []message.Raw{})
-		ctx, cancel := context.WithTimeout(context.Background(), databaseTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
 		defer cancel()
 		rows, err := db.GetConnection().Query(ctx, selectRawQuery+` WHERE "time" = $1`, raw.Timestamp)
 		if err != nil {
@@ -212,7 +214,7 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 		db.cacheMisses.Inc()
 		// create an empty list for the timestamp
 		db.mappedCache.Set(svm.Timestamp.UnixMicro(), []message.SingleValueMapped{})
-		ctx, cancel := context.WithTimeout(context.Background(), databaseTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
 		defer cancel()
 		rows, err := db.GetConnection().Query(ctx, selectMappedQuery+` WHERE "time" = $1`, svm.Timestamp)
 		if err != nil {
@@ -260,7 +262,7 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 }
 
 func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...interface{}) ([]message.Mapped, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), databaseTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
 	defer cancel()
 	rows, err := db.GetConnection().Query(ctx, fmt.Sprintf("%s %s", selectMappedQuery, appendToQuery), arguments...)
 	if err != nil {
@@ -308,7 +310,7 @@ func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...inte
 
 // Returns the start timestamp of each period that has local count but no remote count
 func (db *PostgresqlDatabase) SelectFirstMappedDataPerOrigin() (map[string]time.Time, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), databaseTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
 	defer cancel()
 	rows, err := db.GetConnection().Query(ctx, selectFirstMappedDataPerOrigin)
 	if err != nil {
@@ -339,7 +341,7 @@ func (db *PostgresqlDatabase) SelectFirstMappedDataPerOrigin() (map[string]time.
 }
 
 func (db *PostgresqlDatabase) SelectExistingRemoteCounts(from time.Time) (map[string]map[time.Time]struct{}, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), databaseTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
 	defer cancel()
 	rows, err := db.GetConnection().Query(ctx, selectExistingRemoteCounts, from)
 	if err != nil {
@@ -374,7 +376,7 @@ func (db *PostgresqlDatabase) SelectExistingRemoteCounts(from time.Time) (map[st
 
 // Returns the start timestamp of each period that has the same or more local rows than remote
 func (db *PostgresqlDatabase) SelectIncompletePeriods() (map[string][]time.Time, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), databaseTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
 	defer cancel()
 	rows, err := db.GetConnection().Query(ctx, selectIncompletePeriodsQuery, db.completeRatio)
 	if err != nil {
@@ -409,7 +411,7 @@ func (db *PostgresqlDatabase) SelectIncompletePeriods() (map[string][]time.Time,
 
 func (db *PostgresqlDatabase) SelectCountMapped(origin string, start time.Time) (int, error) {
 	var result int
-	ctx, cancel := context.WithTimeout(context.Background(), databaseTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
 	defer cancel()
 	err := db.GetConnection().QueryRow(ctx, selectLocalCountQuery, origin, start).Scan(&result)
 	if err != nil {
@@ -425,7 +427,7 @@ func (db *PostgresqlDatabase) SelectCountMapped(origin string, start time.Time) 
 
 // Return the number of rows per (raw) uuid in the mapped_data table
 func (db *PostgresqlDatabase) SelectCountPerUuid(origin string, start time.Time) (map[uuid.UUID]int, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), databaseTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
 	defer cancel()
 	rows, err := db.GetConnection().Query(ctx, selectMappedCountPerUuid, origin, start)
 	if err != nil {
@@ -457,7 +459,7 @@ func (db *PostgresqlDatabase) SelectCountPerUuid(origin string, start time.Time)
 
 // Creates a period in the database, the default value for the local data points is -1
 func (db *PostgresqlDatabase) CreateRemoteCount(start time.Time, origin string, count int) error {
-	ctx, cancel := context.WithTimeout(context.Background(), databaseTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
 	defer cancel()
 	_, err := db.GetConnection().Exec(ctx, insertOrUpdateRemoteData, start, origin, count)
 	if ctx.Err() != nil {
@@ -470,7 +472,7 @@ func (db *PostgresqlDatabase) CreateRemoteCount(start time.Time, origin string, 
 
 // Log the transfer request
 func (db *PostgresqlDatabase) LogTransferRequest(origin string, message interface{}) error {
-	ctx, cancel := context.WithTimeout(context.Background(), databaseTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
 	defer cancel()
 	_, err := db.GetConnection().Exec(ctx, logTransferInsertQuery, origin, message)
 	if ctx.Err() != nil {
@@ -525,16 +527,16 @@ func (db *PostgresqlDatabase) flushBatch() {
 	db.batch = &pgx.Batch{}
 	db.batchSizeGauge.Set(0)
 	defer db.flushMutex.Unlock()
-	ctx, cancel := context.WithTimeout(context.Background(), databaseTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
 	defer cancel()
 	result := db.GetConnection().SendBatch(ctx, batchPtr)
 	// todo, determine if inserts went well
-	if ctx.Err() != nil {
-		logger.GetLogger().Error("Timeout during database insertion")
-		db.timeouts.Inc()
-		return
-	}
 	if err := result.Close(); err != nil {
+		if ctx.Err() != nil {
+			logger.GetLogger().Error("Timeout during database insertion", zap.Error(ctx.Err()), zap.Error(err))
+			db.timeouts.Inc()
+			return
+		}
 		logger.GetLogger().Error(
 			"Unable to flush batch",
 			zap.String("Error", err.Error()),

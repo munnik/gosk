@@ -7,6 +7,7 @@ import (
 
 	paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/google/uuid"
+	"github.com/jackc/pgtype"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/database"
 	"github.com/munnik/gosk/logger"
@@ -119,8 +120,10 @@ func (t *TransferResponder) injectData(uuidsToTransmit map[uuid.UUID]int, transf
 	for uuid := range uuidsToTransmit {
 		uuids = append(uuids, uuid)
 	}
+	pgUuids := &pgtype.UUIDArray{}
+	pgUuids.Set(uuids)
 
-	deltas, err := t.db.ReadMapped(`WHERE "uuid" IN ($1)`, uuids)
+	deltas, err := t.db.ReadMapped(`WHERE "uuid" = ANY ($1)`, pgUuids)
 	if err != nil {
 		logger.GetLogger().Warn(
 			"Could not retrieve mapped data from database",

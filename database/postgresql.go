@@ -531,12 +531,12 @@ func (db *PostgresqlDatabase) flushBatch() {
 	defer cancel()
 	result := db.GetConnection().SendBatch(ctx, batchPtr)
 	// todo, determine if inserts went well
-	if ctx.Err() != nil {
-		logger.GetLogger().Error("Timeout during database insertion")
-		db.timeouts.Inc()
-		return
-	}
 	if err := result.Close(); err != nil {
+		if ctx.Err() != nil {
+			logger.GetLogger().Error("Timeout during database insertion")
+			db.timeouts.Inc()
+			return
+		}
 		logger.GetLogger().Error(
 			"Unable to flush batch",
 			zap.String("Error", err.Error()),

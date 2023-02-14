@@ -533,7 +533,7 @@ func (db *PostgresqlDatabase) flushBatch() {
 	// todo, determine if inserts went well
 	if err := result.Close(); err != nil {
 		if ctx.Err() != nil {
-			logger.GetLogger().Error("Timeout during database insertion")
+			logger.GetLogger().Error("Timeout during database insertion", zap.Error(ctx.Err()), zap.Error(err))
 			db.timeouts.Inc()
 			return
 		}

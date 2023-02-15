@@ -70,7 +70,7 @@ func NewPostgresqlDatabase(c *config.PostgresqlConfig) *PostgresqlDatabase {
 		url:             c.URLString,
 		rawCache:        cache.New(cache.AsFIFO[int64, []message.Raw](fifo.WithCapacity(20 * 1024))),
 		mappedCache:     cache.New(cache.AsFIFO[int64, []message.SingleValueMapped](fifo.WithCapacity(20 * 1024))),
-		batchSize:       c.BatchSize,
+		batchSize:       c.BatchFlushBytes,
 		completeRatio:   c.CompleteRatio,
 		batch:           &pgx.Batch{},
 		lastFlush:       time.Now(),
@@ -84,10 +84,10 @@ func NewPostgresqlDatabase(c *config.PostgresqlConfig) *PostgresqlDatabase {
 		cacheMisses:     promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_cache_misses_total", Help: "total number of cache misses"}),
 	}
 	go func() {
-		ticker := time.NewTicker(time.Second * time.Duration(c.BatchFlushInterval))
+		ticker := time.NewTicker(c.BatchFlushInterval)
 		for {
 			<-ticker.C
-			if time.Now().After(result.lastFlush.Add(time.Second * time.Duration(c.BatchFlushInterval))) {
+			if time.Now().After(result.lastFlush.Add(c.BatchFlushInterval)) {
 				result.flushBatch()
 			}
 		}

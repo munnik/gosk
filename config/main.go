@@ -247,8 +247,8 @@ func NewMQTTConfig(configFilePath string) *MQTTConfig {
 
 type PostgresqlConfig struct {
 	URLString          string        `mapstructure:"url"`
-	BatchSize          int           `mapstructure:"batch_size"`
-	BatchFlushInterval int           `mapstructure:"batch_flush_interval"`
+	BatchFlushBytes    int           `mapstructure:"batch_flush_bytes"`
+	BatchFlushInterval time.Duration `mapstructure:"batch_flush_interval"`
 	CompleteRatio      float64       `mapstructure:"complete_ratio"`    // a period is considered complete when local / remote >= CompleteRatio
 	BufferSize         int           `mapstructure:"buffer_size"`       // size of the buffer for incoming messages
 	NumberOfWorkers    int           `mapstructure:"number_of_workers"` // number of workers to handle the incoming messages

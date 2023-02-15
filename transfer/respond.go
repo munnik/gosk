@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"time"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/google/uuid"
@@ -151,5 +152,6 @@ func (t *TransferResponder) injectData(uuidsToTransmit map[uuid.UUID]int, transf
 			)
 			continue
 		}
+		time.Sleep(t.config.SleepBetweenRespondDeltas)
 	}
 }

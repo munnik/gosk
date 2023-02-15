@@ -315,6 +315,7 @@ type TransferConfig struct {
 	Origin                    string           `mapstructure:"origin"`
 	CountRequestSleepInterval time.Duration    `mapstructure:"count_request_sleep_interval"`
 	DataRequestSleepInterval  time.Duration    `mapstructure:"data_request_sleep_interval"`
+	SleepBetweenRespondDeltas time.Duration    `mapstructure:"sleep_between_respond_deltas"`
 }
 
 func NewTransferConfig(configFilePath string) *TransferConfig {
@@ -322,6 +323,7 @@ func NewTransferConfig(configFilePath string) *TransferConfig {
 		PostgresqlConfig:          defaultPostgresqlConfig(),
 		CountRequestSleepInterval: 30 * time.Minute,
 		DataRequestSleepInterval:  2 * time.Hour,
+		SleepBetweenRespondDeltas: 100 * time.Millisecond,
 	}
 	readConfigFile(result, configFilePath)
 

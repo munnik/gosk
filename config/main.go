@@ -93,9 +93,14 @@ func NewUrlGroupsConfig(configFilePath string) []UrlGroupConfig {
 	return result
 }
 
+const (
+	ProtocolOptionNmeaParse = "nmea_parse"
+)
+
 type MapperConfig struct {
-	Context  string `mapstructure:"context"`
-	Protocol string `mapstructure:"protocol"`
+	Context         string            `mapstructure:"context"`
+	Protocol        string            `mapstructure:"protocol"`
+	ProtocolOptions map[string]string `mapstructure:"protocol_options"`
 }
 
 func NewMapperConfig(configFilePath string) MapperConfig {

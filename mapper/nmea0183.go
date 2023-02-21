@@ -2,6 +2,8 @@ package mapper
 
 import (
 	"fmt"
+	"strings"
+	"unicode"
 
 	"github.com/munnik/go-nmea"
 	"github.com/munnik/gosk/config"
@@ -23,13 +25,24 @@ func (m *Nmea0183Mapper) Map(subscriber mangos.Socket, publisher mangos.Socket) 
 }
 
 func (m *Nmea0183Mapper) DoMap(r *message.Raw) (*message.Mapped, error) {
-	result := message.NewMapped().WithContext(m.config.Context).WithOrigin(m.config.Context)
-	sentence, err := nmea.Parse(string(r.Value))
+	options := []string{}
+	if optionsString, ok := m.config.ProtocolOptions[config.ProtocolOptionNmeaParse]; ok {
+		options = strings.FieldsFunc(
+			optionsString,
+			func(c rune) bool {
+				return !unicode.IsLetter(c) && !unicode.IsNumber(c)
+			},
+		)
+	}
+
+	sentence, err := nmea.Parse(string(r.Value), options...)
 	if err != nil {
 		return nil, err
 	}
 
-	// if it is a multifragment message return without error if it is not the last fragment
+	result := message.NewMapped().WithContext(m.config.Context).WithOrigin(m.config.Context)
+
+	// if it is a multi fragment message return without error if it is not the last fragment
 	if aisSentence, ok := sentence.(nmea.VDMVDO); ok {
 		if numFragments, err := aisSentence.NumFragments.GetValue(); err == nil {
 			if fragmentNUmber, err := aisSentence.FragmentNumber.GetValue(); err == nil {
@@ -204,14 +217,14 @@ func (m *Nmea0183Mapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	}
 	if v, ok := sentence.(nmea.RudderAngle); ok {
 		rudderAngleStarboard, errStarboard := v.GetRudderAngleStarboard()
-		rudderAnglePortSide, errPortside := v.GetRudderAngleStarboard()
+		rudderAnglePortSide, errPort := v.GetRudderAnglePortside()
 		if rudderAngle, err := v.GetRudderAngle(); err == nil {
 			u.AddValue(message.NewValue().WithPath("steering.rudderAngle").WithValue(rudderAngle))
-		} else if errStarboard == nil && errPortside == nil {
+		} else if errStarboard == nil && errPort == nil {
 			u.AddValue(message.NewValue().WithPath("steering.rudderAngle").WithValue((rudderAngleStarboard + rudderAnglePortSide) / 2))
 		} else if errStarboard == nil {
 			u.AddValue(message.NewValue().WithPath("steering.rudderAngle").WithValue(rudderAngleStarboard))
-		} else if errPortside == nil {
+		} else if errPort == nil {
 			u.AddValue(message.NewValue().WithPath("steering.rudderAngle").WithValue(rudderAnglePortSide))
 		}
 	}

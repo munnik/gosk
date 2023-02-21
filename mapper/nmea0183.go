@@ -170,6 +170,11 @@ func (m *Nmea0183Mapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 			u.AddValue(message.NewValue().WithPath("design.beam").WithValue(beam))
 		}
 	}
+	if v, ok := sentence.(nmea.RelativeWindDirection); ok {
+		if relativeWindDirection, err := v.GetRelativeWindDirection(); err == nil {
+			u.AddValue(message.NewValue().WithPath("environment.wind.angleApparent").WithValue(relativeWindDirection))
+		}
+	}
 	if v, ok := sentence.(nmea.TrueWindDirection); ok {
 		if trueWindDirection, err := v.GetTrueWindDirection(); err == nil {
 			u.AddValue(message.NewValue().WithPath("environment.wind.directionTrue").WithValue(trueWindDirection))

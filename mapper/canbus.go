@@ -40,13 +40,14 @@ func NewCanBusMapper(c config.CanBusMapperConfig, cmc []config.CanBusMappingConf
 func (m *CanBusMapper) Map(subscriber mangos.Socket, publisher mangos.Socket) {
 	process(subscriber, publisher, m)
 }
+
 func (m *CanBusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	result := message.NewMapped().WithContext(m.config.Context).WithOrigin(m.config.Context)
 	s := message.NewSource().WithLabel(r.Connector).WithType(m.protocol).WithUuid(r.Uuid)
 	u := message.NewUpdate().WithSource(*s).WithTimestamp(r.Timestamp)
 
 	frm := createFrame(r)
-	//lookup mappings for frame
+	// lookup mappings for frame
 	mappings, present := m.dbc[frm.ID]
 	if present {
 		// apply all mappings
@@ -56,7 +57,7 @@ func (m *CanBusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 			mapping, present := m.canbusMappings[val.origin][val.name]
 
 			if present {
-				var env = NewExpressionEnvironment()
+				env := NewExpressionEnvironment()
 				env["value"] = val.value
 				output, err := runExpr(vm, env, mapping.MappingConfig)
 				if err == nil {
@@ -93,8 +94,6 @@ func createFrame(r *message.Raw) can.Frame {
 func extractSignal(mapping dbc.SignalDef, origin string, frm can.Frame) Signal {
 	// get name
 	name := mapping.Name
-	// get value
-	val := 1.0
 	start := mapping.StartBit
 	length := mapping.Size
 	data := make([]uint8, 8)
@@ -111,6 +110,8 @@ func extractSignal(mapping dbc.SignalDef, origin string, frm can.Frame) Signal {
 	temp = temp << start
 	temp = temp >> (64 - (length))
 
+	// get value
+	var val float64
 	if mapping.IsSigned {
 		val = float64(int64(temp))
 	} else {

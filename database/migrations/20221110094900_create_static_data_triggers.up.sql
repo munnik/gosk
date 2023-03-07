@@ -1,5 +1,5 @@
 CREATE OR REPLACE FUNCTION "update_name"() RETURNS TRIGGER AS $$ BEGIN
-INSERT INTO "static_data" ("context", "name")
+INSERT INTO "gosk"."static_data" ("context", "name")
 VALUES (NEW."context", NEW."value"->>'name') ON CONFLICT("context") DO
 UPDATE
 SET "name" = NEW."value"->>'name';
@@ -8,7 +8,7 @@ END;
 $$ LANGUAGE 'plpgsql';
 
 CREATE OR REPLACE FUNCTION "update_mmsi"() RETURNS TRIGGER AS $$ BEGIN
-INSERT INTO "static_data" ("context", "mmsi")
+INSERT INTO "gosk"."static_data" ("context", "mmsi")
 VALUES (NEW."context", NEW."value"->>'mmsi') ON CONFLICT("context") DO
 UPDATE
 SET "mmsi" = NEW."value"->>'mmsi';
@@ -17,7 +17,7 @@ END;
 $$ LANGUAGE 'plpgsql';
 
 CREATE OR REPLACE FUNCTION "update_callsignvhf"() RETURNS TRIGGER AS $$ BEGIN
-INSERT INTO "static_data" ("context", "callsignvhf")
+INSERT INTO "gosk"."static_data" ("context", "callsignvhf")
 VALUES (NEW."context", trim(both '"' FROM NEW."value"::TEXT)) ON CONFLICT("context") DO
 UPDATE
 SET "callsignvhf" = trim(both '"' FROM NEW."value"::TEXT);
@@ -26,7 +26,7 @@ END;
 $$ LANGUAGE 'plpgsql';
 
 CREATE OR REPLACE FUNCTION "update_eninumber"() RETURNS TRIGGER AS $$ BEGIN
-INSERT INTO "static_data" ("context", "eninumber")
+INSERT INTO "gosk"."static_data" ("context", "eninumber")
 VALUES (NEW."context", trim(both '"' FROM NEW."value"::TEXT)) ON CONFLICT("context") DO
 UPDATE
 SET "eninumber" = trim(both '"' FROM NEW."value"::TEXT);
@@ -35,7 +35,7 @@ END;
 $$ LANGUAGE 'plpgsql';
 
 CREATE OR REPLACE FUNCTION "update_length"() RETURNS TRIGGER AS $$ BEGIN
-INSERT INTO "static_data" ("context", "length")
+INSERT INTO "gosk"."static_data" ("context", "length")
 VALUES (NEW."context", (NEW."value"->'overall')::DOUBLE PRECISION) ON CONFLICT("context") DO
 UPDATE
 SET "length" = (NEW."value"->'overall')::DOUBLE PRECISION;
@@ -44,7 +44,7 @@ END;
 $$ LANGUAGE 'plpgsql';
 
 CREATE OR REPLACE FUNCTION "update_beam"() RETURNS TRIGGER AS $$ BEGIN
-INSERT INTO "static_data" ("context", "beam")
+INSERT INTO "gosk"."static_data" ("context", "beam")
 VALUES (NEW."context", NEW."value"::DOUBLE PRECISION) ON CONFLICT("context") DO
 UPDATE
 SET "beam" = NEW."value"::DOUBLE PRECISION;
@@ -53,7 +53,7 @@ END;
 $$ LANGUAGE 'plpgsql';
 
 CREATE OR REPLACE FUNCTION "update_vesseltype"() RETURNS TRIGGER AS $$ BEGIN
-INSERT INTO "static_data" ("context", "vesseltype")
+INSERT INTO "gosk"."static_data" ("context", "vesseltype")
 VALUES (NEW."context", NEW."value"->>'name') ON CONFLICT("context") DO
 UPDATE
 SET "vesseltype" = NEW."value"->>'name';

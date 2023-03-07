@@ -110,7 +110,7 @@ func (t *TransferRequester) sendCountRequests() {
 					periods = append(periods, p)
 					continue
 				}
-				if _, ok := existingRemoteCounts[origin][start]; !ok {
+				if _, ok := existingRemoteCounts[origin][p]; !ok {
 					// for this period there is no remote count so add this period
 					periods = append(periods, p)
 					continue

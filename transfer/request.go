@@ -151,7 +151,7 @@ func (t *TransferRequester) sendDataRequests() {
 	}
 
 	wg := new(sync.WaitGroup)
-	wg.Add(len(origins) + 1)
+	wg.Add(1)
 
 	go func() {
 		time.Sleep(t.dataRequestSleepInterval)
@@ -159,8 +159,9 @@ func (t *TransferRequester) sendDataRequests() {
 	}()
 
 	for origin, periods := range origins {
-		go func(origin string, periods []time.Time) {
-			for _, period := range periods {
+		wg.Add(len(periods))
+		for _, period := range periods {
+			go func(origin string, period time.Time) {
 				// wait random amount of time before processing to spread the workload
 				time.Sleep(time.Duration(rand.Intn(int(t.dataRequestSleepInterval))))
 
@@ -183,9 +184,9 @@ func (t *TransferRequester) sendDataRequests() {
 				}
 				t.sendMQTTCommand(origin, requestMessage)
 				t.db.LogTransferRequest(origin, requestMessage)
-			}
-			wg.Done()
-		}(origin, periods)
+				wg.Done()
+			}(origin, period)
+		}
 	}
 	wg.Wait()
 }

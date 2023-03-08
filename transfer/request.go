@@ -26,8 +26,8 @@ type TransferRequester struct {
 	db                        *database.PostgresqlDatabase
 	mqttConfig                *config.MQTTConfig
 	mqttClient                *mqtt.Client
-	countRequestSleepInterval time.Duration
-	dataRequestSleepInterval  time.Duration
+	sleepBetweenCountRequests time.Duration
+	sleepBetweenDataRequests  time.Duration
 	numberOfRequestWorkers    int
 	dataRequestChannel        chan OriginPeriod
 }
@@ -36,8 +36,8 @@ func NewTransferRequester(c *config.TransferConfig) *TransferRequester {
 	result := &TransferRequester{
 		db:                        database.NewPostgresqlDatabase(&c.PostgresqlConfig),
 		mqttConfig:                &c.MQTTConfig,
-		countRequestSleepInterval: c.CountRequestSleepInterval,
-		dataRequestSleepInterval:  c.DataRequestSleepInterval,
+		sleepBetweenCountRequests: c.SleepBetweenCountRequests,
+		sleepBetweenDataRequests:  c.SleepBetweenDataRequests,
 		numberOfRequestWorkers:    c.NumberOfRequestWorkers,
 	}
 
@@ -83,10 +83,10 @@ func (t *TransferRequester) sendCountRequests() {
 		logger.GetLogger().Warn(
 			"Could not retrieve first mapped data per origin, aborting count request",
 			zap.String("Error", err.Error()),
-			zap.Time("NextRequestAt", time.Now().Add(t.countRequestSleepInterval)),
+			zap.Time("NextRequestAt", time.Now().Add(t.sleepBetweenCountRequests)),
 		)
 
-		time.Sleep(t.countRequestSleepInterval)
+		time.Sleep(t.sleepBetweenCountRequests)
 		return
 	}
 
@@ -102,10 +102,10 @@ func (t *TransferRequester) sendCountRequests() {
 		logger.GetLogger().Warn(
 			"Could not retrieve existing remote counts, aborting count request",
 			zap.String("Error", err.Error()),
-			zap.Time("NextRequestAt", time.Now().Add(t.countRequestSleepInterval)),
+			zap.Time("NextRequestAt", time.Now().Add(t.sleepBetweenCountRequests)),
 		)
 
-		time.Sleep(t.countRequestSleepInterval)
+		time.Sleep(t.sleepBetweenCountRequests)
 		return
 	}
 
@@ -113,14 +113,14 @@ func (t *TransferRequester) sendCountRequests() {
 	wg.Add(len(origins) + 1)
 
 	go func() {
-		time.Sleep(t.countRequestSleepInterval)
+		time.Sleep(t.sleepBetweenCountRequests)
 		wg.Done()
 	}()
 
 	for origin, start := range origins {
 		go func(origin string, start time.Time) {
 			// wait random amount of time before processing to spread the workload
-			time.Sleep(time.Duration(rand.Intn(int(t.countRequestSleepInterval))))
+			time.Sleep(time.Duration(rand.Intn(int(t.sleepBetweenCountRequests))))
 
 			periods := make([]time.Time, 0)
 			for p := start; p.Before(time.Now().Add(-countRequestCoolDown)); p = p.Add(periodDuration) {
@@ -163,10 +163,10 @@ func (t *TransferRequester) sendDataRequests() {
 		logger.GetLogger().Warn(
 			"Could not retrieve incomplete periods per origin",
 			zap.String("Error", err.Error()),
-			zap.Time("NextRequestAt", time.Now().Add(t.dataRequestSleepInterval)),
+			zap.Time("NextRequestAt", time.Now().Add(t.sleepBetweenDataRequests)),
 		)
 
-		time.Sleep(t.dataRequestSleepInterval)
+		time.Sleep(t.sleepBetweenDataRequests)
 		return
 	}
 
@@ -174,7 +174,7 @@ func (t *TransferRequester) sendDataRequests() {
 	wg.Add(1)
 
 	go func() {
-		time.Sleep(t.dataRequestSleepInterval)
+		time.Sleep(t.sleepBetweenDataRequests)
 		wg.Done()
 	}()
 

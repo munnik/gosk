@@ -318,8 +318,8 @@ type TransferConfig struct {
 	PostgresqlConfig          PostgresqlConfig `mapstructure:"database"`
 	MQTTConfig                MQTTConfig       `mapstructure:"mqtt"`
 	Origin                    string           `mapstructure:"origin"`
-	CountRequestSleepInterval time.Duration    `mapstructure:"count_request_sleep_interval"`
-	DataRequestSleepInterval  time.Duration    `mapstructure:"data_request_sleep_interval"`
+	SleepBetweenCountRequests time.Duration    `mapstructure:"sleep_between_count_requests"`
+	SleepBetweenDataRequests  time.Duration    `mapstructure:"sleep_between_data_requests"`
 	SleepBetweenRespondDeltas time.Duration    `mapstructure:"sleep_between_respond_deltas"`
 	NumberOfRequestWorkers    int              `mapstructure:"number_of_request_workers"`
 }
@@ -327,8 +327,8 @@ type TransferConfig struct {
 func NewTransferConfig(configFilePath string) *TransferConfig {
 	result := &TransferConfig{
 		PostgresqlConfig:          defaultPostgresqlConfig(),
-		CountRequestSleepInterval: 30 * time.Minute,
-		DataRequestSleepInterval:  2 * time.Hour,
+		SleepBetweenCountRequests: 30 * time.Minute,
+		SleepBetweenDataRequests:  6 * time.Hour,
 		SleepBetweenRespondDeltas: 100 * time.Millisecond,
 	}
 	readConfigFile(result, configFilePath)

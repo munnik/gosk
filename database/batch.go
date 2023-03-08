@@ -33,20 +33,27 @@ func NewBatch(maxLength int, flushInterval time.Duration, db *PostgresqlDatabase
 		ticker := time.NewTicker(flushInterval)
 		for {
 			<-ticker.C
-			result.flush()
+			result.Tick()
 		}
 	}()
 	return result
 }
 
+func (b *Batch) Tick() {
+	b.rowsLock.Lock()
+	defer b.rowsLock.Unlock()
+
+	b.flush()
+}
+
 func (b *Batch) Append(row ...interface{}) {
 	b.rowsLock.Lock()
-	b.rows = append(b.rows, row)
+	defer b.rowsLock.Unlock()
 
+	b.rows = append(b.rows, row)
 	if len(b.rows) >= b.maxLength {
 		b.flush()
 	}
-	b.rowsLock.Unlock()
 }
 
 func (b *Batch) flush() {

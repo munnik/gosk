@@ -31,7 +31,7 @@ const (
 	selectMappedQuery              = `SELECT "time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid" FROM "mapped_data"`
 	selectLocalCountQuery          = `SELECT "count" FROM "transfer_local_data" WHERE "origin" = $1 AND "start" = $2`
 	selectExistingRemoteCounts     = `SELECT "origin", "start" FROM "transfer_remote_data" WHERE "start" >= $1`
-	selectIncompletePeriodsQuery   = `SELECT "origin", "start" FROM "transfer_data" WHERE "local_count" < "remote_count" * $1`
+	selectIncompletePeriodsQuery   = `SELECT "origin", "start" FROM "transfer_data" WHERE "local_count" < "remote_count" ORDER BY "start" DESC`
 	insertOrUpdateRemoteData       = `INSERT INTO "transfer_remote_data" ("start", "origin", "count") VALUES ($1, $2, $3) ON CONFLICT ("start", "origin") DO UPDATE SET "count" = $3`
 	logTransferInsertQuery         = `INSERT INTO "transfer_log" ("time", "origin", "message") VALUES (NOW(), $1, $2)`
 	selectMappedCountPerUuid       = `SELECT "uuid", COUNT("uuid") FROM "mapped_data" WHERE "origin" = $1 AND "time" BETWEEN $2 AND $2 + '5m'::interval GROUP BY 1`
@@ -51,7 +51,6 @@ type PostgresqlDatabase struct {
 	mappedBatch     *Batch
 	batchFlushSize  int
 	flushMutex      sync.Mutex
-	completeRatio   float64
 	upgradeDone     bool
 	databaseTimeout time.Duration
 	flushes         prometheus.Counter
@@ -66,7 +65,6 @@ func NewPostgresqlDatabase(c *config.PostgresqlConfig) *PostgresqlDatabase {
 		rawCache:        cache.New(cache.AsFIFO[int64, []message.Raw](fifo.WithCapacity(20 * 1024))),
 		mappedCache:     cache.New(cache.AsFIFO[int64, []message.SingleValueMapped](fifo.WithCapacity(20 * 1024))),
 		batchFlushSize:  c.BatchFlushLength,
-		completeRatio:   c.CompleteRatio,
 		upgradeDone:     false,
 		databaseTimeout: c.Timeout,
 		flushes:         promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_flushes_total", Help: "total number batches flushed"}),
@@ -399,7 +397,7 @@ func (db *PostgresqlDatabase) SelectExistingRemoteCounts(from time.Time) (map[st
 func (db *PostgresqlDatabase) SelectIncompletePeriods() (map[string][]time.Time, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
 	defer cancel()
-	rows, err := db.GetConnection().Query(ctx, selectIncompletePeriodsQuery, db.completeRatio)
+	rows, err := db.GetConnection().Query(ctx, selectIncompletePeriodsQuery)
 	if err != nil {
 		return nil, err
 	} else if ctx.Err() != nil {

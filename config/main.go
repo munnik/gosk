@@ -254,7 +254,6 @@ type PostgresqlConfig struct {
 	URLString          string        `mapstructure:"url"`
 	BatchFlushLength   int           `mapstructure:"batch_flush_length"`
 	BatchFlushInterval time.Duration `mapstructure:"batch_flush_interval"`
-	CompleteRatio      float64       `mapstructure:"complete_ratio"`    // a period is considered complete when local / remote >= CompleteRatio
 	BufferSize         int           `mapstructure:"buffer_size"`       // size of the buffer for incoming messages
 	NumberOfWorkers    int           `mapstructure:"number_of_workers"` // number of workers to handle the incoming messages
 	Timeout            time.Duration `mapstructure:"timeout"`
@@ -262,7 +261,6 @@ type PostgresqlConfig struct {
 
 func defaultPostgresqlConfig() PostgresqlConfig {
 	return PostgresqlConfig{
-		CompleteRatio:      1.0,
 		BufferSize:         100,
 		NumberOfWorkers:    10,
 		Timeout:            5 * time.Second,
@@ -323,6 +321,7 @@ type TransferConfig struct {
 	CountRequestSleepInterval time.Duration    `mapstructure:"count_request_sleep_interval"`
 	DataRequestSleepInterval  time.Duration    `mapstructure:"data_request_sleep_interval"`
 	SleepBetweenRespondDeltas time.Duration    `mapstructure:"sleep_between_respond_deltas"`
+	NumberOfRequestWorkers    int              `mapstructure:"number_of_request_workers"`
 }
 
 func NewTransferConfig(configFilePath string) *TransferConfig {

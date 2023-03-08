@@ -17,22 +17,36 @@ import (
 	"go.uber.org/zap"
 )
 
+type OriginPeriod struct {
+	origin string
+	period time.Time
+}
+
 type TransferRequester struct {
 	db                        *database.PostgresqlDatabase
 	mqttConfig                *config.MQTTConfig
 	mqttClient                *mqtt.Client
 	countRequestSleepInterval time.Duration
 	dataRequestSleepInterval  time.Duration
+	numberOfRequestWorkers    int
+	dataRequestChannel        chan OriginPeriod
 }
 
 func NewTransferRequester(c *config.TransferConfig) *TransferRequester {
-	fmt.Println(c)
-	return &TransferRequester{
+	result := &TransferRequester{
 		db:                        database.NewPostgresqlDatabase(&c.PostgresqlConfig),
 		mqttConfig:                &c.MQTTConfig,
 		countRequestSleepInterval: c.CountRequestSleepInterval,
 		dataRequestSleepInterval:  c.DataRequestSleepInterval,
+		numberOfRequestWorkers:    c.NumberOfRequestWorkers,
 	}
+
+	if result.numberOfRequestWorkers == 0 {
+		result.numberOfRequestWorkers = 5
+	}
+	result.dataRequestChannel = make(chan OriginPeriod, result.numberOfRequestWorkers)
+
+	return result
 }
 
 func (t *TransferRequester) Run() {
@@ -50,6 +64,9 @@ func (t *TransferRequester) Run() {
 
 	// send data requests
 	go func() {
+		for i := 0; i < t.numberOfRequestWorkers; i++ {
+			go t.sendDataRequestWorker(t.dataRequestChannel)
+		}
 		for {
 			t.sendDataRequests()
 		}
@@ -64,8 +81,9 @@ func (t *TransferRequester) sendCountRequests() {
 	origins, err := t.db.SelectFirstMappedDataPerOrigin()
 	if err != nil {
 		logger.GetLogger().Warn(
-			"Could not retrieve first mapped data per origin",
+			"Could not retrieve first mapped data per origin, aborting count request",
 			zap.String("Error", err.Error()),
+			zap.Time("NextRequestAt", time.Now().Add(t.countRequestSleepInterval)),
 		)
 
 		time.Sleep(t.countRequestSleepInterval)
@@ -82,8 +100,9 @@ func (t *TransferRequester) sendCountRequests() {
 	existingRemoteCounts, err := t.db.SelectExistingRemoteCounts(minStart)
 	if err != nil {
 		logger.GetLogger().Warn(
-			"Could not retrieve existing remote counts",
+			"Could not retrieve existing remote counts, aborting count request",
 			zap.String("Error", err.Error()),
+			zap.Time("NextRequestAt", time.Now().Add(t.countRequestSleepInterval)),
 		)
 
 		time.Sleep(t.countRequestSleepInterval)
@@ -144,6 +163,7 @@ func (t *TransferRequester) sendDataRequests() {
 		logger.GetLogger().Warn(
 			"Could not retrieve incomplete periods per origin",
 			zap.String("Error", err.Error()),
+			zap.Time("NextRequestAt", time.Now().Add(t.dataRequestSleepInterval)),
 		)
 
 		time.Sleep(t.dataRequestSleepInterval)
@@ -159,36 +179,37 @@ func (t *TransferRequester) sendDataRequests() {
 	}()
 
 	for origin, periods := range origins {
-		wg.Add(len(periods))
-		for _, period := range periods {
-			go func(origin string, period time.Time) {
-				// wait random amount of time before processing to spread the workload
-				time.Sleep(time.Duration(rand.Intn(int(t.dataRequestSleepInterval))))
-
-				countsPerUuid, err := t.db.SelectCountPerUuid(origin, period)
-				if err != nil {
-					logger.GetLogger().Warn(
-						"Could not retrieve counts per uuid from database",
-						zap.String("Error", err.Error()),
-						zap.String("Origin", origin),
-						zap.Time("Start", period),
-					)
-					return
-				}
-
-				requestMessage := RequestMessage{
-					Command:       dataCmd,
-					UUID:          uuid.New(),
-					PeriodStart:   period,
-					CountsPerUuid: countsPerUuid,
-				}
-				t.sendMQTTCommand(origin, requestMessage)
-				t.db.LogTransferRequest(origin, requestMessage)
-				wg.Done()
-			}(origin, period)
-		}
+		go func(origin string, periods []time.Time) {
+			for _, period := range periods {
+				t.dataRequestChannel <- OriginPeriod{origin: origin, period: period}
+			}
+		}(origin, periods)
 	}
 	wg.Wait()
+}
+
+func (t *TransferRequester) sendDataRequestWorker(dataRequests <-chan OriginPeriod) {
+	for request := range dataRequests {
+		countsPerUuid, err := t.db.SelectCountPerUuid(request.origin, request.period)
+		if err != nil {
+			logger.GetLogger().Warn(
+				"Could not retrieve counts per uuid from database",
+				zap.String("Error", err.Error()),
+				zap.String("Origin", request.origin),
+				zap.Time("Start", request.period),
+			)
+			return
+		}
+
+		requestMessage := RequestMessage{
+			Command:       dataCmd,
+			UUID:          uuid.New(),
+			PeriodStart:   request.period,
+			CountsPerUuid: countsPerUuid,
+		}
+		t.sendMQTTCommand(request.origin, requestMessage)
+		t.db.LogTransferRequest(request.origin, requestMessage)
+	}
 }
 
 func (t *TransferRequester) sendMQTTCommand(origin string, message RequestMessage) {

@@ -113,10 +113,10 @@ func (t *TransferResponder) respondWithData(request RequestMessage) {
 		}
 	}
 
-	t.injectData(localCountsPerUuid, request.UUID)
+	t.injectData(localCountsPerUuid, request.UUID, request.PeriodStart)
 }
 
-func (t *TransferResponder) injectData(uuidsToTransmit map[uuid.UUID]int, transferUuid uuid.UUID) {
+func (t *TransferResponder) injectData(uuidsToTransmit map[uuid.UUID]int, transferUuid uuid.UUID, period time.Time) {
 	uuids := make([]uuid.UUID, len(uuidsToTransmit))
 	for uuid := range uuidsToTransmit {
 		uuids = append(uuids, uuid)
@@ -124,7 +124,7 @@ func (t *TransferResponder) injectData(uuidsToTransmit map[uuid.UUID]int, transf
 	pgUuids := &pgtype.UUIDArray{}
 	pgUuids.Set(uuids)
 
-	deltas, err := t.db.ReadMapped(`WHERE "uuid" = ANY ($1)`, pgUuids)
+	deltas, err := t.db.ReadMapped(`WHERE "uuid" = ANY ($1) AND "time" BETWEEN $2 AND $2 + '5m'::interval`, pgUuids, period)
 	if err != nil {
 		logger.GetLogger().Warn(
 			"Could not retrieve mapped data from database",

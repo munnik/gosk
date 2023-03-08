@@ -2,7 +2,7 @@ CREATE OR REPLACE VIEW "transfer_data" AS
 SELECT 
     "transfer_remote_data"."origin", 
     "transfer_remote_data"."start",
-    "transfer_local_data"."local" AS "local_count",
+    "transfer_local_data"."count" AS "local_count",
     "transfer_remote_data"."count" AS "remote_count"
 FROM 
     "transfer_remote_data" 

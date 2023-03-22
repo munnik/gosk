@@ -32,7 +32,7 @@ func init() {
 func doTest(cmd *cobra.Command, args []string) {
 	publisher := nanomsg.NewPub(publishURL)
 	defer publisher.Close()
-	ticker := time.NewTicker(100 * time.Millisecond)
+	ticker := time.NewTicker(1 * time.Millisecond)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {

@@ -29,6 +29,7 @@ type MqttWriter struct {
 	bufferA        []*[]byte
 	bufferB        []*[]byte
 	bufferCapacity int
+	lastFlush      time.Time
 	encoder        *zstd.Encoder
 	writeMutex     sync.Mutex
 }
@@ -41,6 +42,7 @@ func NewMqttWriter(c *config.MQTTConfig) *MqttWriter {
 	w.bufferA = make([]*[]byte, 0, w.bufferCapacity)
 	w.bufferB = make([]*[]byte, 0, w.bufferCapacity)
 	w.writeMutex = sync.Mutex{}
+	w.lastFlush = time.Now()
 	return w
 }
 
@@ -84,7 +86,7 @@ func (w *MqttWriter) appendToCache(received *[]byte) {
 	} else {
 		w.bufferB = append(w.bufferB, received)
 	}
-	if w.lenCache() > w.mqttConfig.BufferSize {
+	if w.lenCache() > w.mqttConfig.BufferSize || time.Since(w.lastFlush) > w.mqttConfig.Interval {
 		go w.flushCache()
 	}
 }
@@ -97,6 +99,7 @@ func (w *MqttWriter) lenCache() int {
 }
 func (w *MqttWriter) flushCache() {
 	w.useA = !w.useA
+	w.lastFlush = time.Now()
 	var buffer *[]*[]byte
 	if !w.useA {
 		buffer = &w.bufferA
@@ -116,6 +119,7 @@ func (w *MqttWriter) flushCache() {
 		deltas = append(deltas, m)
 	}
 	w.sendMQTT(deltas)
+
 	if !w.useA {
 		w.bufferA = make([]*[]byte, 0, w.bufferCapacity)
 	} else {

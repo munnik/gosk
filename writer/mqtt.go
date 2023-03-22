@@ -3,10 +3,10 @@ package writer
 import (
 	"encoding/json"
 	"fmt"
+	"math"
+	"sync"
 	"time"
 
-	"github.com/allegro/bigcache/v3"
-	"github.com/google/uuid"
 	"github.com/klauspost/compress/zstd"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
@@ -23,71 +23,25 @@ const (
 )
 
 type MqttWriter struct {
-	mqttConfig *config.MQTTConfig
-	mqttClient *mqtt.Client
-	cache      *bigcache.BigCache
-	encoder    *zstd.Encoder
+	mqttConfig     *config.MQTTConfig
+	mqttClient     *mqtt.Client
+	useA           bool
+	bufferA        []*[]byte
+	bufferB        []*[]byte
+	bufferCapacity int
+	encoder        *zstd.Encoder
+	writeMutex     sync.Mutex
 }
 
 func NewMqttWriter(c *config.MQTTConfig) *MqttWriter {
-	w := &MqttWriter{mqttConfig: c}
-	cacheConfig := bigcache.DefaultConfig(time.Duration(c.Interval) * time.Second)
-	cacheConfig.HardMaxCacheSize = c.HardMaxCacheSize
-	cacheConfig.OnRemove = w.onRemove
-	cache, _ := bigcache.NewBigCache(cacheConfig)
-	w.cache = cache
+	w := &MqttWriter{mqttConfig: c, useA: true}
 	encoder, _ := zstd.NewWriter(nil)
 	w.encoder = encoder
+	w.bufferCapacity = int(math.Floor(1.1 * float64(c.BufferSize)))
+	w.bufferA = make([]*[]byte, 0, w.bufferCapacity)
+	w.bufferB = make([]*[]byte, 0, w.bufferCapacity)
+	w.writeMutex = sync.Mutex{}
 	return w
-}
-
-// When this method is called either the interval to flush or the maximum cache size is reached
-func (w *MqttWriter) onRemove(key string, entry []byte) {
-	go func(entry []byte) {
-		// fmt.Println("cache", w.cache.Len())
-		var m message.Mapped
-		if err := json.Unmarshal(entry, &m); err != nil {
-			logger.GetLogger().Warn(
-				"Could not unmarshal a message from the publisher",
-				zap.String("Error", err.Error()),
-			)
-			return
-		}
-
-		deltas := make([]message.Mapped, 0)
-		deltas = append(deltas, m)
-
-		i := w.cache.Iterator()
-		for i.SetNext() {
-			var m message.Mapped
-			entryInfo, err := i.Value()
-			if err != nil {
-				logger.GetLogger().Warn(
-					"Unable to retrieve an entry from the cache",
-					zap.String("Error", err.Error()),
-				)
-				continue
-			}
-			if err := json.Unmarshal(entryInfo.Value(), &m); err != nil {
-				logger.GetLogger().Warn(
-					"Could not unmarshal a message from the publisher",
-					zap.String("Error", err.Error()),
-				)
-				continue
-			}
-			deltas = append(deltas, m)
-		}
-		// fmt.Println("deltas:", len(deltas))
-		w.sendMQTT(deltas)
-		fmt.Println("cache 2:", w.cache.Len(), "deltas: ", len(deltas))
-		if err := w.cache.Reset(); err != nil {
-			logger.GetLogger().Warn(
-				"Error while resetting the cache",
-				zap.String("Error", err.Error()),
-			)
-		}
-		// fmt.Println("cache 3:", w.cache.Len())
-	}(entry)
 }
 
 func (w *MqttWriter) sendMQTT(deltas []message.Mapped) {
@@ -118,11 +72,53 @@ func (w *MqttWriter) WriteMapped(subscriber mangos.Socket) {
 			)
 			continue
 		}
-		if err := w.cache.Set(uuid.NewString(), received); err != nil {
+		w.appendToCache(&received)
+	}
+}
+
+func (w *MqttWriter) appendToCache(received *[]byte) {
+	w.writeMutex.Lock()
+	defer w.writeMutex.Unlock()
+	if w.useA {
+		w.bufferA = append(w.bufferA, received)
+	} else {
+		w.bufferB = append(w.bufferB, received)
+	}
+	if w.lenCache() > w.mqttConfig.BufferSize {
+		go w.flushCache()
+	}
+}
+func (w *MqttWriter) lenCache() int {
+	if w.useA {
+		return len(w.bufferA)
+	} else {
+		return len(w.bufferB)
+	}
+}
+func (w *MqttWriter) flushCache() {
+	w.useA = !w.useA
+	var buffer *[]*[]byte
+	if !w.useA {
+		buffer = &w.bufferA
+	} else {
+		buffer = &w.bufferB
+	}
+	deltas := make([]message.Mapped, 0, len(*buffer))
+	for _, v := range *buffer {
+		var m message.Mapped
+		if err := json.Unmarshal(*v, &m); err != nil {
 			logger.GetLogger().Warn(
-				"Could not add the entry to the cache",
+				"Could not unmarshal a message from the publisher",
 				zap.String("Error", err.Error()),
 			)
+			return
 		}
+		deltas = append(deltas, m)
+	}
+	w.sendMQTT(deltas)
+	if !w.useA {
+		w.bufferA = make([]*[]byte, 0, w.bufferCapacity)
+	} else {
+		w.bufferB = make([]*[]byte, 0, w.bufferCapacity)
 	}
 }

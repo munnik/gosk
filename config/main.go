@@ -236,15 +236,18 @@ func NewCanBusMappingConfig(configFilePath string) []CanBusMappingConfig {
 }
 
 type MQTTConfig struct {
-	URLString        string `mapstructure:"url"`
-	Username         string `mapstructure:"username"`
-	Password         string `mapstructure:"password"`
-	Interval         int    `mapstructure:"interval"`         // interval to flush the cache in seconds, ignored for reader
-	HardMaxCacheSize int    `mapstructure:"hardMaxCacheSize"` // maximum size of the cache in MBs, cache will be flushed when size is reached, ignored for reader
+	URLString  string        `mapstructure:"url"`
+	Username   string        `mapstructure:"username"`
+	Password   string        `mapstructure:"password"`
+	Interval   time.Duration `mapstructure:"interval"`    // interval to flush the cache in seconds, ignored for reader
+	BufferSize int           `mapstructure:"buffer_size"` // maximum size of the cache in MBs, cache will be flushed when size is reached, ignored for reader
 }
 
 func NewMQTTConfig(configFilePath string) *MQTTConfig {
-	result := MQTTConfig{}
+	result := MQTTConfig{
+		BufferSize: 100,
+		Interval:   30 * time.Second,
+	}
 	readConfigFile(&result, configFilePath)
 
 	return &result

@@ -43,7 +43,7 @@ func New(config *config.MQTTConfig, publishHandler paho.MessageHandler, topic st
 }
 
 func (c *Client) Publish(topic string, qos byte, retained bool, bytes []byte) {
-	if token := (*c.pahoClient).Publish(topic, 0, true, bytes); token.Wait() && token.Error() != nil {
+	if token := (*c.pahoClient).Publish(topic, qos, retained, bytes); token.Wait() && token.Error() != nil {
 		logger.GetLogger().Warn(
 			"Could not publish a message via MQTT",
 			zap.String("Error", token.Error().Error()),

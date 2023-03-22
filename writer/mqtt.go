@@ -44,6 +44,7 @@ func NewMqttWriter(c *config.MQTTConfig) *MqttWriter {
 // When this method is called either the interval to flush or the maximum cache size is reached
 func (w *MqttWriter) onRemove(key string, entry []byte) {
 	go func(entry []byte) {
+		// fmt.Println("cache", w.cache.Len())
 		var m message.Mapped
 		if err := json.Unmarshal(entry, &m); err != nil {
 			logger.GetLogger().Warn(
@@ -76,14 +77,16 @@ func (w *MqttWriter) onRemove(key string, entry []byte) {
 			}
 			deltas = append(deltas, m)
 		}
-
+		// fmt.Println("deltas:", len(deltas))
 		w.sendMQTT(deltas)
+		fmt.Println("cache 2:", w.cache.Len(), "deltas: ", len(deltas))
 		if err := w.cache.Reset(); err != nil {
 			logger.GetLogger().Warn(
 				"Error while resetting the cache",
 				zap.String("Error", err.Error()),
 			)
 		}
+		// fmt.Println("cache 3:", w.cache.Len())
 	}(entry)
 }
 

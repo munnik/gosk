@@ -80,14 +80,14 @@ func (w *MqttWriter) WriteMapped(subscriber mangos.Socket) {
 
 func (w *MqttWriter) appendToCache(received *[]byte) {
 	w.writeMutex.Lock()
-	defer w.writeMutex.Unlock()
 	if w.useA {
 		w.bufferA = append(w.bufferA, received)
 	} else {
 		w.bufferB = append(w.bufferB, received)
 	}
+	w.writeMutex.Unlock()
 	if w.lenCache() > w.mqttConfig.BufferSize || time.Since(w.lastFlush) > w.mqttConfig.Interval {
-		go w.flushCache()
+		w.flushCache()
 	}
 }
 func (w *MqttWriter) lenCache() int {
@@ -98,7 +98,9 @@ func (w *MqttWriter) lenCache() int {
 	}
 }
 func (w *MqttWriter) flushCache() {
+	w.writeMutex.Lock()
 	w.useA = !w.useA
+	w.writeMutex.Unlock()
 	w.lastFlush = time.Now()
 	var buffer *[]*[]byte
 	if !w.useA {

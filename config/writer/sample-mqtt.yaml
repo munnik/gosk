@@ -2,5 +2,5 @@
 username: "unknown"
 password: "unknown"
 url: "mqtt://broker.mqtt.cool:1883"
-interval: 10
+interval: '10s'
 buffer_size: 100

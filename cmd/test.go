@@ -11,7 +11,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
-	"github.com/munnik/gosk/mapper"
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/spf13/cobra"
@@ -49,7 +48,7 @@ func doTest(cmd *cobra.Command, args []string) {
 			u := message.NewUpdate().WithSource(*s).WithTimestamp(time.Now())
 			for _, path := range c.Paths {
 				vm := vm.VM{}
-				env := mapper.NewExpressionEnvironment()
+				env := make(map[string]interface{})
 				env["value"] = i
 				output, err := runExpr(vm, env, path)
 				if err == nil {
@@ -63,6 +62,7 @@ func doTest(cmd *cobra.Command, args []string) {
 				}
 
 			}
+
 			result.AddUpdate(u)
 			i++
 			// fmt.Println(result)

@@ -249,6 +249,24 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 			return
 		}
 	}
+	path := svm.Path
+	if path == "" {
+		switch v := svm.Value.(type) {
+		case message.VesselInfo:
+			if v.MMSI == nil {
+				path = "name"
+			} else {
+				path = "mmsi"
+			}
+		default:
+			logger.GetLogger().Error("unexpected empty path",
+				zap.Time("time", svm.Timestamp),
+				zap.String("origin", svm.Origin),
+				zap.String("context", svm.Context),
+				zap.Any("value", svm.Value))
+		}
+
+	}
 	// value is not in cache, insert into the database and add to the cache
 	db.mappedCache.Set(svm.Timestamp.UnixMicro(), append(cached, svm))
 	if valueString, ok := svm.Value.(string); ok {
@@ -258,7 +276,7 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 			svm.Timestamp,
 			svm.Source.Label,
 			svm.Context,
-			svm.Path,
+			path,
 			valueJSONB,
 			svm.Source.Uuid,
 			svm.Source.Type,
@@ -270,7 +288,7 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 			svm.Timestamp,
 			svm.Source.Label,
 			svm.Context,
-			svm.Path,
+			path,
 			svm.Value,
 			svm.Source.Uuid,
 			svm.Source.Type,

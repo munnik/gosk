@@ -380,3 +380,16 @@ func NewRateLimitConfig(configFilePath string) *RateLimitConfig {
 
 	return result
 }
+
+type TestDataConfig struct {
+	Context string          `mapstructure:"context"`
+	Delay   time.Duration   `mapstructure:"delay"`
+	Paths   []MappingConfig `mapstructure:"paths"`
+}
+
+func NewTestDataConfig(configFilePath string) *TestDataConfig {
+	result := &TestDataConfig{}
+	readConfigFile(result, configFilePath)
+
+	return result
+}

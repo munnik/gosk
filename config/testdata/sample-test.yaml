@@ -1,0 +1,8 @@
+---
+context: "vessels.urn:mrn:imo:mmsi:244620991"
+delay: "100ms"
+paths:
+  - expression: "value"
+    path: "testdata"
+  - expression: "\"{mmsi:12345678}\""
+    path: "testdata2"

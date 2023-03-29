@@ -8,8 +8,6 @@ import (
 	"sync"
 	"time"
 
-	cache "github.com/Code-Hex/go-generics-cache"
-	"github.com/Code-Hex/go-generics-cache/policy/fifo"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
@@ -28,7 +26,7 @@ import (
 const (
 	rawInsertQuery                 = `INSERT INTO "raw_data" ("time", "connector", "value", "uuid", "type") VALUES ($1, $2, $3, $4, $5)`
 	selectRawQuery                 = `SELECT "time", "connector", "value", "uuid", "type" FROM "raw_data"`
-	mappedInsertQuery              = `INSERT INTO "mapped_data" ("time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+	mappedInsertQuery              = `INSERT INTO "mapped_data" ("time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT ("time", "context", "connector","path") DO NOTHING`
 	selectMappedQuery              = `SELECT "time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid" FROM "mapped_data"`
 	selectLocalCountQuery          = `SELECT "count" FROM "transfer_local_data" WHERE "origin" = $1 AND "start" = $2`
 	selectExistingRemoteCounts     = `SELECT "origin", "start" FROM "transfer_remote_data" WHERE "start" >= $1`
@@ -48,8 +46,6 @@ type PostgresqlDatabase struct {
 	url             string
 	connection      *pgxpool.Pool
 	connectionMutex sync.Mutex
-	rawCache        *cache.Cache[int64, []message.Raw]
-	mappedCache     *cache.Cache[int64, []message.SingleValueMapped]
 	batch           *pgx.Batch
 	batchSize       int
 	lastFlush       time.Time
@@ -61,14 +57,11 @@ type PostgresqlDatabase struct {
 	writes          prometheus.Counter
 	timeouts        prometheus.Counter
 	batchSizeGauge  prometheus.Gauge
-	cacheMisses     prometheus.Counter
 }
 
 func NewPostgresqlDatabase(c *config.PostgresqlConfig) *PostgresqlDatabase {
 	result := &PostgresqlDatabase{
 		url:             c.URLString,
-		rawCache:        cache.New(cache.AsFIFO[int64, []message.Raw](fifo.WithCapacity(20 * 1024))),
-		mappedCache:     cache.New(cache.AsFIFO[int64, []message.SingleValueMapped](fifo.WithCapacity(20 * 1024))),
 		batchSize:       c.BatchFlushBytes,
 		batch:           &pgx.Batch{},
 		lastFlush:       time.Now(),
@@ -79,7 +72,6 @@ func NewPostgresqlDatabase(c *config.PostgresqlConfig) *PostgresqlDatabase {
 		writes:          promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_writes_total", Help: "total number of deltas added to queue"}),
 		timeouts:        promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_timeouts_total", Help: "total number timeouts"}),
 		batchSizeGauge:  promauto.NewGauge(prometheus.GaugeOpts{Name: "gosk_psql_batch_length", Help: "number of deltas in current batch"}),
-		cacheMisses:     promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_cache_misses_total", Help: "total number of cache misses"}),
 	}
 	go func() {
 		ticker := time.NewTicker(c.BatchFlushInterval)
@@ -147,48 +139,6 @@ func (db *PostgresqlDatabase) GetConnection() *pgxpool.Pool {
 
 func (db *PostgresqlDatabase) WriteRaw(raw message.Raw) {
 	db.writes.Inc()
-	// check if timestamp is already in the cache, if not retrieve all existing rows from the database and fill the cache
-	if _, ok := db.mappedCache.Get(raw.Timestamp.UnixMicro()); !ok {
-		db.cacheMisses.Inc()
-		// create an empty list for the timestamp
-		db.rawCache.Set(raw.Timestamp.UnixMicro(), []message.Raw{})
-		ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
-		defer cancel()
-		rows, err := db.GetConnection().Query(ctx, selectRawQuery+` WHERE "time" = $1`, raw.Timestamp)
-		if err != nil {
-			return
-		} else if ctx.Err() != nil {
-			logger.GetLogger().Error("Timeout during cache lookup")
-			db.timeouts.Inc()
-			return
-		}
-		defer rows.Close()
-
-		for rows.Next() {
-			inDatabase := message.NewRaw()
-			rows.Scan(
-				&inDatabase.Timestamp,
-				&inDatabase.Connector,
-				&inDatabase.Value,
-				&inDatabase.Uuid,
-				&inDatabase.Type,
-			)
-
-			cached, _ := db.rawCache.Get(raw.Timestamp.UnixMicro())
-			db.rawCache.Set(raw.Timestamp.UnixMicro(), append(cached, *inDatabase))
-		}
-	}
-
-	// now check the cache to see if the value is already in the cache, if so continue
-	cached, _ := db.rawCache.Get(raw.Timestamp.UnixMicro())
-	for _, c := range cached {
-		if c.Equals(raw) {
-			return
-		}
-	}
-
-	// value is not in cache, insert into the database and add to the cache
-	db.rawCache.Set(raw.Timestamp.UnixMicro(), append(cached, raw))
 	db.batch.Queue(rawInsertQuery, raw.Timestamp, raw.Connector, raw.Value, raw.Uuid, raw.Type)
 	db.batchSizeGauge.Inc()
 	if db.batch.Len() > db.batchSize {
@@ -206,49 +156,6 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 	db.writes.Inc()
 	if str, ok := svm.Value.(string); ok {
 		svm.Value = strconv.Quote(str)
-	}
-	// check if timestamp is already in the cache, if not retrieve all existing rows from the database and fill the cache
-	if _, ok := db.mappedCache.Get(svm.Timestamp.UnixMicro()); !ok {
-		db.cacheMisses.Inc()
-		// create an empty list for the timestamp
-		db.mappedCache.Set(svm.Timestamp.UnixMicro(), []message.SingleValueMapped{})
-		ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
-		defer cancel()
-		rows, err := db.GetConnection().Query(ctx, selectMappedQuery+` WHERE "time" = $1`, svm.Timestamp)
-		if err != nil {
-			return
-		} else if ctx.Err() != nil {
-			logger.GetLogger().Error("Timeout during cache lookup")
-			db.timeouts.Inc()
-			return
-		}
-		defer rows.Close()
-
-		for rows.Next() {
-			inDatabase := message.NewSingleValueMapped()
-			rows.Scan(
-				&inDatabase.Timestamp,
-				&inDatabase.Source.Label,
-				&inDatabase.Source.Type,
-				&inDatabase.Context,
-				&inDatabase.Path,
-				&inDatabase.Value,
-				&inDatabase.Source.Uuid,
-				&inDatabase.Origin,
-				&inDatabase.Source.TransferUuid,
-			)
-
-			cached, _ := db.mappedCache.Get(svm.Timestamp.UnixMicro())
-			db.mappedCache.Set(svm.Timestamp.UnixMicro(), append(cached, *inDatabase))
-		}
-	}
-
-	// now check the cache to see if the value is already in the cache, if so continue
-	cached, _ := db.mappedCache.Get(svm.Timestamp.UnixMicro())
-	for _, c := range cached {
-		if c.Equals(svm) {
-			return
-		}
 	}
 	path := svm.Path
 	if path == "" {
@@ -268,10 +175,8 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 		}
 
 	}
-	// value is not in cache, insert into the database and add to the cache
 	db.batchSizeGauge.Inc()
-	db.mappedCache.Set(svm.Timestamp.UnixMicro(), append(cached, svm))
-	db.batch.Queue(mappedInsertQuery, svm.Timestamp, svm.Source.Label, svm.Source.Type, svm.Context, svm.Path, svm.Value, svm.Source.Uuid, svm.Origin, svm.Source.TransferUuid)
+	db.batch.Queue(mappedInsertQuery, svm.Timestamp, svm.Source.Label, svm.Source.Type, svm.Context, path, svm.Value, svm.Source.Uuid, svm.Origin, svm.Source.TransferUuid)
 	if db.batch.Len() > db.batchSize {
 		go db.flushBatch()
 	}
@@ -542,10 +447,15 @@ func (db *PostgresqlDatabase) flushBatch() {
 	batchPtr := db.batch
 	db.batch = &pgx.Batch{}
 	db.batchSizeGauge.Set(0)
-	defer db.flushMutex.Unlock()
+	defer db.flushMutex.Unlock() // does this need to be defer?
 	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
 	defer cancel()
+	rowsAffected := 0
 	result := db.GetConnection().SendBatch(ctx, batchPtr)
+	for i := 0; i < batchPtr.Len(); i++ {
+		tag, _ := result.Exec()
+		rowsAffected += int(tag.RowsAffected())
+	}
 	// todo, determine if inserts went well
 	if err := result.Close(); err != nil {
 		if ctx.Err() != nil {
@@ -559,6 +469,11 @@ func (db *PostgresqlDatabase) flushBatch() {
 		)
 		return
 	}
+	logger.GetLogger().Info(
+		"Batch flushed",
+		zap.Int("Rows inserted", rowsAffected),
+		zap.Int("Rows expected to insert", batchPtr.Len()),
+	)
 	db.lastFlush = time.Now()
 	db.lastFlushGauge.SetToCurrentTime()
 }

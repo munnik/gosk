@@ -12,3 +12,5 @@ CREATE TRIGGER "update_mmsi_trigger"
 AFTER
 INSERT ON "mapped_data" FOR EACH ROW
     WHEN (NEW."path" = '' AND NEW."value" ? 'mmsi') EXECUTE PROCEDURE "update_mmsi"();
+
+ALTER TABLE "mapped_data" DROP CONSTRAINT "mapped_data_pk";

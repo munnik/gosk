@@ -255,7 +255,7 @@ func NewMQTTConfig(configFilePath string) *MQTTConfig {
 
 type PostgresqlConfig struct {
 	URLString          string        `mapstructure:"url"`
-	BatchFlushLength   int           `mapstructure:"batch_flush_length"`
+	BatchFlushBytes    int           `mapstructure:"batch_flush_bytes"`
 	BatchFlushInterval time.Duration `mapstructure:"batch_flush_interval"`
 	BufferSize         int           `mapstructure:"buffer_size"`       // size of the buffer for incoming messages
 	NumberOfWorkers    int           `mapstructure:"number_of_workers"` // number of workers to handle the incoming messages
@@ -267,7 +267,7 @@ func defaultPostgresqlConfig() PostgresqlConfig {
 		BufferSize:         100,
 		NumberOfWorkers:    10,
 		Timeout:            5 * time.Second,
-		BatchFlushLength:   100,
+		BatchFlushBytes:    100,
 		BatchFlushInterval: 10 * time.Second,
 	}
 }

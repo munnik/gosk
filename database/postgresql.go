@@ -219,6 +219,9 @@ func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...inte
 				zap.Any("Value", m.Value),
 			)
 		}
+		if m.Path == "mmsi" || m.Path == "name" {
+			m.Path = ""
+		}
 		result = append(result, m.ToMapped())
 	}
 	// check for errors after last call to .Next()

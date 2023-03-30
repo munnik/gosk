@@ -445,12 +445,15 @@ func (db *PostgresqlDatabase) DowngradeDatabase() error {
 }
 
 func (db *PostgresqlDatabase) flushBatch() {
+	if db.batch.Len() < 1 { // prevent flushing when queue is empty
+		return
+	}
 	db.flushMutex.Lock()
 	db.flushes.Inc()
 	batchPtr := db.batch
 	db.batch = &pgx.Batch{}
 	db.batchSizeGauge.Set(0)
-	defer db.flushMutex.Unlock() // does this need to be defer?
+	db.flushMutex.Unlock() // new batch created, no need to keep the lock
 	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
 	defer cancel()
 	rowsAffected := 0
@@ -459,7 +462,6 @@ func (db *PostgresqlDatabase) flushBatch() {
 		tag, _ := result.Exec()
 		rowsAffected += int(tag.RowsAffected())
 	}
-	// todo, determine if inserts went well
 	if err := result.Close(); err != nil {
 		if ctx.Err() != nil {
 			logger.GetLogger().Error("Timeout during database insertion", zap.Error(ctx.Err()), zap.Error(err))

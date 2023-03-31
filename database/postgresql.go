@@ -62,7 +62,7 @@ type PostgresqlDatabase struct {
 func NewPostgresqlDatabase(c *config.PostgresqlConfig) *PostgresqlDatabase {
 	result := &PostgresqlDatabase{
 		url:             c.URLString,
-		batchSize:       c.BatchFlushBytes,
+		batchSize:       c.BatchFlushLength,
 		batch:           &pgx.Batch{},
 		lastFlush:       time.Now(),
 		upgradeDone:     false,
@@ -445,6 +445,7 @@ func (db *PostgresqlDatabase) DowngradeDatabase() error {
 }
 
 func (db *PostgresqlDatabase) flushBatch() {
+	start := time.Now()
 	if db.batch.Len() < 1 { // prevent flushing when queue is empty
 		return
 	}
@@ -478,6 +479,7 @@ func (db *PostgresqlDatabase) flushBatch() {
 		"Batch flushed",
 		zap.Int("Rows inserted", rowsAffected),
 		zap.Int("Rows expected to insert", batchPtr.Len()),
+		zap.Duration("time", time.Since(start)),
 	)
 	db.lastFlush = time.Now()
 	db.lastFlushGauge.SetToCurrentTime()

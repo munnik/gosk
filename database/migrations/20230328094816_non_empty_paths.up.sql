@@ -13,4 +13,4 @@ AFTER
 INSERT ON "mapped_data" FOR EACH ROW
     WHEN (NEW."path" = 'mmsi') EXECUTE PROCEDURE "update_mmsi"();
 
-ALTER TABLE "mapped_data" ADD CONSTRAINT "mapped_data_pk" PRIMARY KEY ("context", "path", "connector","time");
+CREATE UNIQUE INDEX IF NOT EXISTS "mapped_data_context_path_connector_time_idx" ON "mapped_data"("context", "path", "connector", "time");

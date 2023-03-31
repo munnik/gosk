@@ -13,4 +13,4 @@ AFTER
 INSERT ON "mapped_data" FOR EACH ROW
     WHEN (NEW."path" = '' AND NEW."value" ? 'mmsi') EXECUTE PROCEDURE "update_mmsi"();
 
-ALTER TABLE "mapped_data" DROP CONSTRAINT "mapped_data_pk";
+drop INDEX "mapped_data_context_path_connector_time_idx";

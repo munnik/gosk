@@ -1,6 +1,3 @@
-UPDATE "mapped_data" SET "value" = "value", "path" = '' WHERE "path" = 'name';
-UPDATE "mapped_data" SET "value" = "value", "path" = '' WHERE "path" = 'mmsi';
-
 DROP TRIGGER "update_name_trigger" ON "mapped_data";
 CREATE TRIGGER "update_name_trigger"
 AFTER

@@ -12,5 +12,3 @@ CREATE TRIGGER "update_mmsi_trigger"
 AFTER
 INSERT ON "mapped_data" FOR EACH ROW
     WHEN (NEW."path" = '' AND NEW."value" ? 'mmsi') EXECUTE PROCEDURE "update_mmsi"();
-
-drop INDEX "mapped_data_context_path_connector_time_idx";

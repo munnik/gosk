@@ -1,0 +1,1 @@
+drop INDEX "mapped_data_context_path_connector_time_idx";

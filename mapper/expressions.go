@@ -30,7 +30,7 @@ func PressureToHeight(pressure float64, density float64) float64 {
 
 // Returns the HeightToVolume corresponding to the measured height. This function is used when a pressure sensor is used in a tank.
 // height is in m
-// sensorOffset is in m (positive means that the sensor is placed above the bottom of the tank, negative value means that the sensor is place below the tank)
+// sensorOffset is in m (positive means that the sensor is placed above the bottom of the tank, negative value means that the sensor is placed below the tank)
 // heights is in m, list of heights with corresponding volumes
 // volumes is in m3, list of volumes with corresponding heights
 // return value is in m3

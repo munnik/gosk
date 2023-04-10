@@ -2,21 +2,19 @@ package cmd
 
 import (
 	"github.com/munnik/gosk/config"
+	"github.com/munnik/gosk/filter"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/nanomsg"
-	"github.com/munnik/gosk/ratelimit"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 )
 
-var (
-	rateLimitCmd = &cobra.Command{
-		Use:   "rateLimit",
-		Short: "Rate limit incoming data",
-		Long:  `Rate limit incoming data at frequencies specified in configuration`,
-		Run:   doLimit,
-	}
-)
+var rateLimitCmd = &cobra.Command{
+	Use:   "rateLimit",
+	Short: "Rate limit incoming data",
+	Long:  `Rate limit incoming data at frequencies specified in configuration`,
+	Run:   doRateLimit,
+}
 
 func init() {
 	rootCmd.AddCommand(rateLimitCmd)
@@ -26,7 +24,7 @@ func init() {
 	rateLimitCmd.MarkFlagRequired("publishURL")
 }
 
-func doLimit(cmd *cobra.Command, args []string) {
+func doRateLimit(cmd *cobra.Command, args []string) {
 	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
@@ -37,6 +35,6 @@ func doLimit(cmd *cobra.Command, args []string) {
 	}
 	publisher := nanomsg.NewPub(publishURL)
 	c := config.NewRateLimitConfig(cfgFile)
-	m, _ := ratelimit.NewMappedRateLimiter(c)
-	m.RateLimit(subscriber, publisher)
+	f, _ := filter.NewMappedRateLimiter(c)
+	filter.Run(subscriber, publisher, f)
 }

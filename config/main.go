@@ -205,13 +205,13 @@ func NewJSONMappingConfig(configFilePath string) []JSONMappingConfig {
 	return result
 }
 
-type AggregateMappingConfig struct {
+type ExpressionMappingConfig struct {
 	MappingConfig `mapstructure:",squash"`
 	SourcePaths   []string `mapstructure:"sourcePaths"`
 }
 
-func NewAggregateMappingConfig(configFilePath string) []AggregateMappingConfig {
-	var result []AggregateMappingConfig
+func NewExpressionMappingConfig(configFilePath string) []ExpressionMappingConfig {
+	var result []ExpressionMappingConfig
 	readConfigFile(&result, configFilePath, "mappings")
 
 	for _, rmc := range result {
@@ -369,13 +369,13 @@ type RateLimitsConfig struct {
 	Interval time.Duration `mapstructure:"interval"`
 }
 
-type RateLimitConfig struct {
+type RateLimitFilterConfig struct {
 	Ratelimits      []RateLimitsConfig `mapstructure:"rateLimits"`
 	DefaultInterval time.Duration      `mapstructure:"defaultInterval"`
 }
 
-func NewRateLimitConfig(configFilePath string) *RateLimitConfig {
-	result := &RateLimitConfig{}
+func NewRateLimitConfig(configFilePath string) *RateLimitFilterConfig {
+	result := &RateLimitFilterConfig{}
 	readConfigFile(result, configFilePath)
 
 	return result

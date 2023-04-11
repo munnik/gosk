@@ -2,8 +2,8 @@ package cmd
 
 import (
 	"github.com/munnik/gosk/config"
-	"github.com/munnik/gosk/filter"
 	"github.com/munnik/gosk/logger"
+	"github.com/munnik/gosk/mapper"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
@@ -35,6 +35,6 @@ func doRateLimit(cmd *cobra.Command, args []string) {
 	}
 	publisher := nanomsg.NewPub(publishURL)
 	c := config.NewRateLimitConfig(cfgFile)
-	f, _ := filter.NewMappedRateLimiter(c)
-	filter.Run(subscriber, publisher, f)
+	f, _ := mapper.NewRateLimitFilter(c)
+	f.Map(subscriber, publisher)
 }

@@ -1,0 +1,6 @@
+---
+mappings:
+  - expression: "propulsion_mainEngine_drive_torque.Source.Label == 'testingConnector'" # if expression is true filter the update, expression should be boolean
+    path: "propulsion.mainEngine.drive.torque" # path of the update that is going to be filtered
+    sourcePaths:
+      - "propulsion.mainEngine.drive.torque" # paths to trigger the filter on

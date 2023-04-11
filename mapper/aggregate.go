@@ -14,20 +14,23 @@ import (
 type AggregateMapper struct {
 	config            config.MapperConfig
 	protocol          string
-	aggregateMappings map[string][]config.AggregateMappingConfig
-	env               map[string]interface{}
+	aggregateMappings map[string][]config.ExpressionMappingConfig
+	env               ExpressionEnvironment
 }
 
-func NewAggregateMapper(c config.MapperConfig, amc []config.AggregateMappingConfig) (*AggregateMapper, error) {
-	mappings := make(map[string][]config.AggregateMappingConfig)
-	for _, m := range amc {
+func NewAggregateMapper(c config.MapperConfig, emc []config.ExpressionMappingConfig) (*AggregateMapper, error) {
+	env := NewExpressionEnvironment()
+
+	mappings := make(map[string][]config.ExpressionMappingConfig)
+	for _, m := range emc {
 		for _, s := range m.SourcePaths {
 			mappings[s] = append(mappings[s], m)
 		}
 	}
-	env := NewExpressionEnvironment()
+
 	return &AggregateMapper{config: c, protocol: config.SignalKType, aggregateMappings: mappings, env: env}, nil
 }
+
 func (m *AggregateMapper) Map(subscriber mangos.Socket, publisher mangos.Socket) {
 	processMapped(subscriber, publisher, m)
 }
@@ -36,13 +39,12 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 	s := message.NewSource().WithLabel("signalk").WithType(m.protocol).WithUuid(uuid.Nil)
 	u := message.NewUpdate().WithSource(*s).WithTimestamp(time.Time{}) // initialize with empty timestamp instead of hidden now
 	for _, svm := range input.ToSingleValueMapped() {
-		mappings, present := m.aggregateMappings[svm.Path]
-		if present {
+		if mappings, ok := m.aggregateMappings[svm.Path]; ok {
 			if svm.Timestamp.After(u.Timestamp) { // take most recent timestamp from relevant data
 				u.WithTimestamp(svm.Timestamp)
 			}
 			path := strings.ReplaceAll(svm.Path, ".", "_")
-			m.env[path] = svm.Value
+			m.env[path] = svm
 			vm := vm.VM{}
 			for _, mapping := range mappings {
 				output, err := runExpr(vm, m.env, mapping.MappingConfig)

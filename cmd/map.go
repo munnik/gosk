@@ -25,14 +25,12 @@ import (
 	"go.uber.org/zap"
 )
 
-var (
-	mapCmd = &cobra.Command{
-		Use:   "map",
-		Short: "Map raw data to meaningful data",
-		Long:  `Map raw data to meaningful data based on the SignalK specification`,
-		Run:   doMap,
-	}
-)
+var mapCmd = &cobra.Command{
+	Use:   "map",
+	Short: "Map raw data to meaningful data",
+	Long:  `Map raw data to meaningful data based on the SignalK specification`,
+	Run:   doMap,
+}
 
 func init() {
 	rootCmd.AddCommand(mapCmd)
@@ -73,7 +71,7 @@ func doMap(cmd *cobra.Command, args []string) {
 		cmc := config.NewCanBusMappingConfig(cfgFile)
 		m, err = mapper.NewCanBusMapper(c2, cmc)
 	case config.SignalKType:
-		amc := config.NewAggregateMappingConfig(cfgFile)
+		amc := config.NewExpressionMappingConfig(cfgFile)
 		m, err = mapper.NewAggregateMapper(c, amc)
 
 	default:

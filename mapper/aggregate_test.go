@@ -14,7 +14,7 @@ import (
 var _ = Describe("DoMap aggregate same update", func() {
 	mapper, _ := NewAggregateMapper(
 		config.MapperConfig{Context: "testingContext"},
-		config.NewAggregateMappingConfig("aggregate_test.yaml"),
+		config.NewExpressionMappingConfig("aggregate_test.yaml"),
 	)
 	now := time.Now()
 	DescribeTable("Messages",

@@ -1,0 +1,7 @@
+---
+protocol: "signalk"
+mappings:
+  - path: "test.aggregate"
+    expression: "6.28318530718 * testdata.Value"
+    sourcePaths:
+      - "testdata"

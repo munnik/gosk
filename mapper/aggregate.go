@@ -43,6 +43,7 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 			if svm.Timestamp.After(u.Timestamp) { // take most recent timestamp from relevant data
 				u.WithTimestamp(svm.Timestamp)
 			}
+			u.Source.Uuid = svm.Source.Uuid // take the uuid from the message that updated this value
 			path := strings.ReplaceAll(svm.Path, ".", "_")
 			m.env[path] = svm
 			vm := vm.VM{}

@@ -1,30 +1,29 @@
-package connector_test
+package protocol_test
 
 import (
-	"github.com/munnik/gosk/config"
-	. "github.com/munnik/gosk/connector"
+	. "github.com/munnik/gosk/protocol"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Helper functions", func() {
-	Describe("BoolsToBytes", func() {
+var _ = Describe("Modbus protocol functions", func() {
+	Describe("CoilsToBytes", func() {
 		var (
-			rgc config.RegisterGroupConfig
+			header *ModbusHeader
 
 			input  []bool
 			result []byte
 		)
 		JustBeforeEach(func() {
-			result = CoilsToBytes(rgc, input)
+			result = InjectModbusHeader(header, CoilsToBytes(input))
 		})
 		Context("with 8 coils", func() {
 			BeforeEach(func() {
-				rgc = config.RegisterGroupConfig{
-					Slave:                  1,
-					FunctionCode:           2,
-					Address:                50,
-					NumberOfCoilsRegisters: 8,
+				header = &ModbusHeader{
+					Slave:                    1,
+					FunctionCode:             2,
+					Address:                  50,
+					NumberOfCoilsOrRegisters: 8,
 				}
 				// 128 + 64 + _ + _ 8 + _ + 2 + 1 = 203
 				input = []bool{true, true, false, false, true, false, true, true}
@@ -39,17 +38,16 @@ var _ = Describe("Helper functions", func() {
 					0,  // msb number of coils or registers
 					8,  // lsb number of coils or registers
 					203,
-					0,
 				}))
 			})
 		})
 		Context("with 5 coils", func() {
 			BeforeEach(func() {
-				rgc = config.RegisterGroupConfig{
-					Slave:                  1,
-					FunctionCode:           2,
-					Address:                50,
-					NumberOfCoilsRegisters: 5,
+				header = &ModbusHeader{
+					Slave:                    1,
+					FunctionCode:             2,
+					Address:                  50,
+					NumberOfCoilsOrRegisters: 5,
 				}
 				// 128 + 64 + _ + _ 8 = 200
 				input = []bool{true, true, false, false, true}
@@ -64,17 +62,16 @@ var _ = Describe("Helper functions", func() {
 					0,  // msb number of coils or registers
 					5,  // lsb number of coils or registers
 					200,
-					0,
 				}))
 			})
 		})
 		Context("with 16 coils", func() {
 			BeforeEach(func() {
-				rgc = config.RegisterGroupConfig{
-					Slave:                  1,
-					FunctionCode:           2,
-					Address:                50,
-					NumberOfCoilsRegisters: 16,
+				header = &ModbusHeader{
+					Slave:                    1,
+					FunctionCode:             2,
+					Address:                  50,
+					NumberOfCoilsOrRegisters: 16,
 				}
 				input = []bool{
 					// _ + 64 + 32 + _ + _ + _ + 2 + _ = 98
@@ -99,11 +96,11 @@ var _ = Describe("Helper functions", func() {
 		})
 		Context("with 9 coils", func() {
 			BeforeEach(func() {
-				rgc = config.RegisterGroupConfig{
-					Slave:                  1,
-					FunctionCode:           2,
-					Address:                50,
-					NumberOfCoilsRegisters: 9,
+				header = &ModbusHeader{
+					Slave:                    1,
+					FunctionCode:             2,
+					Address:                  50,
+					NumberOfCoilsOrRegisters: 9,
 				}
 				input = []bool{
 					// _ + 64 + 32 + _ + _ + _ + 2 + _ = 98
@@ -128,11 +125,11 @@ var _ = Describe("Helper functions", func() {
 		})
 		Context("with 25 coils", func() {
 			BeforeEach(func() {
-				rgc = config.RegisterGroupConfig{
-					Slave:                  1,
-					FunctionCode:           2,
-					Address:                50,
-					NumberOfCoilsRegisters: 25,
+				header = &ModbusHeader{
+					Slave:                    1,
+					FunctionCode:             2,
+					Address:                  50,
+					NumberOfCoilsOrRegisters: 25,
 				}
 				input = []bool{
 					// _ + 64 + 32 + _ + _ + _ + 2 + _ = 98

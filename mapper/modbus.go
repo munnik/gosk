@@ -9,6 +9,7 @@ import (
 	"github.com/antonmedv/expr/vm"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/message"
+	"github.com/munnik/gosk/protocol"
 	"go.nanomsg.org/mangos/v3"
 )
 
@@ -48,13 +49,13 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	for i := range registerData {
 		registerData[i] = binary.BigEndian.Uint16(r.Value[7+i*2 : 9+i*2])
 	}
-	if functionCode == config.Coils || functionCode == config.DiscreteInputs {
+	if functionCode == protocol.ReadCoils || functionCode == protocol.ReadDiscreteInputs {
 		coilsMap := make(map[int]bool, 0)
 		for i, coil := range RegistersToCoils(registerData, numberOfCoilsOrRegisters) {
 			coilsMap[int(address)+i] = coil
 		}
 		m.env["coils"] = coilsMap
-	} else if functionCode == config.HoldingRegisters || functionCode == config.InputRegisters {
+	} else if functionCode == protocol.ReadHoldingRegisters || functionCode == protocol.ReadInputRegisters {
 		deltaMap := make(map[int]int32, 0)
 		timestampMap := make(map[int]time.Time, 0)
 		timeDeltaMap := make(map[int]int64, 0)

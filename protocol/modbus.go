@@ -80,17 +80,17 @@ func RegistersToBytes(values []uint16) []byte {
 	bytes := make([]byte, 0, 2*len(values))
 	out := make([]byte, 2)
 	for _, v := range values {
-		// TODO: make BigEndian / LittleEndian configurable
 		binary.BigEndian.PutUint16(out, v)
 		bytes = append(bytes, out...)
 	}
 	return bytes
 }
 
-func BytesToRegisters(bytes []byte, numberOfRegisters int) ([]uint16, error) {
-	if len(bytes) != numberOfRegisters*2 {
-		return nil, fmt.Errorf("expected %d bytes, got %d bytes", numberOfRegisters*2, len(bytes))
+func BytesToRegisters(bytes []byte) ([]uint16, error) {
+	if len(bytes)%2 != 0 {
+		return nil, fmt.Errorf("expected even number of bytes, got %d bytes", len(bytes))
 	}
+	numberOfRegisters := len(bytes) / 2
 	registers := make([]uint16, 0, numberOfRegisters)
 	for i := 0; i < numberOfRegisters; i++ {
 		registers = append(registers, binary.BigEndian.Uint16(bytes[i*2:i*2+2]))

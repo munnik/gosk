@@ -14,6 +14,8 @@ import (
 	"github.com/munnik/gosk/database"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/mqtt"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/zap"
 )
 
@@ -30,6 +32,10 @@ type TransferRequester struct {
 	sleepBetweenDataRequests  time.Duration
 	numberOfRequestWorkers    int
 	dataRequestChannel        chan OriginPeriod
+	countRequestsSent         prometheus.CounterVec
+	countResponsesReceived    prometheus.CounterVec
+	DataRequestsSent          prometheus.CounterVec
+	DataMissingPeriods        prometheus.GaugeVec
 }
 
 func NewTransferRequester(c *config.TransferConfig) *TransferRequester {
@@ -39,6 +45,10 @@ func NewTransferRequester(c *config.TransferConfig) *TransferRequester {
 		sleepBetweenCountRequests: c.SleepBetweenCountRequests,
 		sleepBetweenDataRequests:  c.SleepBetweenDataRequests,
 		numberOfRequestWorkers:    c.NumberOfRequestWorkers,
+		countRequestsSent:         *promauto.NewCounterVec(prometheus.CounterOpts{Name: "gosk_transfer_count_requests_total", Help: "total number of count requests sent, partitioned by origin"}, []string{"origin"}),
+		countResponsesReceived:    *promauto.NewCounterVec(prometheus.CounterOpts{Name: "gosk_transfer_count_responses_total", Help: "total number of count responses received, partitioned by origin"}, []string{"origin"}),
+		DataRequestsSent:          *promauto.NewCounterVec(prometheus.CounterOpts{Name: "gosk_transfer_data_requests_total", Help: "total number of data requests sent, partitioned by origin"}, []string{"origin"}),
+		DataMissingPeriods:        *promauto.NewGaugeVec(prometheus.GaugeOpts{Name: "gosk_transfer_missing_periods_total", Help: "total number of periods with missing data sent, partitioned by origin"}, []string{"origin"}),
 	}
 
 	if result.numberOfRequestWorkers == 0 {
@@ -144,6 +154,7 @@ func (t *TransferRequester) sendCountRequests() {
 				}
 				t.sendMQTTCommand(origin, requestMessage)
 				t.db.LogTransferRequest(origin, requestMessage)
+				t.countRequestsSent.With(prometheus.Labels{"origin": origin}).Inc()
 			}
 			wg.Done()
 		}(origin, start)
@@ -155,6 +166,7 @@ func (t *TransferRequester) sendCountRequests() {
 func (t *TransferRequester) countResponseReceived(origin string, response ResponseMessage) {
 	t.db.CreateRemoteCount(response.PeriodStart, origin, response.DataPoints)
 	t.db.LogTransferRequest(origin, response)
+	t.countResponsesReceived.With(prometheus.Labels{"origin": origin}).Inc()
 }
 
 func (t *TransferRequester) sendDataRequests() {
@@ -177,12 +189,12 @@ func (t *TransferRequester) sendDataRequests() {
 		time.Sleep(t.sleepBetweenDataRequests)
 		wg.Done()
 	}()
-
 	for origin, periods := range origins {
 		go func(origin string, periods []time.Time) {
 			for _, period := range periods {
 				t.dataRequestChannel <- OriginPeriod{origin: origin, period: period}
 			}
+			t.DataMissingPeriods.With(prometheus.Labels{"origin": origin}).Set(float64(len(periods)))
 		}(origin, periods)
 	}
 	wg.Wait()
@@ -209,6 +221,7 @@ func (t *TransferRequester) sendDataRequestWorker(dataRequests <-chan OriginPeri
 		}
 		t.sendMQTTCommand(request.origin, requestMessage)
 		t.db.LogTransferRequest(request.origin, requestMessage)
+		t.DataRequestsSent.With(prometheus.Labels{"origin": request.origin}).Inc()
 	}
 }
 

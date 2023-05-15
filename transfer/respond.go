@@ -13,21 +13,29 @@ import (
 	"github.com/munnik/gosk/database"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/mqtt"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.nanomsg.org/mangos/v3"
 	"go.uber.org/zap"
 )
 
 type TransferResponder struct {
-	db         *database.PostgresqlDatabase
-	config     *config.TransferConfig
-	mqttClient *mqtt.Client
-	publisher  mangos.Socket
+	db                   *database.PostgresqlDatabase
+	config               *config.TransferConfig
+	mqttClient           *mqtt.Client
+	publisher            mangos.Socket
+	countRequestsHandled prometheus.Counter
+	DataRequestsReceived prometheus.Counter
+	DataRequestsHandled  prometheus.Counter
 }
 
 func NewTransferResponder(c *config.TransferConfig) *TransferResponder {
 	return &TransferResponder{
-		db:     database.NewPostgresqlDatabase(&c.PostgresqlConfig),
-		config: c,
+		db:                   database.NewPostgresqlDatabase(&c.PostgresqlConfig),
+		config:               c,
+		countRequestsHandled: promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_transfer_count_requests_handled_total", Help: "total number of count requests reponded to"}),
+		DataRequestsReceived: promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_transfer_data_requests_received_total", Help: "total number of data requests received"}),
+		DataRequestsHandled:  promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_transfer_data_requests_handled_total", Help: "total number of data requests responded to"}),
 	}
 }
 
@@ -57,7 +65,9 @@ func (t *TransferResponder) messageReceived(c paho.Client, m paho.Message) {
 	switch request.Command {
 	case countCmd:
 		t.respondWithCount(request)
+		t.countRequestsHandled.Inc()
 	case dataCmd:
+		t.DataRequestsReceived.Inc()
 		t.respondWithData(request)
 	default:
 		logger.GetLogger().Warn(
@@ -114,6 +124,7 @@ func (t *TransferResponder) respondWithData(request RequestMessage) {
 	}
 
 	t.injectData(localCountsPerUuid, request.UUID, request.PeriodStart)
+	t.DataRequestsHandled.Inc()
 }
 
 func (t *TransferResponder) injectData(uuidsToTransmit map[uuid.UUID]int, transferUuid uuid.UUID, period time.Time) {

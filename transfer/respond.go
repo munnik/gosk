@@ -20,22 +20,24 @@ import (
 )
 
 type TransferResponder struct {
-	db                   *database.PostgresqlDatabase
-	config               *config.TransferConfig
-	mqttClient           *mqtt.Client
-	publisher            mangos.Socket
-	countRequestsHandled prometheus.Counter
-	DataRequestsReceived prometheus.Counter
-	DataRequestsHandled  prometheus.Counter
+	db                    *database.PostgresqlDatabase
+	config                *config.TransferConfig
+	mqttClient            *mqtt.Client
+	publisher             mangos.Socket
+	countRequestsReceived prometheus.Counter
+	countRequestsHandled  prometheus.Counter
+	DataRequestsReceived  prometheus.Counter
+	DataRequestsHandled   prometheus.Counter
 }
 
 func NewTransferResponder(c *config.TransferConfig) *TransferResponder {
 	return &TransferResponder{
-		db:                   database.NewPostgresqlDatabase(&c.PostgresqlConfig),
-		config:               c,
-		countRequestsHandled: promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_transfer_count_requests_handled_total", Help: "total number of count requests reponded to"}),
-		DataRequestsReceived: promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_transfer_data_requests_received_total", Help: "total number of data requests received"}),
-		DataRequestsHandled:  promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_transfer_data_requests_handled_total", Help: "total number of data requests responded to"}),
+		db:                    database.NewPostgresqlDatabase(&c.PostgresqlConfig),
+		config:                c,
+		countRequestsReceived: promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_transfer_count_requests_received_total", Help: "total number of count requests received"}),
+		countRequestsHandled:  promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_transfer_count_requests_handled_total", Help: "total number of count requests reponded to"}),
+		DataRequestsReceived:  promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_transfer_data_requests_received_total", Help: "total number of data requests received"}),
+		DataRequestsHandled:   promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_transfer_data_requests_handled_total", Help: "total number of data requests responded to"}),
 	}
 }
 
@@ -64,8 +66,8 @@ func (t *TransferResponder) messageReceived(c paho.Client, m paho.Message) {
 
 	switch request.Command {
 	case countCmd:
+		t.countRequestsReceived.Inc()
 		t.respondWithCount(request)
-		t.countRequestsHandled.Inc()
 	case dataCmd:
 		t.DataRequestsReceived.Inc()
 		t.respondWithData(request)
@@ -102,6 +104,7 @@ func (t *TransferResponder) respondWithCount(request RequestMessage) {
 	}
 	topic := fmt.Sprintf(respondTopic, t.config.Origin)
 	t.mqttClient.Publish(topic, 0, true, bytes)
+	t.countRequestsHandled.Inc()
 }
 
 func (t *TransferResponder) respondWithData(request RequestMessage) {

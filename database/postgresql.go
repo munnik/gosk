@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -173,7 +174,6 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 				zap.String("context", svm.Context),
 				zap.Any("value", svm.Value))
 		}
-
 	}
 	db.batchSizeGauge.Inc()
 	db.batch.Queue(mappedInsertQuery, svm.Timestamp, svm.Source.Label, svm.Source.Type, svm.Context, path, svm.Value, svm.Source.Uuid, svm.Origin, svm.Source.TransferUuid)
@@ -338,6 +338,13 @@ func (db *PostgresqlDatabase) SelectCountMapped(origin string, start time.Time) 
 	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
 	defer cancel()
 	err := db.GetConnection().QueryRow(ctx, selectLocalCountQuery, origin, start).Scan(&result)
+	if errors.Is(err, pgx.ErrNoRows) {
+		logger.GetLogger().Warn(
+			"No rows found so returning 0 count",
+			zap.Error(err),
+		)
+		return 0, nil
+	}
 	if err != nil {
 		return 0, err
 	} else if ctx.Err() != nil {

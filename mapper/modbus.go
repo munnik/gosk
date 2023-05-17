@@ -51,7 +51,7 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	}
 	if functionCode == protocol.ReadCoils || functionCode == protocol.ReadDiscreteInputs {
 		coilsMap := make(map[int]bool, 0)
-		for i, coil := range RegistersToCoils(registerData, numberOfCoilsOrRegisters) {
+		for i, coil := range protocol.RegistersToCoils(registerData, numberOfCoilsOrRegisters) {
 			coilsMap[int(address)+i] = coil
 		}
 		m.env["coils"] = coilsMap
@@ -113,29 +113,4 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	}
 
 	return result.AddUpdate(u), nil
-}
-
-func RegistersToCoils(registers []uint16, numberOfCoils uint16) []bool {
-	result := make([]bool, 0, len(registers)*16)
-	for _, r := range registers {
-		result = append(result,
-			r&32768 == 32768,
-			r&16384 == 16384,
-			r&8192 == 8192,
-			r&4096 == 4096,
-			r&2048 == 2048,
-			r&1024 == 1024,
-			r&512 == 512,
-			r&256 == 256,
-			r&128 == 128,
-			r&64 == 64,
-			r&32 == 32,
-			r&16 == 16,
-			r&8 == 8,
-			r&4 == 4,
-			r&2 == 2,
-			r&1 == 1,
-		)
-	}
-	return result[:int(numberOfCoils)]
 }

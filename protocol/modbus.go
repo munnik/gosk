@@ -127,3 +127,43 @@ func ExtractModbusHeader(bytes []byte) (*ModbusHeader, []byte, error) {
 
 	return header, bytes[HeaderLength:], nil
 }
+
+func RegistersToCoils(registers []uint16, numberOfCoils uint16) []bool {
+	result := make([]bool, 0, len(registers)*16)
+	for _, r := range registers {
+		result = append(result,
+			r&32768 == 32768,
+			r&16384 == 16384,
+			r&8192 == 8192,
+			r&4096 == 4096,
+			r&2048 == 2048,
+			r&1024 == 1024,
+			r&512 == 512,
+			r&256 == 256,
+			r&128 == 128,
+			r&64 == 64,
+			r&32 == 32,
+			r&16 == 16,
+			r&8 == 8,
+			r&4 == 4,
+			r&2 == 2,
+			r&1 == 1,
+		)
+	}
+	return result[:int(numberOfCoils)]
+}
+
+func CoilsToRegisters(coils []bool) []uint16 {
+	result := make([]uint16, (len(coils)-1)/16+1)
+	for registerIndex := range result {
+		for coilIndex := registerIndex * 16; coilIndex < (registerIndex+1)*16; coilIndex += 1 {
+			if coilIndex < len(coils) && coils[coilIndex] {
+				result[registerIndex] += 1
+			}
+			if (coilIndex+1)%16 != 0 {
+				result[registerIndex] <<= result[registerIndex] << 1
+			}
+		}
+	}
+	return result
+}

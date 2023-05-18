@@ -133,6 +133,7 @@ func (m *ModbusConnector) receive(stream chan<- []byte) error {
 type ModbusClient struct {
 	realClient *modbus.ModbusClient
 	header     *protocol.ModbusHeader
+	lock       sync.Mutex
 }
 
 func NewModbusClient(realClient *modbus.ModbusClient, header *protocol.ModbusHeader) *ModbusClient {
@@ -143,7 +144,9 @@ func NewModbusClient(realClient *modbus.ModbusClient, header *protocol.ModbusHea
 }
 
 func (m *ModbusClient) Read(bytes []byte) (n int, err error) {
-	bytes = bytes[:0]
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
 	m.realClient.SetUnitId(m.header.Slave)
 	switch m.header.FunctionCode {
 	case protocol.ReadCoils:
@@ -151,29 +154,33 @@ func (m *ModbusClient) Read(bytes []byte) (n int, err error) {
 		if err != nil {
 			return 0, fmt.Errorf("error while reading coils %v, with length %v and function code %v, the error that occurred was %v", m.header.Address, m.header.NumberOfCoilsOrRegisters, m.header.FunctionCode, err)
 		}
+		bytes = bytes[:0]
 		bytes = append(bytes, protocol.InjectModbusHeader(m.header, protocol.CoilsToBytes(result))...)
 	case protocol.ReadDiscreteInputs:
 		result, err := m.realClient.ReadDiscreteInputs(m.header.Address, m.header.NumberOfCoilsOrRegisters)
 		if err != nil {
 			return 0, fmt.Errorf("error while reading discrete inputs %v, with length %v and function code %v, the error that occurred was %v", m.header.Address, m.header.NumberOfCoilsOrRegisters, m.header.FunctionCode, err)
 		}
+		bytes = bytes[:0]
 		bytes = append(bytes, protocol.InjectModbusHeader(m.header, protocol.CoilsToBytes(result))...)
 	case protocol.ReadHoldingRegisters:
 		result, err := m.realClient.ReadRegisters(m.header.Address, m.header.NumberOfCoilsOrRegisters, modbus.HOLDING_REGISTER)
 		if err != nil {
 			return 0, fmt.Errorf("error while reading holding register %v, with length %v and function code %v, the error that occurred was %v", m.header.Address, m.header.NumberOfCoilsOrRegisters, m.header.FunctionCode, err)
 		}
+		bytes = bytes[:0]
 		bytes = append(bytes, protocol.InjectModbusHeader(m.header, protocol.RegistersToBytes(result))...)
 	case protocol.ReadInputRegisters:
 		result, err := m.realClient.ReadRegisters(m.header.Address, m.header.NumberOfCoilsOrRegisters, modbus.INPUT_REGISTER)
 		if err != nil {
 			return 0, fmt.Errorf("error while reading input register %v, with length %v and function code %v, the error that occurred was %v", m.header.Address, m.header.NumberOfCoilsOrRegisters, m.header.FunctionCode, err)
 		}
+		bytes = bytes[:0]
 		bytes = append(bytes, protocol.InjectModbusHeader(m.header, protocol.RegistersToBytes(result))...)
 	default:
 		return 0, fmt.Errorf("unsupported function code type %v", m.header.FunctionCode)
 	}
-	return
+	return len(bytes), nil
 }
 
 func (m *ModbusClient) Write(bytes []byte) (n int, err error) {
@@ -181,6 +188,9 @@ func (m *ModbusClient) Write(bytes []byte) (n int, err error) {
 	if err != nil {
 		return 0, err
 	}
+
+	m.lock.Lock()
+	defer m.lock.Unlock()
 
 	m.realClient.SetUnitId(header.Slave)
 	switch header.FunctionCode {

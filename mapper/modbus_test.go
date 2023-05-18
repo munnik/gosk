@@ -11,76 +11,6 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Helper functions", func() {
-	DescribeTable(
-		"RegistersToCoils",
-		func(input []uint16, numberOfCoils uint16, expected []bool) {
-			result := RegistersToCoils(input, numberOfCoils)
-			Expect(result).To(Equal(expected))
-		},
-		Entry("One register with value 0x0000 and number of coils 2", []uint16{0x0000}, uint16(2), []bool{
-			false,
-			false,
-		}),
-		Entry("One register with value 0x0001 and number of coils 3", []uint16{0x8002}, uint16(3), []bool{
-			true,
-			false,
-			false,
-		}),
-		Entry("Three registers with value 0x45a3 0x7812 0x0001 and number of coils 47", []uint16{0x45a3, 0x7812, 0x0001}, uint16(47), []bool{
-			false,
-			true,
-			false,
-			false,
-			false,
-			true,
-			false,
-			true,
-			true,
-			false,
-			true,
-			false,
-			false,
-			false,
-			true,
-			true,
-
-			false,
-			true,
-			true,
-			true,
-			true,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			true,
-			false,
-			false,
-			true,
-			false,
-
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-		}),
-	)
-})
-
 var _ = Describe("DoMap Modbus", func() {
 	mapper, _ := NewModbusMapper(
 		config.MapperConfig{Context: "testingContext"},
@@ -306,7 +236,6 @@ var _ = Describe("DoMap Modbus", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result).To(Equal(expected))
 		}
-
 	},
 		Entry("no difference",
 			mapper,

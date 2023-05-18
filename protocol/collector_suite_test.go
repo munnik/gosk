@@ -1,4 +1,4 @@
-package connector_test
+package protocol_test
 
 import (
 	"testing"
@@ -9,5 +9,5 @@ import (
 
 func TestConnector(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Connector Suite")
+	RunSpecs(t, "Protocol Suite")
 }

@@ -186,8 +186,8 @@ type UdpListenerConnection struct {
 }
 
 func (u UdpListenerConnection) Read(p []byte) (n int, err error) {
-	size, _, err := u.conn.ReadFrom(p)
-	return size, err
+	n, _, err = u.conn.ReadFrom(p)
+	return
 }
 
 func (u UdpListenerConnection) Write(p []byte) (n int, err error) {

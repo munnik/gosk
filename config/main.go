@@ -8,6 +8,7 @@ import (
 
 	"github.com/antonmedv/expr/vm"
 	"github.com/munnik/gosk/logger"
+	"github.com/munnik/gosk/protocol"
 	"go.uber.org/zap"
 )
 
@@ -28,13 +29,6 @@ const (
 	HttpType = "http"
 
 	ParityMap string = "NOE" // None, Odd, Even
-)
-
-const (
-	Coils = iota + 1
-	DiscreteInputs
-	HoldingRegisters
-	InputRegisters
 )
 
 type ConnectorConfig struct {
@@ -67,11 +61,8 @@ func NewConnectorConfig(configFilePath string) *ConnectorConfig {
 }
 
 type RegisterGroupConfig struct {
-	Slave                  uint8         `mapstructure:"slave"`
-	FunctionCode           uint16        `mapstructure:"functionCode"`
-	Address                uint16        `mapstructure:"address"`
-	NumberOfCoilsRegisters uint16        `mapstructure:"numberOfCoilsOrRegisters"`
-	PollingInterval        time.Duration `mapstructure:"pollingInterval"`
+	protocol.ModbusHeader `mapstructure:",squash"`
+	PollingInterval       time.Duration `mapstructure:"pollingInterval"`
 }
 
 func NewRegisterGroupsConfig(configFilePath string) []RegisterGroupConfig {
@@ -79,6 +70,15 @@ func NewRegisterGroupsConfig(configFilePath string) []RegisterGroupConfig {
 	readConfigFile(&result, configFilePath, "registerGroups")
 
 	return result
+}
+
+func (rgc *RegisterGroupConfig) ExtractModbusHeader() *protocol.ModbusHeader {
+	return &protocol.ModbusHeader{
+		Slave:                    rgc.Slave,
+		FunctionCode:             rgc.FunctionCode,
+		Address:                  rgc.Address,
+		NumberOfCoilsOrRegisters: rgc.NumberOfCoilsOrRegisters,
+	}
 }
 
 type UrlGroupConfig struct {
@@ -158,11 +158,8 @@ func (m *MappingConfig) verify() {
 }
 
 type ModbusMappingsConfig struct {
-	MappingConfig            `mapstructure:",squash"`
-	Slave                    uint8  `mapstructure:"slave"`
-	FunctionCode             uint16 `mapstructure:"functionCode"`
-	Address                  uint16 `mapstructure:"address"`
-	NumberOfCoilsOrRegisters uint16 `mapstructure:"numberOfCoilsOrRegisters"`
+	MappingConfig         `mapstructure:",squash"`
+	protocol.ModbusHeader `mapstructure:",squash"`
 }
 
 func NewModbusMappingsConfig(configFilePath string) []ModbusMappingsConfig {

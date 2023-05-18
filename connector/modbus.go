@@ -188,7 +188,7 @@ func (m *ModbusClient) Write(bytes []byte) (n int, err error) {
 		if header.NumberOfCoilsOrRegisters != 1 {
 			return 0, fmt.Errorf("expected only 1 register but got %d", header.NumberOfCoilsOrRegisters)
 		}
-		coils, err := protocol.BytesToCoils(bytes, int(header.NumberOfCoilsOrRegisters))
+		coils, err := protocol.BytesToCoils(bytes)
 		if err != nil {
 			return 0, err
 		}
@@ -206,7 +206,7 @@ func (m *ModbusClient) Write(bytes []byte) (n int, err error) {
 		}
 		m.realClient.WriteRegister(header.Address, registers[0])
 	case protocol.WriteMultipleCoils:
-		coils, err := protocol.BytesToCoils(bytes, int(header.NumberOfCoilsOrRegisters))
+		coils, err := protocol.BytesToCoils(bytes)
 		if err != nil {
 			return 0, err
 		}

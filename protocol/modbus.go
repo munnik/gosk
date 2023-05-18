@@ -54,26 +54,22 @@ type ModbusHeader struct {
 }
 
 func CoilsToBytes(values []bool) []byte {
-	bytes := make([]byte, (len(values)-1)/8+1)
+	bytes := make([]byte, len(values)*2)
 	for i, v := range values {
 		if v {
-			bytes[i/8] += 1 << (7 - i%8)
+			bytes[i*2] = 0xff
+			bytes[i*2+1] = 0x00
 		}
 	}
 	return bytes
 }
 
-func BytesToCoils(bytes []byte, numberOfCoils int) ([]bool, error) {
-	if len(bytes) != (numberOfCoils-1)/8+1 {
-		return nil, fmt.Errorf("expected %d bytes, got %d bytes", numberOfCoils/8+1, len(bytes))
+func BytesToCoils(bytes []byte) ([]bool, error) {
+	registers, err := BytesToRegisters(bytes)
+	if err != nil {
+		return nil, err
 	}
-
-	coils := make([]bool, 0, numberOfCoils)
-	for i := 0; i < numberOfCoils; i++ {
-		coils[i] = (bytes[i/8] & 1 << (7 - i%8)) == 1<<(7-i%8)
-	}
-
-	return coils, nil
+	return RegistersToCoils(registers), nil
 }
 
 func RegistersToBytes(values []uint16) []byte {
@@ -97,6 +93,26 @@ func BytesToRegisters(bytes []byte) ([]uint16, error) {
 	}
 
 	return registers, nil
+}
+
+func RegistersToCoils(registers []uint16) []bool {
+	coils := make([]bool, len(registers))
+	for i := range registers {
+		if registers[i] == 0xff00 {
+			coils[i] = true
+		}
+	}
+	return coils
+}
+
+func CoilsToRegisters(coils []bool) []uint16 {
+	registers := make([]uint16, len(coils))
+	for i := range coils {
+		if coils[i] {
+			registers[i] = 0xff00
+		}
+	}
+	return registers
 }
 
 func InjectModbusHeader(header *ModbusHeader, bytes []byte) []byte {
@@ -126,44 +142,4 @@ func ExtractModbusHeader(bytes []byte) (*ModbusHeader, []byte, error) {
 	}
 
 	return header, bytes[HeaderLength:], nil
-}
-
-func RegistersToCoils(registers []uint16, numberOfCoils uint16) []bool {
-	result := make([]bool, 0, len(registers)*16)
-	for _, r := range registers {
-		result = append(result,
-			r&32768 == 32768,
-			r&16384 == 16384,
-			r&8192 == 8192,
-			r&4096 == 4096,
-			r&2048 == 2048,
-			r&1024 == 1024,
-			r&512 == 512,
-			r&256 == 256,
-			r&128 == 128,
-			r&64 == 64,
-			r&32 == 32,
-			r&16 == 16,
-			r&8 == 8,
-			r&4 == 4,
-			r&2 == 2,
-			r&1 == 1,
-		)
-	}
-	return result[:int(numberOfCoils)]
-}
-
-func CoilsToRegisters(coils []bool) []uint16 {
-	result := make([]uint16, (len(coils)-1)/16+1)
-	for registerIndex := range result {
-		for coilIndex := registerIndex * 16; coilIndex < (registerIndex+1)*16; coilIndex += 1 {
-			if coilIndex < len(coils) && coils[coilIndex] {
-				result[registerIndex] += 1
-			}
-			if (coilIndex+1)%16 != 0 {
-				result[registerIndex] <<= 1
-			}
-		}
-	}
-	return result
 }

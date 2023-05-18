@@ -10,68 +10,18 @@ import (
 var _ = Describe("Modbus protocol functions", func() {
 	DescribeTable(
 		"RegistersToCoils",
-		func(input []uint16, numberOfCoils uint16, expected []bool) {
-			result := protocol.RegistersToCoils(input, numberOfCoils)
+		func(input []uint16, expected []bool) {
+			result := protocol.RegistersToCoils(input)
 			Expect(result).To(Equal(expected))
 		},
-		Entry("One register with value 0x0000 and number of coils 2", []uint16{0x0000}, uint16(2), []bool{
-			false,
-			false,
+		Entry("One register", []uint16{0xff00}, []bool{
+			true,
 		}),
-		Entry("One register with value 0x0001 and number of coils 3", []uint16{0x8002}, uint16(3), []bool{
-			true,
-			false,
-			false,
-		}),
-		Entry("Three registers with value 0x45a3 0x7812 0x0001 and number of coils 47", []uint16{0x45a3, 0x7812, 0x0001}, uint16(47), []bool{
-			false,
-			true,
-			false,
-			false,
-			false,
-			true,
-			false,
-			true,
-			true,
-			false,
-			true,
-			false,
-			false,
-			false,
-			true,
-			true,
-
-			false,
-			true,
-			true,
-			true,
-			true,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
+		Entry("Five register", []uint16{0xff00, 0x0000, 0x0000, 0xff00, 0x0000}, []bool{
 			true,
 			false,
 			false,
 			true,
-			false,
-
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
 			false,
 		}),
 	)
@@ -81,63 +31,12 @@ var _ = Describe("Modbus protocol functions", func() {
 			result := protocol.CoilsToRegisters(input)
 			Expect(result).To(Equal(expected))
 		},
-		Entry("2 coils, both false", []uint16{0x0000}, []bool{
+		Entry("2 coils, both false", []uint16{0x0000, 0x0000}, []bool{
 			false,
 			false,
 		}),
-		Entry("3 coils, first true rest false", []uint16{0x8000}, []bool{
+		Entry("3 coils, first true rest false", []uint16{0xff00, 0x0000, 0x0000}, []bool{
 			true,
-			false,
-			false,
-		}),
-		Entry("47 coils", []uint16{0x45a3, 0x7812, 0x0000}, []bool{
-			false,
-			true,
-			false,
-			false,
-			false,
-			true,
-			false,
-			true,
-			true,
-			false,
-			true,
-			false,
-			false,
-			false,
-			true,
-			true,
-
-			false,
-			true,
-			true,
-			true,
-			true,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			true,
-			false,
-			false,
-			true,
-			false,
-
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
 			false,
 			false,
 		}),
@@ -155,141 +54,70 @@ var _ = Describe("Modbus protocol functions", func() {
 		Context("with 8 coils", func() {
 			BeforeEach(func() {
 				header = &ModbusHeader{
-					Slave:                    1,
-					FunctionCode:             2,
-					Address:                  50,
-					NumberOfCoilsOrRegisters: 8,
+					Slave:                    0x01,
+					FunctionCode:             0x02,
+					Address:                  0x50,
+					NumberOfCoilsOrRegisters: 0x08,
 				}
-				// 128 + 64 + _ + _ 8 + _ + 2 + 1 = 203
 				input = []bool{true, true, false, false, true, false, true, true}
 			})
 			It("equals the correct bytes", func() {
 				Expect(result).To(Equal([]byte{
-					1,  // slave
-					0,  // msb function code
-					2,  // lsb function code
-					0,  // msb address
-					50, // lsb address
-					0,  // msb number of coils or registers
-					8,  // lsb number of coils or registers
-					203,
+					0x01, // slave
+					0x00, // msb function code
+					0x02, // lsb function code
+					0x00, // msb address
+					0x50, // lsb address
+					0x00, // msb number of coils or registers
+					0x08, // lsb number of coils or registers
+					0xff, // true
+					0x00,
+					0xff, // true
+					0x00,
+					0x00, // false
+					0x00,
+					0x00, // false
+					0x00,
+					0xff, // true
+					0x00,
+					0x00, // false
+					0x00,
+					0xff, // true
+					0x00,
+					0xff, // true
+					0x00,
 				}))
 			})
 		})
 		Context("with 5 coils", func() {
 			BeforeEach(func() {
 				header = &ModbusHeader{
-					Slave:                    1,
-					FunctionCode:             2,
-					Address:                  50,
-					NumberOfCoilsOrRegisters: 5,
+					Slave:                    0x01,
+					FunctionCode:             0x02,
+					Address:                  0x50,
+					NumberOfCoilsOrRegisters: 0x05,
 				}
-				// 128 + 64 + _ + _ 8 = 200
 				input = []bool{true, true, false, false, true}
 			})
 			It("equals the correct bytes", func() {
 				Expect(result).To(Equal([]byte{
-					1,  // slave
-					0,  // msb function code
-					2,  // lsb function code
-					0,  // msb address
-					50, // lsb address
-					0,  // msb number of coils or registers
-					5,  // lsb number of coils or registers
-					200,
-				}))
-			})
-		})
-		Context("with 16 coils", func() {
-			BeforeEach(func() {
-				header = &ModbusHeader{
-					Slave:                    1,
-					FunctionCode:             2,
-					Address:                  50,
-					NumberOfCoilsOrRegisters: 16,
-				}
-				input = []bool{
-					// _ + 64 + 32 + _ + _ + _ + 2 + _ = 98
-					false, true, true, false, false, false, true, false,
-					// 128 + 64 + _ + _ + 8 + _ + 2 + 1 = 203
-					true, true, false, false, true, false, true, true,
-				}
-			})
-			It("equals the correct bytes", func() {
-				Expect(result).To(Equal([]byte{
-					1,  // slave
-					0,  // msb function code
-					2,  // lsb function code
-					0,  // msb address
-					50, // lsb address
-					0,  // msb number of coils or registers
-					16, // lsb number of coils or registers
-					98,
-					203,
-				}))
-			})
-		})
-		Context("with 9 coils", func() {
-			BeforeEach(func() {
-				header = &ModbusHeader{
-					Slave:                    1,
-					FunctionCode:             2,
-					Address:                  50,
-					NumberOfCoilsOrRegisters: 9,
-				}
-				input = []bool{
-					// _ + 64 + 32 + _ + _ + _ + 2 + _ = 98
-					false, true, true, false, false, false, true, false,
-					// 128 + _ + _ + _ + _ + _ + _ + _ = 128
-					true,
-				}
-			})
-			It("equals the correct bytes", func() {
-				Expect(result).To(Equal([]byte{
-					1,  // slave
-					0,  // msb function code
-					2,  // lsb function code
-					0,  // msb address
-					50, // lsb address
-					0,  // msb number of coils or registers
-					9,  // lsb number of coils or registers
-					98,
-					128,
-				}))
-			})
-		})
-		Context("with 25 coils", func() {
-			BeforeEach(func() {
-				header = &ModbusHeader{
-					Slave:                    1,
-					FunctionCode:             2,
-					Address:                  50,
-					NumberOfCoilsOrRegisters: 25,
-				}
-				input = []bool{
-					// _ + 64 + 32 + _ + _ + _ + 2 + _ = 98
-					false, true, true, false, false, false, true, false,
-					// 128 + 64 + _ + _ + 8 + _ + 2 + 1 = 203
-					true, true, false, false, true, false, true, true,
-					// _ + 64 + 32 + _ + _ + _ + 2 + _ = 98
-					false, true, true, false, false, false, true, false,
-					// 128 + _ + _ + _ + _ + _ + _ + _ = 128
-					true,
-				}
-			})
-			It("equals the correct bytes", func() {
-				Expect(result).To(Equal([]byte{
-					1,  // slave
-					0,  // msb function code
-					2,  // lsb function code
-					0,  // msb address
-					50, // lsb address
-					0,  // msb number of coils or registers
-					25, // lsb number of coils or registers
-					98,
-					203,
-					98,
-					128,
+					0x01, // slave
+					0x00, // msb function code
+					0x02, // lsb function code
+					0x00, // msb address
+					0x50, // lsb address
+					0x00, // msb number of coils or registers
+					0x05, // lsb number of coils or registers
+					0xff, // true
+					0x00,
+					0xff, // true
+					0x00,
+					0x00, // false
+					0x00,
+					0x00, // false
+					0x00,
+					0xff, // true
+					0x00,
 				}))
 			})
 		})

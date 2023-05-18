@@ -51,7 +51,7 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	}
 	if functionCode == protocol.ReadCoils || functionCode == protocol.ReadDiscreteInputs {
 		coilsMap := make(map[int]bool, 0)
-		for i, coil := range protocol.RegistersToCoils(registerData, numberOfCoilsOrRegisters) {
+		for i, coil := range protocol.RegistersToCoils(registerData) {
 			coilsMap[int(address)+i] = coil
 		}
 		m.env["coils"] = coilsMap

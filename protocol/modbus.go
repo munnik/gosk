@@ -161,7 +161,7 @@ func CoilsToRegisters(coils []bool) []uint16 {
 				result[registerIndex] += 1
 			}
 			if (coilIndex+1)%16 != 0 {
-				result[registerIndex] <<= result[registerIndex] << 1
+				result[registerIndex] <<= 1
 			}
 		}
 	}

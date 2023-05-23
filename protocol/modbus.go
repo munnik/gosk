@@ -3,6 +3,10 @@ package protocol
 import (
 	"encoding/binary"
 	"fmt"
+	"sync"
+	"time"
+
+	"github.com/simonvetter/modbus"
 )
 
 const (
@@ -51,6 +55,132 @@ type ModbusHeader struct {
 	FunctionCode             uint16 `mapstructure:"functionCode"`
 	Address                  uint16 `mapstructure:"address"`
 	NumberOfCoilsOrRegisters uint16 `mapstructure:"numberOfCoilsOrRegisters"`
+}
+
+type ModbusClient struct {
+	realClient *modbus.ModbusClient
+	header     *ModbusHeader
+	lock       sync.Mutex
+}
+
+func NewModbusClient(realClient *modbus.ModbusClient, header *ModbusHeader) *ModbusClient {
+	return &ModbusClient{
+		realClient: realClient,
+		header:     header,
+	}
+}
+
+func (m *ModbusClient) Read(bytes []byte) (n int, err error) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	m.realClient.SetUnitId(m.header.Slave)
+	switch m.header.FunctionCode {
+	case READ_COILS:
+		result, err := m.realClient.ReadCoils(m.header.Address, m.header.NumberOfCoilsOrRegisters)
+		if err != nil {
+			return 0, fmt.Errorf("error while reading coils %v, with length %v and function code %v, the error that occurred was %v", m.header.Address, m.header.NumberOfCoilsOrRegisters, m.header.FunctionCode, err)
+		}
+		bytes = bytes[:0]
+		bytes = append(bytes, InjectModbusHeader(m.header, CoilsToBytes(result))...)
+	case READ_DISCRETE_INPUTS:
+		result, err := m.realClient.ReadDiscreteInputs(m.header.Address, m.header.NumberOfCoilsOrRegisters)
+		if err != nil {
+			return 0, fmt.Errorf("error while reading discrete inputs %v, with length %v and function code %v, the error that occurred was %v", m.header.Address, m.header.NumberOfCoilsOrRegisters, m.header.FunctionCode, err)
+		}
+		bytes = bytes[:0]
+		bytes = append(bytes, InjectModbusHeader(m.header, CoilsToBytes(result))...)
+	case READ_HOLDING_REGISTERS:
+		result, err := m.realClient.ReadRegisters(m.header.Address, m.header.NumberOfCoilsOrRegisters, modbus.HOLDING_REGISTER)
+		if err != nil {
+			return 0, fmt.Errorf("error while reading holding register %v, with length %v and function code %v, the error that occurred was %v", m.header.Address, m.header.NumberOfCoilsOrRegisters, m.header.FunctionCode, err)
+		}
+		bytes = bytes[:0]
+		bytes = append(bytes, InjectModbusHeader(m.header, RegistersToBytes(result))...)
+	case READ_INPUT_REGISTERS:
+		result, err := m.realClient.ReadRegisters(m.header.Address, m.header.NumberOfCoilsOrRegisters, modbus.INPUT_REGISTER)
+		if err != nil {
+			return 0, fmt.Errorf("error while reading input register %v, with length %v and function code %v, the error that occurred was %v", m.header.Address, m.header.NumberOfCoilsOrRegisters, m.header.FunctionCode, err)
+		}
+		bytes = bytes[:0]
+		bytes = append(bytes, InjectModbusHeader(m.header, RegistersToBytes(result))...)
+	default:
+		return 0, fmt.Errorf("unsupported function code type %v", m.header.FunctionCode)
+	}
+	return len(bytes), nil
+}
+
+func (m *ModbusClient) Write(bytes []byte) (n int, err error) {
+	header, bytes, err := ExtractModbusHeader(bytes)
+	if err != nil {
+		return 0, err
+	}
+
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	m.realClient.SetUnitId(header.Slave)
+	switch header.FunctionCode {
+	case WRITE_SINGLE_COIL:
+		if header.NumberOfCoilsOrRegisters != 1 {
+			return 0, fmt.Errorf("expected only 1 register but got %d", header.NumberOfCoilsOrRegisters)
+		}
+		coils, err := BytesToCoils(bytes)
+		if err != nil {
+			return 0, err
+		}
+		m.realClient.WriteCoil(header.Address, coils[0])
+	case WRITE_SINGLE_REGISTER:
+		if header.NumberOfCoilsOrRegisters != 1 {
+			return 0, fmt.Errorf("expected only 1 register but got %d", header.NumberOfCoilsOrRegisters)
+		}
+		registers, err := BytesToRegisters(bytes)
+		if err != nil {
+			return 0, err
+		}
+		if len(registers) != int(header.NumberOfCoilsOrRegisters) {
+			return 0, fmt.Errorf("Expected %d registers but got %d register", header.NumberOfCoilsOrRegisters, len(registers))
+		}
+		m.realClient.WriteRegister(header.Address, registers[0])
+	case WRITE_MULTIPLE_COILS:
+		coils, err := BytesToCoils(bytes)
+		if err != nil {
+			return 0, err
+		}
+		m.realClient.WriteCoils(header.Address, coils)
+	case WRITE_MULTIPLE_REGISTERS:
+		registers, err := BytesToRegisters(bytes)
+		if err != nil {
+			return 0, err
+		}
+		if len(registers) != int(header.NumberOfCoilsOrRegisters) {
+			return 0, fmt.Errorf("Expected %d registers but got %d register", header.NumberOfCoilsOrRegisters, len(registers))
+		}
+		m.realClient.WriteRegisters(header.Address, registers)
+	default:
+		return 0, fmt.Errorf("unsupported function code type %v", header.FunctionCode)
+	}
+	return len(bytes), nil
+}
+
+func (m *ModbusClient) Poll(stream chan<- []byte, pollingInterval time.Duration) error {
+	ticker := time.NewTicker(pollingInterval)
+	done := make(chan struct{})
+	bytes := make([]byte, 0, m.header.NumberOfCoilsOrRegisters*2+MODBUS_HEADER_LENGTH)
+	for {
+		select {
+		case <-ticker.C:
+			n, err := m.Read(bytes)
+			// TODO: how to handle failed reads, never attempt again or keep trying
+			if err != nil {
+				return err
+			}
+			stream <- bytes[:n]
+		case <-done:
+			ticker.Stop()
+			return nil
+		}
+	}
 }
 
 func CoilsToBytes(values []bool) []byte {

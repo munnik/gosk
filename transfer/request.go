@@ -37,6 +37,8 @@ type TransferRequester struct {
 	countResponsesReceived    prometheus.CounterVec
 	dataRequestsSent          prometheus.CounterVec
 	dataMissingPeriods        prometheus.GaugeVec
+	firstPeriodRequested      prometheus.GaugeVec
+	lastPeriodRequested       prometheus.GaugeVec
 }
 
 func NewTransferRequester(c *config.TransferConfig) *TransferRequester {
@@ -51,6 +53,8 @@ func NewTransferRequester(c *config.TransferConfig) *TransferRequester {
 		countResponsesReceived:    *promauto.NewCounterVec(prometheus.CounterOpts{Name: "gosk_transfer_count_responses_total", Help: "total number of count responses received, partitioned by origin"}, []string{"origin"}),
 		dataRequestsSent:          *promauto.NewCounterVec(prometheus.CounterOpts{Name: "gosk_transfer_data_requests_total", Help: "total number of data requests sent, partitioned by origin"}, []string{"origin"}),
 		dataMissingPeriods:        *promauto.NewGaugeVec(prometheus.GaugeOpts{Name: "gosk_transfer_missing_periods_total", Help: "total number of periods with missing data, partitioned by origin"}, []string{"origin"}),
+		firstPeriodRequested:      *promauto.NewGaugeVec(prometheus.GaugeOpts{Name: "gosk_transfer_first_period_requested", Help: "first period data was requested for this cycle, partitioned by origin"}, []string{"origin"}),
+		lastPeriodRequested:       *promauto.NewGaugeVec(prometheus.GaugeOpts{Name: "gosk_transfer_last_period_requested", Help: "last period data was requested for this cycle, partitioned by origin"}, []string{"origin"}),
 	}
 
 	if result.numberOfRequestWorkers == 0 {
@@ -196,10 +200,12 @@ func (t *TransferRequester) sendDataRequests() {
 			t.dataMissingPeriods.With(prometheus.Labels{"origin": origin}).Set(float64(len(periods)))
 			for i, period := range periods {
 				if i > t.maxPeriodsToRequest {
+					t.firstPeriodRequested.With(prometheus.Labels{"origin": origin}).Set(float64(period.Unix()))
 					break
 				}
 				t.dataRequestChannel <- OriginPeriod{origin: origin, period: period}
 			}
+			t.lastPeriodRequested.With(prometheus.Labels{"origin": origin}).Set(float64(periods[0].Unix()))
 		}(origin, periods)
 	}
 	wg.Wait()

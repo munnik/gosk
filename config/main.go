@@ -232,6 +232,20 @@ func NewCanBusMappingConfig(configFilePath string) []CanBusMappingConfig {
 	return result
 }
 
+type SetterConfig struct {
+	Protocol string         `mapstructure:"protocol"`
+	Actions  []ActionConfig `mapstructure:"actions"`
+}
+
+func NewSetterConfig(configFilePath string) SetterConfig {
+	result := SetterConfig{}
+	readConfigFile(&result, configFilePath)
+
+	return result
+}
+
+type ActionConfig struct{}
+
 type MQTTConfig struct {
 	URLString  string        `mapstructure:"url"`
 	Username   string        `mapstructure:"username"`

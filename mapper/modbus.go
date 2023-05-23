@@ -38,7 +38,7 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	s := message.NewSource().WithLabel(r.Connector).WithType(m.protocol).WithUuid(r.Uuid)
 	u := message.NewUpdate().WithSource(*s).WithTimestamp(r.Timestamp)
 
-	if len(r.Value) < 8 {
+	if len(r.Value) <= protocol.MODBUS_HEADER_LENGTH {
 		return nil, fmt.Errorf("no useful data in %v", r.Value)
 	}
 	slave := uint8(r.Value[0])
@@ -49,13 +49,13 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	for i := range registerData {
 		registerData[i] = binary.BigEndian.Uint16(r.Value[7+i*2 : 9+i*2])
 	}
-	if functionCode == protocol.ReadCoils || functionCode == protocol.ReadDiscreteInputs {
+	if functionCode == protocol.READ_COILS || functionCode == protocol.READ_DISCRETE_INPUTS {
 		coilsMap := make(map[int]bool, 0)
 		for i, coil := range protocol.RegistersToCoils(registerData) {
 			coilsMap[int(address)+i] = coil
 		}
 		m.env["coils"] = coilsMap
-	} else if functionCode == protocol.ReadHoldingRegisters || functionCode == protocol.ReadInputRegisters {
+	} else if functionCode == protocol.READ_HOLDING_REGISTERS || functionCode == protocol.READ_INPUT_REGISTERS {
 		deltaMap := make(map[int]int32, 0)
 		timestampMap := make(map[int]time.Time, 0)
 		timeDeltaMap := make(map[int]int64, 0)

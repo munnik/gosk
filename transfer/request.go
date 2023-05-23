@@ -31,11 +31,12 @@ type TransferRequester struct {
 	sleepBetweenCountRequests time.Duration
 	sleepBetweenDataRequests  time.Duration
 	numberOfRequestWorkers    int
+	maxPeriodsToRequest       int
 	dataRequestChannel        chan OriginPeriod
 	countRequestsSent         prometheus.CounterVec
 	countResponsesReceived    prometheus.CounterVec
-	DataRequestsSent          prometheus.CounterVec
-	DataMissingPeriods        prometheus.GaugeVec
+	dataRequestsSent          prometheus.CounterVec
+	dataMissingPeriods        prometheus.GaugeVec
 }
 
 func NewTransferRequester(c *config.TransferConfig) *TransferRequester {
@@ -45,10 +46,11 @@ func NewTransferRequester(c *config.TransferConfig) *TransferRequester {
 		sleepBetweenCountRequests: c.SleepBetweenCountRequests,
 		sleepBetweenDataRequests:  c.SleepBetweenDataRequests,
 		numberOfRequestWorkers:    c.NumberOfRequestWorkers,
+		maxPeriodsToRequest:       c.MaxPeriodsToRequest,
 		countRequestsSent:         *promauto.NewCounterVec(prometheus.CounterOpts{Name: "gosk_transfer_count_requests_total", Help: "total number of count requests sent, partitioned by origin"}, []string{"origin"}),
 		countResponsesReceived:    *promauto.NewCounterVec(prometheus.CounterOpts{Name: "gosk_transfer_count_responses_total", Help: "total number of count responses received, partitioned by origin"}, []string{"origin"}),
-		DataRequestsSent:          *promauto.NewCounterVec(prometheus.CounterOpts{Name: "gosk_transfer_data_requests_total", Help: "total number of data requests sent, partitioned by origin"}, []string{"origin"}),
-		DataMissingPeriods:        *promauto.NewGaugeVec(prometheus.GaugeOpts{Name: "gosk_transfer_missing_periods_total", Help: "total number of periods with missing data sent, partitioned by origin"}, []string{"origin"}),
+		dataRequestsSent:          *promauto.NewCounterVec(prometheus.CounterOpts{Name: "gosk_transfer_data_requests_total", Help: "total number of data requests sent, partitioned by origin"}, []string{"origin"}),
+		dataMissingPeriods:        *promauto.NewGaugeVec(prometheus.GaugeOpts{Name: "gosk_transfer_missing_periods_total", Help: "total number of periods with missing data, partitioned by origin"}, []string{"origin"}),
 	}
 
 	if result.numberOfRequestWorkers == 0 {
@@ -191,10 +193,13 @@ func (t *TransferRequester) sendDataRequests() {
 	}()
 	for origin, periods := range origins {
 		go func(origin string, periods []time.Time) {
-			for _, period := range periods {
+			t.dataMissingPeriods.With(prometheus.Labels{"origin": origin}).Set(float64(len(periods)))
+			for i, period := range periods {
+				if i > t.maxPeriodsToRequest {
+					break
+				}
 				t.dataRequestChannel <- OriginPeriod{origin: origin, period: period}
 			}
-			t.DataMissingPeriods.With(prometheus.Labels{"origin": origin}).Set(float64(len(periods)))
 		}(origin, periods)
 	}
 	wg.Wait()
@@ -221,7 +226,7 @@ func (t *TransferRequester) sendDataRequestWorker(dataRequests <-chan OriginPeri
 		}
 		t.sendMQTTCommand(request.origin, requestMessage)
 		t.db.LogTransferRequest(request.origin, requestMessage)
-		t.DataRequestsSent.With(prometheus.Labels{"origin": request.origin}).Inc()
+		t.dataRequestsSent.With(prometheus.Labels{"origin": request.origin}).Inc()
 	}
 }
 

@@ -322,6 +322,7 @@ type TransferConfig struct {
 	SleepBetweenDataRequests  time.Duration    `mapstructure:"sleep_between_data_requests"`
 	SleepBetweenRespondDeltas time.Duration    `mapstructure:"sleep_between_respond_deltas"`
 	NumberOfRequestWorkers    int              `mapstructure:"number_of_request_workers"`
+	MaxPeriodsToRequest       int              `mapstructure:"max_periods_to_request"`
 }
 
 func NewTransferConfig(configFilePath string) *TransferConfig {
@@ -330,6 +331,7 @@ func NewTransferConfig(configFilePath string) *TransferConfig {
 		SleepBetweenCountRequests: 30 * time.Minute,
 		SleepBetweenDataRequests:  6 * time.Hour,
 		SleepBetweenRespondDeltas: 100 * time.Millisecond,
+		MaxPeriodsToRequest:       500,
 	}
 	readConfigFile(result, configFilePath)
 

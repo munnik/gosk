@@ -26,8 +26,10 @@ type TransferResponder struct {
 	publisher             mangos.Socket
 	countRequestsReceived prometheus.Counter
 	countRequestsHandled  prometheus.Counter
-	DataRequestsReceived  prometheus.Counter
-	DataRequestsHandled   prometheus.Counter
+	dataRequestsReceived  prometheus.Counter
+	dataRequestsHandled   prometheus.Counter
+	recordsTransmitted    prometheus.Counter
+	uuidsTransmitted      prometheus.Counter
 }
 
 func NewTransferResponder(c *config.TransferConfig) *TransferResponder {
@@ -36,8 +38,10 @@ func NewTransferResponder(c *config.TransferConfig) *TransferResponder {
 		config:                c,
 		countRequestsReceived: promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_transfer_count_requests_received_total", Help: "total number of count requests received"}),
 		countRequestsHandled:  promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_transfer_count_requests_handled_total", Help: "total number of count requests reponded to"}),
-		DataRequestsReceived:  promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_transfer_data_requests_received_total", Help: "total number of data requests received"}),
-		DataRequestsHandled:   promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_transfer_data_requests_handled_total", Help: "total number of data requests responded to"}),
+		dataRequestsReceived:  promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_transfer_data_requests_received_total", Help: "total number of data requests received"}),
+		dataRequestsHandled:   promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_transfer_data_requests_handled_total", Help: "total number of data requests responded to"}),
+		recordsTransmitted:    promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_transfer_records_transmitted_total", Help: "total number of records sent again"}),
+		uuidsTransmitted:      promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_transfer_uuids_transmitted_total", Help: "total number of uuids sent again"}),
 	}
 }
 
@@ -69,7 +73,7 @@ func (t *TransferResponder) messageReceived(c paho.Client, m paho.Message) {
 		t.countRequestsReceived.Inc()
 		t.respondWithCount(request)
 	case dataCmd:
-		t.DataRequestsReceived.Inc()
+		t.dataRequestsReceived.Inc()
 		t.respondWithData(request)
 	default:
 		logger.GetLogger().Warn(
@@ -127,7 +131,8 @@ func (t *TransferResponder) respondWithData(request RequestMessage) {
 	}
 
 	t.injectData(localCountsPerUuid, request.UUID, request.PeriodStart)
-	t.DataRequestsHandled.Inc()
+	t.uuidsTransmitted.Add(float64(len(localCountsPerUuid)))
+	t.dataRequestsHandled.Inc()
 }
 
 func (t *TransferResponder) injectData(uuidsToTransmit map[uuid.UUID]int, transferUuid uuid.UUID, period time.Time) {
@@ -166,6 +171,7 @@ func (t *TransferResponder) injectData(uuidsToTransmit map[uuid.UUID]int, transf
 			)
 			continue
 		}
+		t.recordsTransmitted.Inc()
 		time.Sleep(t.config.SleepBetweenRespondDeltas)
 	}
 }

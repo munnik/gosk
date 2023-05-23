@@ -6,44 +6,44 @@ import (
 )
 
 const (
-	HeaderLength = 7
+	MODBUS_HEADER_LENGTH = 7
 
-	// MaximumNumberOfRegisters is maximum number of registers that can be read in one request, a modbus message is limit to 256 bytes
+	// MODBUS_Maximum_Number_Of_Registers is maximum number of registers that can be read in one request, a modbus message is limit to 256 bytes
 	// TODO: this should be checked when register groups are created
-	MaximumNumberOfRegisters = 125
-	MaximumNumberOfCoils     = 2000
+	MODBUS_MAXIMUM_NUMBER_OF_REGISTERS = 125
+	MODBUS_MAXIMUM_NUMBER_OF_COILS     = 2000
 )
 
 const (
 	// 01 (0x01) Read Coils
-	ReadCoils = 0x01
+	READ_COILS = 0x01
 	// 02 (0x02) Read Discrete Inputs
-	ReadDiscreteInputs = 0x02
+	READ_DISCRETE_INPUTS = 0x02
 	// 03 (0x03) Read Holding Registers
-	ReadHoldingRegisters = 0x03
+	READ_HOLDING_REGISTERS = 0x03
 	// 04 (0x04) Read Input Registers
-	ReadInputRegisters = 0x04
+	READ_INPUT_REGISTERS = 0x04
 	// 05 (0x05) Write Single Coil
-	WriteSingleCoil = 0x05
+	WRITE_SINGLE_COIL = 0x05
 	// 06 (0x06) Write Single Register
-	WriteSingleRegister = 0x06
+	WRITE_SINGLE_REGISTER = 0x06
 	// 08 (0x08) Diagnostics (Serial Line only)
-	Diagnostics = 0x08
+	DIAGNOSTICS = 0x08
 	// 11 (0x0B) Get Comm Event Counter (Serial Line only)
-	GetCommEventCounter = 0x0B
+	GET_COMM_EVENT_COUNTER = 0x0B
 	// 15 (0x0F) Write Multiple Coils
-	WriteMultipleCoils = 0x0F
+	WRITE_MULTIPLE_COILS = 0x0F
 	// 16 (0x10) Write Multiple Registers
-	WriteMultipleRegisters = 0x10
+	WRITE_MULTIPLE_REGISTERS = 0x10
 	// 17 (0x11) Report Server ID (Serial Line only)
-	ReportServerId = 0x11
+	REPORT_SERVER_ID = 0x11
 	// 22 (0x16) Mask Write Register
-	MaskWriteRegisters = 0x16
+	MASK_WRITE_REGISTERS = 0x16
 	// 23 (0x17) Read/Write Multiple Registers
-	ReadWriteMultipleRegisters = 0x17
+	READ_WRITE_MULTIPLE_REGISTERS = 0x17
 	// 43 / 14 (0x2B / 0x0E) Read Device Identification
-	ReadDeviceIdentificationA = 0x0E
-	ReadDeviceIdentificationB = 0x43
+	READ_DEVICE_IDENTIFICATION_A = 0x0E
+	READ_DEVICE_IDENTIFICATION_B = 0x43
 )
 
 type ModbusHeader struct {
@@ -116,7 +116,7 @@ func CoilsToRegisters(coils []bool) []uint16 {
 }
 
 func InjectModbusHeader(header *ModbusHeader, bytes []byte) []byte {
-	headerBytes := make([]byte, 0, HeaderLength)
+	headerBytes := make([]byte, 0, MODBUS_HEADER_LENGTH)
 	headerBytes = append(headerBytes, byte(header.Slave))
 	out := make([]byte, 2)
 	binary.BigEndian.PutUint16(out, header.FunctionCode)
@@ -130,8 +130,8 @@ func InjectModbusHeader(header *ModbusHeader, bytes []byte) []byte {
 }
 
 func ExtractModbusHeader(bytes []byte) (*ModbusHeader, []byte, error) {
-	if len(bytes) < HeaderLength {
-		return nil, nil, fmt.Errorf("expected at least %d bytes but got %d", HeaderLength, len(bytes))
+	if len(bytes) < MODBUS_HEADER_LENGTH {
+		return nil, nil, fmt.Errorf("expected at least %d bytes but got %d", MODBUS_HEADER_LENGTH, len(bytes))
 	}
 
 	header := &ModbusHeader{
@@ -141,5 +141,5 @@ func ExtractModbusHeader(bytes []byte) (*ModbusHeader, []byte, error) {
 		NumberOfCoilsOrRegisters: binary.BigEndian.Uint16(bytes[5:7]),
 	}
 
-	return header, bytes[HeaderLength:], nil
+	return header, bytes[MODBUS_HEADER_LENGTH:], nil
 }

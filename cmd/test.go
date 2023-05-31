@@ -17,20 +17,17 @@ import (
 	"go.uber.org/zap"
 )
 
-var (
-	testCmd = &cobra.Command{
-		Use:   "testdata",
-		Short: "test data",
-		Long:  `generate test data`,
-		Run:   doTest,
-	}
-)
+var testCmd = &cobra.Command{
+	Use:   "testdata",
+	Short: "test data",
+	Long:  `generate test data`,
+	Run:   doTest,
+}
 
 func init() {
 	rootCmd.AddCommand(testCmd)
 	testCmd.Flags().StringVarP(&publishURL, "publishURL", "p", "", "Nanomsg URL, the URL is used to publish the collected data on. It listens for connections.")
 	testCmd.MarkFlagRequired("publishURL")
-
 }
 
 func doTest(cmd *cobra.Command, args []string) {
@@ -87,25 +84,26 @@ func doTest(cmd *cobra.Command, args []string) {
 	}()
 	wg.Wait()
 }
-func runExpr(vm vm.VM, env map[string]interface{}, mappingConfig config.MappingConfig) (interface{}, error) {
-	if mappingConfig.CompiledExpression == nil {
+
+func runExpr(vm vm.VM, env map[string]interface{}, expressionConfig config.ExpressionConfig) (interface{}, error) {
+	if expressionConfig.CompiledExpression == nil {
 		// TODO: each iteration the CompiledExpression is nil
 		var err error
-		if mappingConfig.CompiledExpression, err = expr.Compile(mappingConfig.Expression, expr.Env(env)); err != nil {
+		if expressionConfig.CompiledExpression, err = expr.Compile(expressionConfig.Expression, expr.Env(env)); err != nil {
 			logger.GetLogger().Warn(
 				"Could not compile the mapping expression",
-				zap.String("Expression", mappingConfig.Expression),
+				zap.String("Expression", expressionConfig.Expression),
 				zap.String("Error", err.Error()),
 			)
 			return nil, err
 		}
 	}
 	// the compiled program exists, let's run it
-	output, err := vm.Run(mappingConfig.CompiledExpression, env)
+	output, err := vm.Run(expressionConfig.CompiledExpression, env)
 	if err != nil {
 		logger.GetLogger().Warn(
 			"Could not run the mapping expression",
-			zap.String("Expression", mappingConfig.Expression),
+			zap.String("Expression", expressionConfig.Expression),
 			zap.String("Environment", fmt.Sprintf("%+v", env)),
 			zap.String("Error", err.Error()),
 		)

@@ -7,6 +7,7 @@ import (
 
 	"github.com/antonmedv/expr/vm"
 	"github.com/munnik/gosk/config"
+	"github.com/munnik/gosk/expression"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
 	"go.nanomsg.org/mangos/v3"
@@ -57,9 +58,9 @@ func (m *CanBusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 			mapping, present := m.canbusMappings[val.origin][val.name]
 
 			if present {
-				env := NewExpressionEnvironment()
+				env := expression.NewExpressionEnvironment()
 				env["value"] = val.value
-				output, err := runExpr(vm, env, mapping.MappingConfig)
+				output, err := expression.RunExpr(vm, env, mapping.ExpressionConfig)
 				if err == nil {
 					u.AddValue(message.NewValue().WithPath(mapping.Path).WithValue(output))
 				} else {

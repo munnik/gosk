@@ -6,6 +6,7 @@ import (
 
 	"github.com/antonmedv/expr/vm"
 	"github.com/munnik/gosk/config"
+	"github.com/munnik/gosk/expression"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
 	"go.nanomsg.org/mangos/v3"
@@ -45,10 +46,10 @@ func (m *JSONMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 			continue
 		}
 
-		env := NewExpressionEnvironment()
+		env := expression.NewExpressionEnvironment()
 		env["json"] = j
 
-		output, err := runExpr(vm, env, jmc.MappingConfig)
+		output, err := expression.RunExpr(vm, env, jmc.ExpressionConfig)
 		if err == nil { // don't insert a path twice
 			if v := u.GetValueByPath(jmc.Path); v != nil {
 				v.WithValue(output)

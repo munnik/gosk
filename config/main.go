@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/antonmedv/expr/vm"
+	"github.com/munnik/gosk/expression"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/protocol"
 	"go.uber.org/zap"
@@ -135,30 +136,46 @@ func NewCSVMapperConfig(configFilePath string) CSVMapperConfig {
 	return result
 }
 
-type MappingConfig struct {
+type ExpressionConfig struct {
+	Path                  string                 `mapstructure:"path"`
 	Expression            string                 `mapstructure:"expression"`
 	ExpressionEnvironment map[string]interface{} `mapstructure:"expressionEnvironment"`
 	CompiledExpression    *vm.Program
-	Path                  string `mapstructure:"path"`
 }
 
-func (m *MappingConfig) verify() {
-	if m.Path == "" {
+func (e *ExpressionConfig) verify() {
+	if e.Path == "" {
 		logger.GetLogger().Warn(
 			"Path was not set",
-			zap.String("Register mapping", fmt.Sprintf("%+v", m)),
+			zap.String("Register mapping", fmt.Sprintf("%+v", e)),
 		)
 	}
-	if m.Expression == "" {
+	if e.Expression == "" {
 		logger.GetLogger().Warn(
 			"Expression was not set",
-			zap.String("Register mapping", fmt.Sprintf("%+v", m)),
+			zap.String("Register mapping", fmt.Sprintf("%+v", e)),
 		)
 	}
+}
+
+func (e ExpressionConfig) GetExpression() string {
+	return e.Expression
+}
+
+func (e ExpressionConfig) GetCompiledExpression() *vm.Program {
+	return e.CompiledExpression
+}
+
+func (e ExpressionConfig) SetCompiledExpression(p *vm.Program) {
+	e.CompiledExpression = p
+}
+
+func (e ExpressionConfig) GetExpressionEnvironment() expression.ExpressionEnvironment {
+	return e.ExpressionEnvironment
 }
 
 type ModbusMappingsConfig struct {
-	MappingConfig         `mapstructure:",squash"`
+	ExpressionConfig      `mapstructure:",squash"`
 	protocol.ModbusHeader `mapstructure:",squash"`
 }
 
@@ -172,10 +189,10 @@ func NewModbusMappingsConfig(configFilePath string) []ModbusMappingsConfig {
 }
 
 type CSVMappingConfig struct {
-	MappingConfig `mapstructure:",squash"`
-	BeginsWith    string `mapstructure:"beginsWith"`
-	Regex         string `mapstructure:"regex"`
-	ReplaceWith   string `mapstructure:"replaceWith"`
+	ExpressionConfig `mapstructure:",squash"`
+	BeginsWith       string `mapstructure:"beginsWith"`
+	Regex            string `mapstructure:"regex"`
+	ReplaceWith      string `mapstructure:"replaceWith"`
 }
 
 func NewCSVMappingConfig(configFilePath string) []CSVMappingConfig {
@@ -189,7 +206,7 @@ func NewCSVMappingConfig(configFilePath string) []CSVMappingConfig {
 }
 
 type JSONMappingConfig struct {
-	MappingConfig `mapstructure:",squash"`
+	ExpressionConfig `mapstructure:",squash"`
 }
 
 func NewJSONMappingConfig(configFilePath string) []JSONMappingConfig {
@@ -203,8 +220,8 @@ func NewJSONMappingConfig(configFilePath string) []JSONMappingConfig {
 }
 
 type ExpressionMappingConfig struct {
-	MappingConfig `mapstructure:",squash"`
-	SourcePaths   []string `mapstructure:"sourcePaths"`
+	ExpressionConfig `mapstructure:",squash"`
+	SourcePaths      []string `mapstructure:"sourcePaths"`
 }
 
 func NewExpressionMappingConfig(configFilePath string) []ExpressionMappingConfig {
@@ -218,9 +235,9 @@ func NewExpressionMappingConfig(configFilePath string) []ExpressionMappingConfig
 }
 
 type CanBusMappingConfig struct {
-	MappingConfig `mapstructure:",squash"`
-	Name          string `mapstructure:"name"`
-	Origin        string `mapstructure:"origin"`
+	ExpressionConfig `mapstructure:",squash"`
+	Name             string `mapstructure:"name"`
+	Origin           string `mapstructure:"origin"`
 }
 
 func NewCanBusMappingConfig(configFilePath string) []CanBusMappingConfig {
@@ -232,19 +249,17 @@ func NewCanBusMappingConfig(configFilePath string) []CanBusMappingConfig {
 	return result
 }
 
-type SetterConfig struct {
-	Protocol string         `mapstructure:"protocol"`
-	Actions  []ActionConfig `mapstructure:"actions"`
+type ActorConfig struct {
+	Protocol string             `mapstructure:"protocol"`
+	Actions  []ExpressionConfig `mapstructure:"actions"`
 }
 
-func NewSetterConfig(configFilePath string) SetterConfig {
-	result := SetterConfig{}
+func NewActorConfig(configFilePath string) ActorConfig {
+	result := ActorConfig{}
 	readConfigFile(&result, configFilePath)
 
 	return result
 }
-
-type ActionConfig struct{}
 
 type MQTTConfig struct {
 	URLString  string        `mapstructure:"url"`
@@ -393,9 +408,9 @@ func NewRateLimitConfig(configFilePath string) *RateLimitFilterConfig {
 }
 
 type TestDataConfig struct {
-	Context string          `mapstructure:"context"`
-	Delay   time.Duration   `mapstructure:"delay"`
-	Paths   []MappingConfig `mapstructure:"paths"`
+	Context string             `mapstructure:"context"`
+	Delay   time.Duration      `mapstructure:"delay"`
+	Paths   []ExpressionConfig `mapstructure:"paths"`
 }
 
 func NewTestDataConfig(configFilePath string) *TestDataConfig {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/antonmedv/expr/vm"
 	"github.com/munnik/gosk/config"
+	"github.com/munnik/gosk/expression"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
 	"go.nanomsg.org/mangos/v3"
@@ -85,12 +86,12 @@ func (m *CSVMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 				}
 			}
 
-			env := NewExpressionEnvironment()
+			env := expression.NewExpressionEnvironment()
 			env["stringValues"] = stringValues
 			env["floatValues"] = floatValues
 			env["intValues"] = intValues
 
-			output, err := runExpr(vm, env, cmc.MappingConfig)
+			output, err := expression.RunExpr(vm, env, cmc.ExpressionConfig)
 			if err == nil { // don't insert a path twice
 				if v := u.GetValueByPath(cmc.Path); v != nil {
 					v.WithValue(output)
@@ -106,4 +107,17 @@ func (m *CSVMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	}
 
 	return result.AddUpdate(u), nil
+}
+
+func swapPointAndComma(input string) string {
+	result := []rune(input)
+
+	for i := range result {
+		if result[i] == '.' {
+			result[i] = ','
+		} else if result[i] == ',' {
+			result[i] = '.'
+		}
+	}
+	return string(result)
 }

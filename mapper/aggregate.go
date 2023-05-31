@@ -7,6 +7,7 @@ import (
 	"github.com/antonmedv/expr/vm"
 	"github.com/google/uuid"
 	"github.com/munnik/gosk/config"
+	"github.com/munnik/gosk/expression"
 	"github.com/munnik/gosk/message"
 	"go.nanomsg.org/mangos/v3"
 )
@@ -15,11 +16,11 @@ type AggregateMapper struct {
 	config            config.MapperConfig
 	protocol          string
 	aggregateMappings map[string][]config.ExpressionMappingConfig
-	env               ExpressionEnvironment
+	env               expression.ExpressionEnvironment
 }
 
 func NewAggregateMapper(c config.MapperConfig, emc []config.ExpressionMappingConfig) (*AggregateMapper, error) {
-	env := NewExpressionEnvironment()
+	env := expression.NewExpressionEnvironment()
 
 	mappings := make(map[string][]config.ExpressionMappingConfig)
 	for _, m := range emc {
@@ -48,7 +49,7 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 			m.env[path] = svm
 			vm := vm.VM{}
 			for _, mapping := range mappings {
-				output, err := runExpr(vm, m.env, mapping.MappingConfig)
+				output, err := expression.RunExpr(vm, m.env, mapping.ExpressionConfig)
 				if err == nil { // don't insert a path twice
 					if v := u.GetValueByPath(mapping.Path); v != nil {
 						v.WithValue(output)

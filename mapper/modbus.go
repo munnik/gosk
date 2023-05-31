@@ -8,6 +8,7 @@ import (
 
 	"github.com/antonmedv/expr/vm"
 	"github.com/munnik/gosk/config"
+	"github.com/munnik/gosk/expression"
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/protocol"
 	"go.nanomsg.org/mangos/v3"
@@ -17,7 +18,7 @@ type ModbusMapper struct {
 	config               config.MapperConfig
 	protocol             string
 	modbusMappingsConfig []config.ModbusMappingsConfig
-	env                  ExpressionEnvironment
+	env                  expression.ExpressionEnvironment
 }
 
 func NewModbusMapper(c config.MapperConfig, mmc []config.ModbusMappingsConfig) (*ModbusMapper, error) {
@@ -25,7 +26,7 @@ func NewModbusMapper(c config.MapperConfig, mmc []config.ModbusMappingsConfig) (
 		config:               c,
 		protocol:             config.ModbusType,
 		modbusMappingsConfig: mmc,
-		env:                  NewExpressionEnvironment(),
+		env:                  expression.NewExpressionEnvironment(),
 	}, nil
 }
 
@@ -98,7 +99,7 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		if mmc.Address < address || mmc.Address+mmc.NumberOfCoilsOrRegisters > address+numberOfCoilsOrRegisters {
 			continue
 		}
-		output, err := runExpr(vm, m.env, mmc.MappingConfig)
+		output, err := expression.RunExpr(vm, m.env, mmc.ExpressionConfig)
 		if err == nil { // don't insert a path twice
 			if v := u.GetValueByPath(mmc.Path); v != nil {
 				v.WithValue(output)

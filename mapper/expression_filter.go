@@ -6,17 +6,18 @@ import (
 
 	"github.com/antonmedv/expr/vm"
 	"github.com/munnik/gosk/config"
+	"github.com/munnik/gosk/expression"
 	"github.com/munnik/gosk/message"
 	"go.nanomsg.org/mangos/v3"
 )
 
 type ExpressionFilter struct {
 	filterMappings map[string][]config.ExpressionMappingConfig
-	env            ExpressionEnvironment
+	env            expression.ExpressionEnvironment
 }
 
 func NewExpressionFilter(emc []config.ExpressionMappingConfig) (*ExpressionFilter, error) {
-	env := NewExpressionEnvironment()
+	env := expression.NewExpressionEnvironment()
 
 	mappings := make(map[string][]config.ExpressionMappingConfig)
 	for _, m := range emc {
@@ -42,7 +43,7 @@ func (f *ExpressionFilter) DoMap(delta *message.Mapped) (*message.Mapped, error)
 			f.env[path] = svm
 			vm := vm.VM{}
 			for _, mapping := range mappings {
-				output, err := runExpr(vm, f.env, mapping.MappingConfig)
+				output, err := expression.RunExpr(vm, f.env, mapping.ExpressionConfig)
 				if err != nil {
 					return nil, err
 				}

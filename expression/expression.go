@@ -1,17 +1,23 @@
-package mapper
+package expression
 
 import (
 	"fmt"
 
 	"github.com/antonmedv/expr"
 	"github.com/antonmedv/expr/vm"
-	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
 	"go.uber.org/zap"
 )
 
 type ExpressionEnvironment map[string]interface{}
+
+type ExpressionConfig interface {
+	GetExpression() string
+	GetCompiledExpression() *vm.Program
+	SetCompiledExpression(*vm.Program)
+	GetExpressionEnvironment() ExpressionEnvironment
+}
 
 func NewExpressionEnvironment() ExpressionEnvironment {
 	return ExpressionEnvironment{
@@ -119,8 +125,8 @@ func ListToFloats(input []interface{}) ([]float64, error) {
 	return result, nil
 }
 
-func runExpr(vm vm.VM, env ExpressionEnvironment, mappingConfig config.MappingConfig) (interface{}, error) {
-	env, err := mergeEnvironments(env, mappingConfig.ExpressionEnvironment)
+func RunExpr(vm vm.VM, env ExpressionEnvironment, mappingConfig ExpressionConfig) (interface{}, error) {
+	env, err := mergeEnvironments(env, mappingConfig.GetExpressionEnvironment())
 	if err != nil {
 		logger.GetLogger().Warn(
 			"Could not merge the environments",
@@ -129,24 +135,26 @@ func runExpr(vm vm.VM, env ExpressionEnvironment, mappingConfig config.MappingCo
 		return nil, err
 	}
 
-	if mappingConfig.CompiledExpression == nil {
-		// TODO: each iteration the CompiledExpression is nil
-		var err error
-		if mappingConfig.CompiledExpression, err = expr.Compile(mappingConfig.Expression, expr.Env(env)); err != nil {
+	program := mappingConfig.GetCompiledExpression()
+	if program == nil {
+		program, err = expr.Compile(mappingConfig.GetExpression(), expr.Env(env))
+		if err != nil {
 			logger.GetLogger().Warn(
 				"Could not compile the mapping expression",
-				zap.String("Expression", mappingConfig.Expression),
+				zap.String("Expression", mappingConfig.GetExpression()),
 				zap.String("Error", err.Error()),
 			)
 			return nil, err
 		}
+		mappingConfig.SetCompiledExpression(program)
 	}
+
 	// the compiled program exists, let's run it
-	output, err := vm.Run(mappingConfig.CompiledExpression, env)
+	output, err := vm.Run(program, env)
 	if err != nil {
 		logger.GetLogger().Warn(
 			"Could not run the mapping expression",
-			zap.String("Expression", mappingConfig.Expression),
+			zap.String("Expression", mappingConfig.GetExpression()),
 			zap.String("Environment", fmt.Sprintf("%+v", env)),
 			zap.String("Error", err.Error()),
 		)
@@ -175,17 +183,4 @@ func mergeEnvironments(left ExpressionEnvironment, right ExpressionEnvironment) 
 		result[k] = v
 	}
 	return result, nil
-}
-
-func swapPointAndComma(input string) string {
-	result := []rune(input)
-
-	for i := range result {
-		if result[i] == '.' {
-			result[i] = ','
-		} else if result[i] == ',' {
-			result[i] = '.'
-		}
-	}
-	return string(result)
 }

@@ -1,9 +1,9 @@
-package mapper_test
+package expression_test
 
 import (
 	"testing"
 
-	. "github.com/munnik/gosk/mapper"
+	. "github.com/munnik/gosk/expression"
 )
 
 var (

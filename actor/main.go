@@ -1,4 +1,4 @@
-package setter
+package actor
 
 import (
 	"encoding/json"
@@ -9,17 +9,18 @@ import (
 	"go.uber.org/zap"
 )
 
-type Setter interface {
-	Set(subscriber mangos.Socket, publisher mangos.Socket)
+type Actor interface {
+	Act(subscriber mangos.Socket, publisher mangos.Socket)
 }
 
-type RealSetter interface {
-	DoSet(*message.Set) (*message.Raw, error)
+type RealActor interface {
+	DoAct(*message.ActionRequest) (*message.Raw, *message.ActionResponse)
 }
 
-func process(subscriber mangos.Socket, publisher mangos.Socket, setter RealSetter) {
-	setMessage := &message.Set{}
+func process(subscriber mangos.Socket, publisher mangos.Socket, actor RealActor) {
+	actionRequestMessage := &message.ActionRequest{}
 	var rawMessage *message.Raw
+	var actionResponseMessage *message.ActionResponse
 	var bytes []byte
 	for {
 		received, err := subscriber.Recv()
@@ -30,7 +31,7 @@ func process(subscriber mangos.Socket, publisher mangos.Socket, setter RealSette
 			)
 			continue
 		}
-		if err := json.Unmarshal(received, setMessage); err != nil {
+		if err := json.Unmarshal(received, actionRequestMessage); err != nil {
 			logger.GetLogger().Warn(
 				"Could not unmarshal the received data",
 				zap.ByteString("Received", received),
@@ -38,10 +39,12 @@ func process(subscriber mangos.Socket, publisher mangos.Socket, setter RealSette
 			)
 			continue
 		}
-		if rawMessage, err = setter.DoSet(setMessage); err != nil {
+		if rawMessage, actionResponseMessage = actor.DoAct(actionRequestMessage); actionResponseMessage.StatusCode != message.STATUS_CODE_SUCCESSFUL {
 			logger.GetLogger().Warn(
 				"Could not map the received data",
-				zap.Any("Value", setMessage.Value),
+				zap.String("Path", actionRequestMessage.Put.Path),
+				zap.Any("Value", actionRequestMessage.Put.Value),
+				zap.Int("StatusCode", actionResponseMessage.StatusCode),
 				zap.String("Error", err.Error()),
 			)
 			continue

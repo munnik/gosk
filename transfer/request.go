@@ -221,7 +221,7 @@ func (t *TransferRequester) sendDataRequestWorker(dataRequests <-chan OriginPeri
 				zap.String("Origin", request.origin),
 				zap.Time("Start", request.period),
 			)
-			return
+			continue
 		}
 
 		requestMessage := RequestMessage{

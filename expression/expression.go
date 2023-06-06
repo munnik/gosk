@@ -7,6 +7,7 @@ import (
 	"github.com/antonmedv/expr/vm"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
+	"github.com/munnik/gosk/protocol"
 	"go.uber.org/zap"
 )
 
@@ -21,10 +22,21 @@ type ExpressionConfig interface {
 
 func NewExpressionEnvironment() ExpressionEnvironment {
 	return ExpressionEnvironment{
-		"currentToRatio":   CurrentToRatio,
-		"pressureToHeight": PressureToHeight,
-		"heightToVolume":   HeightToVolume,
+		"currentToRatio":         CurrentToRatio,
+		"pressureToHeight":       PressureToHeight,
+		"heightToVolume":         HeightToVolume,
+		"createModbusRawMessage": CreateModbusRawMessage,
 	}
+}
+
+func CreateModbusRawMessage(slave uint8, functionCode uint16, address uint16, numberOfCoilsOrRegisters uint16, bytes []byte) []byte {
+	header := &protocol.ModbusHeader{
+		Slave:                    slave,
+		FunctionCode:             functionCode,
+		Address:                  address,
+		NumberOfCoilsOrRegisters: numberOfCoilsOrRegisters,
+	}
+	return protocol.InjectModbusHeader(header, bytes)
 }
 
 // Returns the 4-20mA input signal to a ratio, 4000uA => 0.0, 8000uA => 0.25, 12000uA => 0.5, 16000uA => 0.75, 20000uA => 1.0

@@ -179,7 +179,7 @@ Current SignalK specs don't have paths for events. GOSK uses the following paths
     - longitude (deg)
     - latitude (deg)
     - altitude (m)
-- `/vessels/<RegExp>/event/loading/currentVolume` _(new)_
+- `/vessels/<RegExp>/event/bunkering/currentVolume` _(new)_
   - Description: Amount of fuel (total of all tanks) at the end of the bunkering event
   - Units: m3 (Cubic meter)
 - `/vessels/<RegExp>/event/bunkering/delta` _(new)_

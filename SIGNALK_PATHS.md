@@ -118,6 +118,11 @@ Current SignalK specs don't have all paths for information about cargo. GOSK use
 
 Current SignalK specs don't have paths for events. GOSK uses the following paths to store information about events:
 
+- `/vessels/<RegExp>/event/voyage` _(new)_
+  - Description: Information about a voyage, a voyage combines a list of contiguous legs.
+- `/vessels/<RegExp>/event/voyage/duration` _(new)_
+  - Description: Duration of the voyage
+  - Units: s (Second)
 - `/vessels/<RegExp>/event/leg` _(new)_
   - Description: Information about a leg, a leg start when a vessels start/stops moving and ends when a vessel stops/start moving.
 - `/vessels/<RegExp>/event/leg/type` _(new)_

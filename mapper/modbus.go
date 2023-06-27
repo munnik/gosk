@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/antonmedv/expr/vm"
@@ -11,6 +12,10 @@ import (
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/protocol"
 	"go.nanomsg.org/mangos/v3"
+)
+
+const (
+	SLAVE_ENV_PREFIX = "slave_"
 )
 
 type ModbusMapper struct {
@@ -42,6 +47,9 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		return nil, fmt.Errorf("no useful data in %v", r.Value)
 	}
 	slave := uint8(r.Value[0])
+
+	m.loadEnvironmentForSlave(slave)
+
 	functionCode := binary.BigEndian.Uint16(r.Value[1:3])
 	address := binary.BigEndian.Uint16(r.Value[3:5])
 	numberOfCoilsOrRegisters := binary.BigEndian.Uint16(r.Value[5:7])
@@ -108,9 +116,33 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		}
 	}
 
+	m.writeEnvironmentForSlave(slave)
+
 	if len(u.Values) == 0 {
 		return nil, fmt.Errorf("data cannot be mapped: %v", r.Value)
 	}
 
 	return result.AddUpdate(u), nil
+}
+
+func (m *ModbusMapper) loadEnvironmentForSlave(slave uint8) {
+	slaveString := fmt.Sprintf(SLAVE_ENV_PREFIX+"%d", slave)
+	if slaveEnvironment, ok := m.env[slaveString]; ok {
+		for k, v := range slaveEnvironment.(ExpressionEnvironment) {
+			m.env[k] = v
+		}
+	}
+}
+
+func (m *ModbusMapper) writeEnvironmentForSlave(slave uint8) {
+	slaveString := fmt.Sprintf(SLAVE_ENV_PREFIX+"%d", slave)
+	for k, v := range m.env {
+		if strings.HasPrefix(k, SLAVE_ENV_PREFIX) {
+			continue
+		}
+		if _, ok := m.env[slaveString]; !ok {
+			m.env[slaveString] = ExpressionEnvironment{}
+		}
+		m.env[slaveString].(ExpressionEnvironment)[k] = v
+	}
 }

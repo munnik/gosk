@@ -13,9 +13,10 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/log/zapadapter"
-	"github.com/jackc/pgx/v4/pgxpool"
+	zapadapter "github.com/jackc/pgx-zap"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/tracelog"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
@@ -121,11 +122,9 @@ func (db *PostgresqlDatabase) GetConnection() *pgxpool.Pool {
 		)
 		return nil
 	}
-	conf.LazyConnect = true
-	conf.ConnConfig.Logger = zapadapter.NewLogger(logger.GetLogger())
-	conf.ConnConfig.LogLevel = pgx.LogLevelWarn
+	conf.ConnConfig.Tracer = &tracelog.TraceLog{Logger: zapadapter.NewLogger(logger.GetLogger()), LogLevel: tracelog.LogLevelWarn}
 
-	conn, err := pgxpool.ConnectConfig(context.Background(), conf)
+	conn, err := pgxpool.NewWithConfig(context.Background(), conf)
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not connect to the database",

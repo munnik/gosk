@@ -45,7 +45,6 @@ func process(subscriber mangos.Socket, publisher mangos.Socket, actor RealActor)
 				zap.String("Path", actionRequestMessage.Put.Path),
 				zap.Any("Value", actionRequestMessage.Put.Value),
 				zap.Int("StatusCode", actionResponseMessage.StatusCode),
-				zap.String("Error", err.Error()),
 			)
 			continue
 		}

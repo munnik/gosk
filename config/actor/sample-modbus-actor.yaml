@@ -1,0 +1,57 @@
+---
+protocol: "modbus"
+actions:
+  - path: "electrical.switches.mastHeadLight1.state"
+    slave: 1
+    functionCode: 5
+    address: 816
+    numberOfCoilsOrRegisters: 1
+    expression: "value == 1 ? 0xff00 : 0x000"
+  - path: "electrical.switches.mastHeadLight2.state"
+    slave: 1
+    functionCode: 5
+    address: 817
+    numberOfCoilsOrRegisters: 1
+    expression: "value == 1 ? 0xff00 : 0x000"
+  - path: "electrical.switches.mastHeadLight3.state"
+    slave: 1
+    functionCode: 5
+    address: 818
+    numberOfCoilsOrRegisters: 1
+    expression: "value == 1 ? 0xff00 : 0x000"
+  - path: "electrical.switches.sideLightPort.state"
+    slave: 1
+    functionCode: 5
+    address: 819
+    numberOfCoilsOrRegisters: 1
+    expression: "value == 1 ? 0xff00 : 0x000"
+  - path: "electrical.switches.sideLightStarboard.state"
+    slave: 1
+    functionCode: 5
+    address: 820
+    numberOfCoilsOrRegisters: 1
+    expression: "value == 1 ? 0xff00 : 0x000"
+  - path: "electrical.switches.sternLight.state"
+    slave: 1
+    functionCode: 5
+    address: 821
+    numberOfCoilsOrRegisters: 1
+    expression: "value == 1 ? 0xff00 : 0x000"
+  - path: "electrical.switches.towingLight.state"
+    slave: 1
+    functionCode: 5
+    address: 822
+    numberOfCoilsOrRegisters: 1
+    expression: "value == 1 ? 0xff00 : 0x000"
+  - path: "electrical.switches.anchorLightPort.state"
+    slave: 1
+    functionCode: 5
+    address: 823
+    numberOfCoilsOrRegisters: 1
+    expression: "value == 1 ? 0xff00 : 0x000"
+  - path: "electrical.switches.anchorLightStarboard.state"
+    slave: 1
+    functionCode: 5
+    address: 824
+    numberOfCoilsOrRegisters: 1
+    expression: "value == 1 ? 0xff00 : 0x000"

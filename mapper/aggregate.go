@@ -45,6 +45,20 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 			}
 			u.Source.Uuid = svm.Source.Uuid // take the uuid from the message that updated this value
 			path := strings.ReplaceAll(svm.Path, ".", "_")
+			if _, ok := m.env["history"]; !ok {
+				m.env["history"] = make(map[string][]message.SingleValueMapped, 0)
+
+			}
+			historyMap := m.env["history"].(map[string][]message.SingleValueMapped)
+			if _, ok := historyMap[path]; !ok {
+				historyMap[path] = make([]message.SingleValueMapped, 0)
+
+			}
+			if len(historyMap[path]) > 0 && historyMap[path][0].Timestamp.Before(time.Now().Add(-time.Minute)) {
+				historyMap[path] = historyMap[path][1:]
+
+			}
+			historyMap[path] = append(historyMap[path], svm)
 			m.env[path] = svm
 			vm := vm.VM{}
 			for _, mapping := range mappings {

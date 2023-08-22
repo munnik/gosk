@@ -18,6 +18,7 @@ func NewExpressionEnvironment() ExpressionEnvironment {
 		"currentToRatio":   CurrentToRatio,
 		"pressureToHeight": PressureToHeight,
 		"heightToVolume":   HeightToVolume,
+		"movingAverage":    MovingAverage,
 	}
 }
 
@@ -117,6 +118,14 @@ func ListToFloats(input []interface{}) ([]float64, error) {
 		}
 	}
 	return result, nil
+}
+
+func MovingAverage(values []message.SingleValueMapped) (float64, error) {
+	sum := 0.0
+	for _, v := range values {
+		sum += v.Value.(float64)
+	}
+	return sum / float64(len(values)), nil
 }
 
 func runExpr(vm vm.VM, env ExpressionEnvironment, mappingConfig config.MappingConfig) (interface{}, error) {

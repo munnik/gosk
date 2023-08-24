@@ -5,3 +5,8 @@ mappings:
     expression: "6.28318530718 * testdata.Value"
     sourcePaths:
       - "testdata"
+  - path: "test.average"
+    expression: "movingAverage(history['testdata'])"
+    sourcePaths:
+      - "testdata"
+    retentionTime: 60s

@@ -120,12 +120,12 @@ func ListToFloats(input []interface{}) ([]float64, error) {
 	return result, nil
 }
 
-func MovingAverage(values []message.SingleValueMapped) (float64, error) {
+func MovingAverage(values []message.SingleValueMapped) float64 {
 	sum := 0.0
 	for _, v := range values {
 		sum += v.Value.(float64)
 	}
-	return sum / float64(len(values)), nil
+	return sum / float64(len(values))
 }
 
 func runExpr(vm vm.VM, env ExpressionEnvironment, mappingConfig config.MappingConfig) (interface{}, error) {

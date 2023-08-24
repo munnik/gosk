@@ -1,6 +1,7 @@
 package mapper
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -14,21 +15,25 @@ import (
 type AggregateMapper struct {
 	config            config.MapperConfig
 	protocol          string
+	retentionTime     time.Duration
 	aggregateMappings map[string][]config.ExpressionMappingConfig
 	env               ExpressionEnvironment
 }
 
 func NewAggregateMapper(c config.MapperConfig, emc []config.ExpressionMappingConfig) (*AggregateMapper, error) {
 	env := NewExpressionEnvironment()
-
+	retentionTime := 0 * time.Second
 	mappings := make(map[string][]config.ExpressionMappingConfig)
 	for _, m := range emc {
 		for _, s := range m.SourcePaths {
 			mappings[s] = append(mappings[s], m)
 		}
+		if m.RetentionTime > retentionTime {
+			retentionTime = m.RetentionTime
+		}
 	}
-
-	return &AggregateMapper{config: c, protocol: config.SignalKType, aggregateMappings: mappings, env: env}, nil
+	fmt.Println(retentionTime)
+	return &AggregateMapper{config: c, protocol: config.SignalKType, retentionTime: retentionTime, aggregateMappings: mappings, env: env}, nil
 }
 
 func (m *AggregateMapper) Map(subscriber mangos.Socket, publisher mangos.Socket) {
@@ -54,7 +59,7 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 				historyMap[path] = make([]message.SingleValueMapped, 0)
 
 			}
-			if len(historyMap[path]) > 0 && historyMap[path][0].Timestamp.Before(time.Now().Add(-time.Minute)) {
+			for len(historyMap[path]) > 0 && historyMap[path][0].Timestamp.Before(time.Now().Add(-m.retentionTime)) { // remove old data from buffer
 				historyMap[path] = historyMap[path][1:]
 
 			}

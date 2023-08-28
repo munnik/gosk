@@ -68,26 +68,29 @@ func (h *HttpConnector) receive(stream chan<- []byte) error {
 	return nil
 }
 
-func poll(ugc config.UrlGroupConfig, stream chan<- []byte) error {
+func poll(ugc config.UrlGroupConfig, stream chan<- []byte) {
 	ticker := time.NewTicker(ugc.PollingInterval)
 	done := make(chan struct{})
+Loop:
 	for {
 		select {
 		case <-ticker.C:
 			resp, err := http.Get(ugc.Url)
 			// TODO: how to handle failed reads, never attempt again or keep trying
 			if err != nil {
-				return err
+				logger.GetLogger().Error("Could not GET page", zap.Error(err))
+				continue
 			}
 			bytes, err := io.ReadAll(resp.Body)
 			if err != nil {
-				return err
+				logger.GetLogger().Error("Could not read response body", zap.Error(err))
+				continue
 			}
 			stream <- bytes
 			resp.Body.Close()
 		case <-done:
 			ticker.Stop()
-			return nil
+			break Loop
 		}
 	}
 }

@@ -2,6 +2,7 @@ package mapper
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/antonmedv/expr"
 	"github.com/antonmedv/expr/vm"
@@ -19,6 +20,8 @@ func NewExpressionEnvironment() ExpressionEnvironment {
 		"pressureToHeight": PressureToHeight,
 		"heightToVolume":   HeightToVolume,
 		"movingAverage":    MovingAverage,
+		"copySign":         CopySign,
+		"powerW":           PowerW,
 	}
 }
 
@@ -120,12 +123,24 @@ func ListToFloats(input []interface{}) ([]float64, error) {
 	return result, nil
 }
 
+// calculate the average of all historical values stored for this path
 func MovingAverage(values []message.SingleValueMapped) float64 {
 	sum := 0.0
 	for _, v := range values {
 		sum += v.Value.(float64)
 	}
 	return sum / float64(len(values))
+}
+
+// calculate the power based on rotations and torque
+// is always a positive value
+func PowerW(rotations float64, torque float64) float64 {
+	return math.Abs(2 * math.Pi * rotations * torque)
+}
+
+func CopySign(f float64, sign float64) float64 {
+	return math.Copysign(f, sign)
+
 }
 
 func runExpr(vm vm.VM, env ExpressionEnvironment, mappingConfig config.MappingConfig) (interface{}, error) {

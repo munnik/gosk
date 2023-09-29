@@ -19,7 +19,7 @@ require (
 	github.com/jackc/pgx/v5 v5.4.1
 	github.com/klauspost/compress v1.16.6
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/munnik/go-nmea v1.7.0
+	github.com/munnik/go-nmea v1.8.0
 	github.com/onsi/ginkgo/v2 v2.9.2
 	github.com/onsi/gomega v1.27.6
 	github.com/prometheus/client_golang v1.16.0

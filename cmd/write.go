@@ -76,7 +76,7 @@ var (
 	writeStdOutRawStringCmd = &cobra.Command{
 		Use:   "rawstring",
 		Short: "write raw messages to stdout",
-		Long:  `write raw messages to stdout`,
+		Long:  `write raw messages to stdout, the bytes are converted to a string`,
 		Run:   doWriteStdOutRawString,
 	}
 	writeStdOutMappedCmd = &cobra.Command{

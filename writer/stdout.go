@@ -3,7 +3,9 @@ package writer
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
 	"go.nanomsg.org/mangos/v3"
@@ -59,5 +61,42 @@ func (w *StdOutWriter) WriteRaw(subscriber mangos.Socket) {
 			continue
 		}
 		fmt.Println(raw)
+	}
+}
+
+func (w *StdOutWriter) WriteRawString(subscriber mangos.Socket) {
+	type rawString struct {
+		Connector string
+		Timestamp time.Time
+		Type      string
+		Uuid      uuid.UUID
+		Value     string
+	}
+	var rs = rawString{}
+	for {
+		received, err := subscriber.Recv()
+		if err != nil {
+			logger.GetLogger().Warn(
+				"Could not receive a message from the publisher",
+				zap.String("Error", err.Error()),
+			)
+			continue
+		}
+		raw := message.Raw{}
+		if err := json.Unmarshal(received, &raw); err != nil {
+			logger.GetLogger().Warn(
+				"Could not unmarshal the received data",
+				zap.ByteString("Received", received),
+				zap.String("Error", err.Error()),
+			)
+			continue
+		}
+
+		rs.Connector = raw.Connector
+		rs.Timestamp = raw.Timestamp
+		rs.Type = raw.Type
+		rs.Uuid = raw.Uuid
+		rs.Value = string(raw.Value)
+		fmt.Println(rs)
 	}
 }

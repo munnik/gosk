@@ -73,6 +73,12 @@ var (
 		Long:  `write raw messages to stdout`,
 		Run:   doWriteStdOutRaw,
 	}
+	writeStdOutRawStringCmd = &cobra.Command{
+		Use:   "rawstring",
+		Short: "write raw messages to stdout",
+		Long:  `write raw messages to stdout`,
+		Run:   doWriteStdOutRawString,
+	}
 	writeStdOutMappedCmd = &cobra.Command{
 		Use:   "mapped",
 		Short: "write mapped messages to stdout",
@@ -110,6 +116,9 @@ func init() {
 	writeStdOutCmd.AddCommand(writeStdOutRawCmd)
 	writeStdOutRawCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
 	writeStdOutRawCmd.MarkFlagRequired("subscribeURL")
+	writeStdOutCmd.AddCommand(writeStdOutRawStringCmd)
+	writeStdOutRawStringCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
+	writeStdOutRawStringCmd.MarkFlagRequired("subscribeURL")
 	writeStdOutCmd.AddCommand(writeStdOutMappedCmd)
 	writeStdOutMappedCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
 	writeStdOutMappedCmd.MarkFlagRequired("subscribeURL")
@@ -215,4 +224,17 @@ func doWriteStdOutRaw(cmd *cobra.Command, args []string) {
 	}
 	s := writer.NewStdOutWriter()
 	s.WriteRaw(subscriber)
+}
+
+func doWriteStdOutRawString(cmd *cobra.Command, args []string) {
+	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
+	if err != nil {
+		logger.GetLogger().Fatal(
+			"Could not subscribe to the URL",
+			zap.String("URL", subscribeURL),
+			zap.String("Error", err.Error()),
+		)
+	}
+	s := writer.NewStdOutWriter()
+	s.WriteRawString(subscriber)
 }

@@ -1,50 +1,50 @@
-alter table "mapped_data" rename to "mapped_data_matching_origin";
+ALTER TABLE "mapped_data" rename TO "mapped_data_matching_context";
 
-create table "mapped_data_other_origin" as table "mapped_data_matching_origin" with no data;
-CREATE UNIQUE INDEX IF NOT EXISTS "mapped_data_other_origin_unique_idx" ON "mapped_data_other_origin"("time", "origin", "context", "path", "connector");
-SELECT public.create_hypertable('mapped_data_other_origin', 'time');
-SELECT public.add_reorder_policy('mapped_data_other_origin', 'mapped_data_other_origin_unique_idx', if_not_exists => true);
+CREATE TABLE "mapped_data_other_context" AS TABLE "mapped_data_matching_context" WITH NO DATA;
+CREATE UNIQUE INDEX IF NOT EXISTS "mapped_data_other_context_unique_idx" ON "mapped_data_other_context"("time", "origin", "context", "path", "connector");
+SELECT public.create_hypertable('mapped_data_other_context', 'time');
+SELECT public.add_reorder_policy('mapped_data_other_context', 'mapped_data_other_context_unique_idx', if_not_exists => true);
 
-create view mapped_data as select * from mapped_data_matching_origin union all select * from mapped_data_other_origin;
+CREATE VIEW "mapped_data" AS SELECT * FROM "mapped_data_matching_context" UNION ALL SELECT * FROM "mapped_data_other_context";
 
-drop MATERIALIZED view "transfer_local_data" cascade;
-CREATE MATERIALIZED VIEW "transfer_local_data_1"
+DROP MATERIALIZED view "transfer_local_data" CASCADE;
+CREATE MATERIALIZED VIEW "transfer_local_data_other_context"
 WITH (timescaledb.continuous, timescaledb.materialized_only=FALSE) AS
 SELECT
     public.time_bucket(INTERVAL '5 min', "time") AS "start", 
     "origin", 
-    COUNT("mapped_data_other_origin"."origin") AS "count" 
-FROM "mapped_data_other_origin" 
+    COUNT("mapped_data_other_context"."origin") AS "count" 
+FROM "mapped_data_other_context" 
 GROUP BY 1, 2
 WITH NO DATA;
 
-SELECT public.add_retention_policy('transfer_local_data_1', INTERVAL '3 month');
+SELECT public.add_retention_policy('transfer_local_data_other_context', INTERVAL '3 month');
 
-SELECT public.add_continuous_aggregate_policy('transfer_local_data_1',
+SELECT public.add_continuous_aggregate_policy('transfer_local_data_other_context',
   start_offset => INTERVAL '7 day',
   end_offset => INTERVAL '1 hour',
   schedule_interval => INTERVAL '1 hour');
 
-CREATE MATERIALIZED VIEW "transfer_local_data_2"
+CREATE MATERIALIZED VIEW "transfer_local_data_mathing_context"
 WITH (timescaledb.continuous, timescaledb.materialized_only=FALSE) AS
 SELECT
     public.time_bucket(INTERVAL '5 min', "time") AS "start", 
     "origin", 
-    COUNT("mapped_data_matching_origin"."origin") AS "count" 
-FROM "mapped_data_matching_origin" 
+    COUNT("mapped_data_matching_context"."origin") AS "count" 
+FROM "mapped_data_matching_context" 
 GROUP BY 1, 2
 WITH NO DATA;
-SELECT public.add_retention_policy('transfer_local_data_2', INTERVAL '3 month');
+SELECT public.add_retention_policy('transfer_local_data_mathing_context', INTERVAL '3 month');
 
-SELECT public.add_continuous_aggregate_policy('transfer_local_data_2',
+SELECT public.add_continuous_aggregate_policy('transfer_local_data_mathing_context',
   start_offset => INTERVAL '7 day',
   end_offset => INTERVAL '1 hour',
   schedule_interval => INTERVAL '1 hour');
 
-create view transfer_local_data as (
-  select start, origin, sum(count) as count 
-  from (select * from transfer_local_data_1 union all select * from transfer_local_data_2) as data 
-  group by start, origin);
+CREATE VIEW "transfer_local_data" AS (
+  SELECT "start", "origin", sum("count") AS "count" 
+  FROM (SELECT * FROM "transfer_local_data_other_context" UNION ALL SELECT * FROM "transfer_local_data_mathing_context") AS DATA 
+  GROUP BY "start", "origin");
 
 
 CREATE OR REPLACE VIEW "transfer_data" AS

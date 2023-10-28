@@ -176,9 +176,9 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 	}
 	db.batchSizeGauge.Inc()
 
-	table := "mapped_data_matching_origin"
+	table := "mapped_data_matching_context"
 	if svm.Context != svm.Origin {
-		table = "mapped_data_other_origin"
+		table = "mapped_data_other_context"
 	}
 	query := fmt.Sprintf(mappedInsertQuery, table)
 	db.batch.Queue(query, svm.Timestamp, svm.Source.Label, svm.Source.Type, svm.Context, path, svm.Value, svm.Source.Uuid, svm.Origin, svm.Source.TransferUuid)

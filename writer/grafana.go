@@ -3,6 +3,7 @@ package writer
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
@@ -38,7 +39,8 @@ func (w *GrafanaWriter) sendMQTT(delta message.Mapped) {
 			)
 			continue
 		}
-		topic := fmt.Sprintf(publishTopic, svm.Context, svm.Path)
+		id := strings.ReplaceAll(strings.ReplaceAll(svm.Context, ":", "_"), ".", "/")
+		topic := fmt.Sprintf(publishTopic, id, svm.Path)
 		w.mqttClient.Publish(topic, 0, true, value)
 
 	}

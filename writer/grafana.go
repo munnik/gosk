@@ -14,8 +14,6 @@ import (
 )
 
 const (
-	// disconnectWait = 5000 // time to wait before disconnect in ms
-	// keepAlive      = 30 * time.Second
 	publishTopic = "grafana/%s/%s"
 )
 
@@ -39,8 +37,8 @@ func (w *GrafanaWriter) sendMQTT(delta message.Mapped) {
 			)
 			continue
 		}
-		id := strings.ReplaceAll(strings.ReplaceAll(svm.Context, ":", "_"), ".", "/")
-		topic := fmt.Sprintf(publishTopic, id, svm.Path)
+		id := strings.ReplaceAll(svm.Context, ":", "_")
+		topic := strings.ReplaceAll(fmt.Sprintf(publishTopic, id, svm.Path), ".", "/")
 		w.mqttClient.Publish(topic, 0, true, value)
 
 	}

@@ -91,6 +91,12 @@ var (
 		Long:  `Write messages to an UDP multicast group according to the LWE (IEC 61162-450) protocol`,
 		Run:   doWriteLWE,
 	}
+	writeGrafanaCmd = &cobra.Command{
+		Use:   "grafana",
+		Short: "Write messages to an MQTT broker for grafana",
+		Long:  `Write messages to an MQTT broker for grafana`,
+		Run:   doWriteGrafana,
+	}
 )
 
 func init() {
@@ -126,6 +132,10 @@ func init() {
 	writeCmd.AddCommand(writeLWECmd)
 	writeLWECmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
 	writeLWECmd.MarkFlagRequired("subscribeURL")
+
+	writeCmd.AddCommand(writeGrafanaCmd)
+	writeGrafanaCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
+	writeGrafanaCmd.MarkFlagRequired("subscribeURL")
 }
 
 func doWriteDatabaseRaw(cmd *cobra.Command, args []string) {
@@ -237,4 +247,18 @@ func doWriteStdOutRawString(cmd *cobra.Command, args []string) {
 	}
 	s := writer.NewStdOutWriter()
 	s.WriteRawString(subscriber)
+}
+
+func doWriteGrafana(cmd *cobra.Command, args []string) {
+	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
+	if err != nil {
+		logger.GetLogger().Fatal(
+			"Could not subscribe to the URL",
+			zap.String("URL", subscribeURL),
+			zap.String("Error", err.Error()),
+		)
+	}
+	c := config.NewMQTTConfig(cfgFile)
+	w := writer.NewGrafanaWriter(c)
+	w.WriteMapped(subscriber)
 }

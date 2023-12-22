@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -65,19 +66,27 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		m.env["coils"] = coilsMap
 	} else if functionCode == protocol.READ_HOLDING_REGISTERS || functionCode == protocol.READ_INPUT_REGISTERS {
 
-		// todo, fix with sensor error detection
-		allZero := true
-		for i := range registerData {
-			if registerData[i] == 0x7fff || registerData[i] == 0x8000 {
-				return nil, fmt.Errorf("data %v seems to be an error message, ignoring", r.Value)
+		skipFaultDetection := false
+		if _, ok := m.config.ProtocolOptions[config.ProtocolOptionModbusSkipFaultDetection]; ok {
+			skipFaultDetection, _ = strconv.ParseBool(m.config.ProtocolOptions[config.ProtocolOptionModbusSkipFaultDetection])
+		}
+
+		if !skipFaultDetection {
+			// todo, fix with sensor error detection
+			allZero := true
+			for i := range registerData {
+				if registerData[i] == 0x7fff || registerData[i] == 0x8000 {
+					return nil, fmt.Errorf("data %v seems to be an error message, ignoring", r.Value)
+				}
+				if registerData[i] != 0 {
+					allZero = false
+				}
 			}
-			if registerData[i] != 0 {
-				allZero = false
+			if allZero {
+				return nil, fmt.Errorf("data %v seems to be all zeros, ignoring", r.Value)
 			}
 		}
-		if allZero {
-			return nil, fmt.Errorf("data %v seems to be all zeros, ignoring", r.Value)
-		}
+
 		deltaMap := make(map[int]int32, 0)
 		timestampMap := make(map[int]time.Time, 0)
 		timeDeltaMap := make(map[int]int64, 0)

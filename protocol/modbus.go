@@ -6,7 +6,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/munnik/gosk/logger"
 	"github.com/simonvetter/modbus"
+	"go.uber.org/zap"
 )
 
 const (
@@ -79,28 +81,28 @@ func (m *ModbusClient) Read(bytes []byte) (n int, err error) {
 	case READ_COILS:
 		result, err := m.realClient.ReadCoils(m.header.Address, m.header.NumberOfCoilsOrRegisters)
 		if err != nil {
-			return 0, fmt.Errorf("error while reading coils %v, with length %v and function code %v, the error that occurred was %v", m.header.Address, m.header.NumberOfCoilsOrRegisters, m.header.FunctionCode, err)
+			return 0, fmt.Errorf("error while reading slave %v coils %v, with length %v and function code %v, the error that occurred was %v", m.header.Slave, m.header.Address, m.header.NumberOfCoilsOrRegisters, m.header.FunctionCode, err)
 		}
 		bytes = bytes[:0]
 		bytes = append(bytes, InjectModbusHeader(m.header, CoilsToBytes(result))...)
 	case READ_DISCRETE_INPUTS:
 		result, err := m.realClient.ReadDiscreteInputs(m.header.Address, m.header.NumberOfCoilsOrRegisters)
 		if err != nil {
-			return 0, fmt.Errorf("error while reading discrete inputs %v, with length %v and function code %v, the error that occurred was %v", m.header.Address, m.header.NumberOfCoilsOrRegisters, m.header.FunctionCode, err)
+			return 0, fmt.Errorf("error while reading slave %v discrete inputs %v, with length %v and function code %v, the error that occurred was %v", m.header.Slave, m.header.Address, m.header.NumberOfCoilsOrRegisters, m.header.FunctionCode, err)
 		}
 		bytes = bytes[:0]
 		bytes = append(bytes, InjectModbusHeader(m.header, CoilsToBytes(result))...)
 	case READ_HOLDING_REGISTERS:
 		result, err := m.realClient.ReadRegisters(m.header.Address, m.header.NumberOfCoilsOrRegisters, modbus.HOLDING_REGISTER)
 		if err != nil {
-			return 0, fmt.Errorf("error while reading holding register %v, with length %v and function code %v, the error that occurred was %v", m.header.Address, m.header.NumberOfCoilsOrRegisters, m.header.FunctionCode, err)
+			return 0, fmt.Errorf("error while reading slave %v holding register %v, with length %v and function code %v, the error that occurred was %v", m.header.Slave, m.header.Address, m.header.NumberOfCoilsOrRegisters, m.header.FunctionCode, err)
 		}
 		bytes = bytes[:0]
 		bytes = append(bytes, InjectModbusHeader(m.header, RegistersToBytes(result))...)
 	case READ_INPUT_REGISTERS:
 		result, err := m.realClient.ReadRegisters(m.header.Address, m.header.NumberOfCoilsOrRegisters, modbus.INPUT_REGISTER)
 		if err != nil {
-			return 0, fmt.Errorf("error while reading input register %v, with length %v and function code %v, the error that occurred was %v", m.header.Address, m.header.NumberOfCoilsOrRegisters, m.header.FunctionCode, err)
+			return 0, fmt.Errorf("error while reading slave %v input register %v, with length %v and function code %v, the error that occurred was %v", m.header.Slave, m.header.Address, m.header.NumberOfCoilsOrRegisters, m.header.FunctionCode, err)
 		}
 		bytes = bytes[:0]
 		bytes = append(bytes, InjectModbusHeader(m.header, RegistersToBytes(result))...)
@@ -139,7 +141,7 @@ func (m *ModbusClient) Write(bytes []byte) (n int, err error) {
 			return 0, err
 		}
 		if len(registers) != int(header.NumberOfCoilsOrRegisters) {
-			return 0, fmt.Errorf("Expected %d registers but got %d register", header.NumberOfCoilsOrRegisters, len(registers))
+			return 0, fmt.Errorf("expected %d registers but got %d register", header.NumberOfCoilsOrRegisters, len(registers))
 		}
 		m.realClient.WriteRegister(header.Address, registers[0])
 	case WRITE_MULTIPLE_COILS:
@@ -154,7 +156,7 @@ func (m *ModbusClient) Write(bytes []byte) (n int, err error) {
 			return 0, err
 		}
 		if len(registers) != int(header.NumberOfCoilsOrRegisters) {
-			return 0, fmt.Errorf("Expected %d registers but got %d register", header.NumberOfCoilsOrRegisters, len(registers))
+			return 0, fmt.Errorf("expected %d registers but got %d register", header.NumberOfCoilsOrRegisters, len(registers))
 		}
 		m.realClient.WriteRegisters(header.Address, registers)
 	default:
@@ -173,9 +175,13 @@ func (m *ModbusClient) Poll(stream chan<- []byte, pollingInterval time.Duration)
 			n, err := m.Read(bytes)
 			// TODO: how to handle failed reads, never attempt again or keep trying
 			if err != nil {
-				return err
+				logger.GetLogger().Warn(
+					"Error while reading",
+					zap.String("Error", err.Error()),
+				)
+			} else {
+				stream <- bytes[:n]
 			}
-			stream <- bytes[:n]
 		case <-done:
 			ticker.Stop()
 			return nil

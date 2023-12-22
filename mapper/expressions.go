@@ -1,6 +1,7 @@
 package mapper
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math"
 
@@ -22,6 +23,7 @@ func NewExpressionEnvironment() ExpressionEnvironment {
 		"movingAverage":    MovingAverage,
 		"copySign":         CopySign,
 		"powerW":           PowerW,
+		"toFloat":          ToFloat,
 	}
 }
 
@@ -49,7 +51,7 @@ func PressureToHeight(pressure float64, density float64) float64 {
 // return value is in m3
 func HeightToVolume(height float64, sensorOffset float64, heights []interface{}, volumes []interface{}) (result float64, err error) {
 	if len(heights) != len(volumes) {
-		err = fmt.Errorf("The list of heights should have the same length as the list of volumes, the lengths are %d and %d", len(heights), len(volumes))
+		err = fmt.Errorf("the list of heights should have the same length as the list of volumes, the lengths are %d and %d", len(heights), len(volumes))
 		return
 	}
 
@@ -64,11 +66,11 @@ func HeightToVolume(height float64, sensorOffset float64, heights []interface{},
 
 	for i := range heights {
 		if i > 0 && heightFloats[i] <= heightFloats[i-1] {
-			err = fmt.Errorf("The list of heights should be in increasing order, height at position %d is equal or lower than the previous one", i)
+			err = fmt.Errorf("the list of heights should be in increasing order, height at position %d is equal or lower than the previous one", i)
 			return
 		}
 		if i > 0 && volumeFloats[i] <= volumeFloats[i-1] {
-			err = fmt.Errorf("The list of volumes should be in increasing order, level at position %d is equal or lower than the previous one", i)
+			err = fmt.Errorf("the list of volumes should be in increasing order, level at position %d is equal or lower than the previous one", i)
 			return
 		}
 	}
@@ -117,7 +119,7 @@ func ListToFloats(input []interface{}) ([]float64, error) {
 		case float64:
 			result[i] = t
 		default:
-			return []float64{}, fmt.Errorf("The value in position %d of the input can not be converted to a float64", i)
+			return []float64{}, fmt.Errorf("the value in position %d of the input can not be converted to a float64", i)
 		}
 	}
 	return result, nil
@@ -141,6 +143,15 @@ func PowerW(rotations float64, torque float64) float64 {
 func CopySign(f float64, sign float64) float64 {
 	return math.Copysign(f, sign)
 
+}
+
+func ToFloat(mostSignificant, leastSignificant uint16) float32 {
+	data := make([]byte, 4)
+	binary.BigEndian.PutUint16(data[0:2], mostSignificant)
+	binary.BigEndian.PutUint16(data[2:4], leastSignificant)
+
+	bits := binary.BigEndian.Uint32(data)
+	return math.Float32frombits(bits)
 }
 
 func runExpr(vm vm.VM, env ExpressionEnvironment, mappingConfig config.MappingConfig) (interface{}, error) {
@@ -194,7 +205,7 @@ func mergeEnvironments(left ExpressionEnvironment, right ExpressionEnvironment) 
 	}
 	for k, v := range right {
 		if _, ok := left[k]; ok {
-			return ExpressionEnvironment{}, fmt.Errorf("Could not merge right into left because left already contains the key %s", k)
+			return ExpressionEnvironment{}, fmt.Errorf("could not merge right into left because left already contains the key %s", k)
 		}
 		result[k] = v
 	}

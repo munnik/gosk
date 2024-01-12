@@ -19,6 +19,7 @@ type ModbusConnector struct {
 	config               *config.ConnectorConfig
 	registerGroupsConfig []config.RegisterGroupConfig
 	realClient           *modbus.ModbusClient
+	lock                 *sync.Mutex
 }
 
 func NewModbusConnector(c *config.ConnectorConfig, rgcs []config.RegisterGroupConfig) (*ModbusConnector, error) {
@@ -49,7 +50,7 @@ func NewModbusConnector(c *config.ConnectorConfig, rgcs []config.RegisterGroupCo
 		return nil, fmt.Errorf("unable to open modbus client %v, the error that occurred was %v", c.URL.String(), err)
 	}
 
-	return &ModbusConnector{config: c, registerGroupsConfig: rgcs, realClient: realClient}, nil
+	return &ModbusConnector{config: c, registerGroupsConfig: rgcs, realClient: realClient, lock: &sync.Mutex{}}, nil
 }
 
 func (m *ModbusConnector) Publish(publisher mangos.Socket) {
@@ -71,9 +72,10 @@ func (m *ModbusConnector) Publish(publisher mangos.Socket) {
 
 func (m *ModbusConnector) Subscribe(subscriber mangos.Socket) {
 	go func(connector *ModbusConnector, subscriber mangos.Socket) {
-		client := protocol.GetModbusClient(
+		client := protocol.NewModbusClient(
 			connector.realClient,
 			nil, // no need to set this because it will not be used in the Write([]byte) function
+			m.lock,
 		)
 		raw := &message.Raw{}
 		for {
@@ -107,7 +109,11 @@ func (m *ModbusConnector) receive(stream chan<- []byte) error {
 	// start a go routine for each register group, if an error occurs send it on the error channel
 	for _, rgc := range m.registerGroupsConfig {
 		go func(rgc config.RegisterGroupConfig) {
-			client := protocol.GetModbusClient(m.realClient, rgc.ExtractModbusHeader())
+			client := protocol.NewModbusClient(
+				m.realClient,
+				rgc.ExtractModbusHeader(),
+				m.lock,
+			)
 			if err := client.Poll(stream, rgc.PollingInterval); err != nil {
 				errors <- err
 			}

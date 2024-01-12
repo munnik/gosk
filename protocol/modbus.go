@@ -62,30 +62,15 @@ type ModbusHeader struct {
 type ModbusClient struct {
 	realClient *modbus.ModbusClient
 	header     *ModbusHeader
-	lock       sync.Mutex
+	lock       *sync.Mutex
 }
 
-var (
-	lock    sync.Mutex
-	clients map[modbus.ModbusClient]*ModbusClient
-)
-
-func GetModbusClient(realClient *modbus.ModbusClient, header *ModbusHeader) *ModbusClient {
-	lock.Lock()
-	defer lock.Unlock()
-
-	if clients == nil {
-		clients = make(map[modbus.ModbusClient]*ModbusClient)
+func NewModbusClient(realClient *modbus.ModbusClient, header *ModbusHeader, lock *sync.Mutex) *ModbusClient {
+	return &ModbusClient{
+		realClient: realClient,
+		header:     header,
+		lock:       lock,
 	}
-
-	if _, ok := clients[*realClient]; !ok {
-		clients[*realClient] = &ModbusClient{
-			realClient: realClient,
-			header:     header,
-		}
-	}
-
-	return clients[*realClient]
 }
 
 func (m *ModbusClient) Read(bytes []byte) (n int, err error) {

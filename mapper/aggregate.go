@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/antonmedv/expr/vm"
+	"github.com/expr-lang/expr/vm"
 	"github.com/google/uuid"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/message"

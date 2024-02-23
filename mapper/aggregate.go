@@ -43,6 +43,9 @@ func (m *AggregateMapper) Map(subscriber mangos.Socket, publisher mangos.Socket)
 func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) {
 	s := message.NewSource().WithLabel("signalk").WithType(m.protocol).WithUuid(uuid.Nil)
 	u := message.NewUpdate().WithSource(*s).WithTimestamp(time.Time{}) // initialize with empty timestamp instead of hidden now
+
+	overwrites := make(map[string]struct{}, 0)
+
 	for _, svm := range input.ToSingleValueMapped() {
 		if mappings, ok := m.aggregateMappings[svm.Path]; ok {
 			if svm.Timestamp.After(u.Timestamp) { // take most recent timestamp from relevant data
@@ -50,25 +53,29 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 			}
 			u.Source.Uuid = svm.Source.Uuid // take the uuid from the message that updated this value
 			path := strings.ReplaceAll(svm.Path, ".", "_")
+
 			if _, ok := m.env["history"]; !ok {
 				m.env["history"] = make(map[string][]message.SingleValueMapped, 0)
-
 			}
 			historyMap := m.env["history"].(map[string][]message.SingleValueMapped)
 			if _, ok := historyMap[path]; !ok {
 				historyMap[path] = make([]message.SingleValueMapped, 0)
 
 			}
-			for len(historyMap[path]) > 0 && historyMap[path][0].Timestamp.Before(time.Now().Add(-m.retentionTime)) { // remove old data from buffer
+			// remove old data from buffer
+			for len(historyMap[path]) > 0 && historyMap[path][0].Timestamp.Before(time.Now().Add(-m.retentionTime)) {
 				historyMap[path] = historyMap[path][1:]
-
 			}
 			historyMap[path] = append(historyMap[path], svm)
+
 			m.env[path] = svm
 			vm := vm.VM{}
 			for _, mapping := range mappings {
 				output, err := runExpr(vm, m.env, mapping.MappingConfig)
 				if err == nil { // don't insert a path twice
+					if mapping.Overwrite {
+						overwrites[mapping.Path] = struct{}{}
+					}
 					if v := u.GetValueByPath(mapping.Path); v != nil {
 						v.WithValue(output)
 					} else {
@@ -78,9 +85,26 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 			}
 		}
 	}
+
 	if len(u.Values) > 0 {
-		return input.AddUpdate(u), nil
+		return m.removeOverWrites(input, overwrites).AddUpdate(u), nil
 	} else {
 		return input, nil
 	}
+}
+
+func (*AggregateMapper) removeOverWrites(input *message.Mapped, overwrites map[string]struct{}) *message.Mapped {
+	result := message.NewMapped().WithContext(input.Context).WithOrigin(input.Origin)
+	for _, update := range input.Updates {
+		u := message.NewUpdate().WithSource(update.Source).WithTimestamp(update.Timestamp)
+		for _, value := range update.Values {
+			if _, ok := overwrites[value.Path]; !ok {
+				u.AddValue(&value)
+			}
+		}
+		if len(u.Values) > 0 {
+			result.AddUpdate(u)
+		}
+	}
+	return result
 }

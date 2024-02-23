@@ -207,6 +207,7 @@ type ExpressionMappingConfig struct {
 	MappingConfig `mapstructure:",squash"`
 	SourcePaths   []string      `mapstructure:"sourcePaths"`
 	RetentionTime time.Duration `mapstructure:"retentionTime"`
+	Overwrite     bool          `mapstructure:"overwrite"`
 }
 
 func NewExpressionMappingConfig(configFilePath string) []ExpressionMappingConfig {

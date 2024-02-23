@@ -99,6 +99,11 @@ func processMapped(subscriber mangos.Socket, publisher mangos.Socket, mapper Map
 			continue
 		}
 		if len(out.Updates) == 0 {
+			logger.GetLogger().Warn(
+				"No updates after mapping, skipping the delta",
+				zap.Any("in", in),
+				zap.Any("out", out),
+			)
 			continue // skip the delta
 		}
 		if bytes, err = json.Marshal(out); err != nil {

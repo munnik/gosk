@@ -18,6 +18,7 @@ package cmd
 
 import (
 	"github.com/munnik/gosk/logger"
+	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/writer"
 	"github.com/spf13/cobra"
@@ -48,7 +49,7 @@ func init() {
 }
 
 func serveSignalKWS(cmd *cobra.Command, args []string) {
-	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
+	subscriber, err := nanomsg.NewSubscriber[message.Mapped](subscribeURL, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the URL",

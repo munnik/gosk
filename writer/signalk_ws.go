@@ -22,7 +22,7 @@ type hello struct {
 
 type websocketClient struct {
 	host   string
-	deltas chan message.Mapped
+	deltas chan *message.Mapped
 }
 
 func (w *SignalKWriter) serveWebsocket(rw http.ResponseWriter, r *http.Request) {
@@ -50,7 +50,7 @@ func (w *SignalKWriter) serveWebsocket(rw http.ResponseWriter, r *http.Request) 
 	}
 
 	client := websocketClient{
-		deltas: make(chan message.Mapped),
+		deltas: make(chan *message.Mapped),
 		host:   r.RemoteAddr,
 	}
 	w.addClient(client)
@@ -70,7 +70,7 @@ func (w *SignalKWriter) serveWebsocket(rw http.ResponseWriter, r *http.Request) 
 	}
 }
 
-func (w *SignalKWriter) updateWebsocket(message message.Mapped) {
+func (w *SignalKWriter) updateWebsocket(message *message.Mapped) {
 	for _, c := range w.getClients() {
 		c.deltas <- message
 	}

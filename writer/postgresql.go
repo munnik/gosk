@@ -1,7 +1,6 @@
 package writer
 
 import (
-	"encoding/json"
 	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -9,16 +8,14 @@ import (
 
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/database"
-	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
-	"go.nanomsg.org/mangos/v3"
-	"go.uber.org/zap"
+	"github.com/munnik/gosk/nanomsg"
 )
 
 type PostgresqlWriter struct {
 	db                   *database.PostgresqlDatabase
-	mappedChannel        chan message.Mapped
-	rawChannel           chan message.Raw
+	mappedChannel        chan *message.Mapped
+	rawChannel           chan *message.Raw
 	numberOfWorkers      int
 	messagesReceived     prometheus.Counter
 	messagesUnmarshalled prometheus.Counter
@@ -28,8 +25,8 @@ type PostgresqlWriter struct {
 func NewPostgresqlWriter(c *config.PostgresqlConfig) *PostgresqlWriter {
 	return &PostgresqlWriter{
 		db:                   database.NewPostgresqlDatabase(c),
-		mappedChannel:        make(chan message.Mapped, c.BufferSize),
-		rawChannel:           make(chan message.Raw, c.BufferSize),
+		mappedChannel:        make(chan *message.Mapped, c.BufferSize),
+		rawChannel:           make(chan *message.Raw, c.BufferSize),
 		numberOfWorkers:      c.NumberOfWorkers,
 		messagesReceived:     promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_messages_received_total", Help: "total number of received nano messages"}),
 		messagesUnmarshalled: promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_messages_unmarshalled_total", Help: "total number of unmarshalled nano messages"}),
@@ -52,27 +49,11 @@ func (w *PostgresqlWriter) StartRawWorkers() {
 	wg.Wait()
 }
 
-func (w *PostgresqlWriter) WriteRaw(subscriber mangos.Socket) {
-	for {
-		received, err := subscriber.Recv()
-		if err != nil {
-			logger.GetLogger().Warn(
-				"Could not receive a message from the publisher",
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
-		w.messagesReceived.Inc()
-		raw := message.Raw{}
-		if err := json.Unmarshal(received, &raw); err != nil {
-			logger.GetLogger().Warn(
-				"Could not unmarshal the received data",
-				zap.ByteString("Received", received),
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
-		w.messagesUnmarshalled.Inc()
+func (w *PostgresqlWriter) WriteRaw(subscriber *nanomsg.Subscriber[message.Raw]) {
+	receiveBuffer := make(chan *message.Raw, bufferCapacity)
+	go subscriber.Receive(receiveBuffer)
+
+	for raw := range receiveBuffer {
 		w.rawChannel <- raw
 	}
 }
@@ -92,27 +73,11 @@ func (w *PostgresqlWriter) StartMappedWorkers() {
 	wg.Wait()
 }
 
-func (w *PostgresqlWriter) WriteMapped(subscriber mangos.Socket) {
-	for {
-		received, err := subscriber.Recv()
-		if err != nil {
-			logger.GetLogger().Warn(
-				"Could not receive a message from the publisher",
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
-		w.messagesReceived.Inc()
-		mapped := message.Mapped{}
-		if err := json.Unmarshal(received, &mapped); err != nil {
-			logger.GetLogger().Warn(
-				"Could not unmarshal the received data",
-				zap.ByteString("Received", received),
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
-		w.messagesUnmarshalled.Inc()
+func (w *PostgresqlWriter) WriteMapped(subscriber *nanomsg.Subscriber[message.Mapped]) {
+	receiveBuffer := make(chan *message.Mapped, bufferCapacity)
+	go subscriber.Receive(receiveBuffer)
+
+	for mapped := range receiveBuffer {
 		w.mappedChannel <- mapped
 	}
 }

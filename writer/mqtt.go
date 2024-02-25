@@ -12,7 +12,7 @@ import (
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/mqtt"
-	"go.nanomsg.org/mangos/v3"
+	"github.com/munnik/gosk/nanomsg"
 	"go.uber.org/zap"
 )
 
@@ -61,20 +61,19 @@ func (w *MqttWriter) sendMQTT(deltas []message.Mapped) {
 	}(fmt.Sprintf(writeTopic, w.mqttConfig.Username), bytes)
 }
 
-func (w *MqttWriter) WriteMapped(subscriber mangos.Socket) {
+func (w *MqttWriter) WriteMapped(subscriber *nanomsg.Subscriber[message.Mapped]) {
 	w.mqttClient = mqtt.New(w.mqttConfig, nil, "")
 	defer w.mqttClient.Disconnect()
+	receiveBuffer := make(chan *message.Mapped, bufferCapacity)
+	go subscriber.Receive(receiveBuffer)
 
-	for {
-		received, err := subscriber.Recv()
+	for mapped := range receiveBuffer {
+		bytes, err := json.Marshal(mapped)
 		if err != nil {
-			logger.GetLogger().Warn(
-				"Could not receive a message from the publisher",
-				zap.String("Error", err.Error()),
-			)
+			logger.GetLogger().Warn("Unable to marshall mapped message")
 			continue
 		}
-		w.appendToCache(&received)
+		w.appendToCache(&bytes)
 	}
 }
 
@@ -90,6 +89,7 @@ func (w *MqttWriter) appendToCache(received *[]byte) {
 		w.flushCache()
 	}
 }
+
 func (w *MqttWriter) lenCache() int {
 	if w.useA {
 		return len(w.bufferA)

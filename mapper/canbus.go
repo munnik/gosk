@@ -5,11 +5,10 @@ import (
 	"io/ioutil"
 	"os"
 
-	"github.com/expr-lang/expr/vm"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
-	"go.nanomsg.org/mangos/v3"
+	"github.com/munnik/gosk/nanomsg"
 	"go.uber.org/zap"
 
 	"github.com/brutella/can"
@@ -37,7 +36,7 @@ func NewCanBusMapper(c config.CanBusMapperConfig, cmc []config.CanBusMappingConf
 	return &CanBusMapper{config: c, protocol: config.CanBusType, dbc: dbc, canbusMappings: mappings}, nil
 }
 
-func (m *CanBusMapper) Map(subscriber mangos.Socket, publisher mangos.Socket) {
+func (m *CanBusMapper) Map(subscriber *nanomsg.Subscriber[message.Raw], publisher *nanomsg.Publisher[message.Mapped]) {
 	process(subscriber, publisher, m)
 }
 
@@ -51,15 +50,14 @@ func (m *CanBusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	mappings, present := m.dbc[frm.ID]
 	if present {
 		// apply all mappings
-		vm := vm.VM{}
+		env := NewExpressionEnvironment()
 		for _, mapping := range mappings.Signals {
 			val := extractSignal(mapping, string(mappings.Name), frm)
 			mapping, present := m.canbusMappings[val.origin][val.name]
 
 			if present {
-				env := NewExpressionEnvironment()
 				env["value"] = val.value
-				output, err := runExpr(vm, env, mapping.MappingConfig)
+				output, err := runExpr(env, &mapping.MappingConfig)
 				if err == nil {
 					u.AddValue(message.NewValue().WithPath(mapping.Path).WithValue(output))
 				} else {

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"github.com/munnik/gosk/config"
+	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/transfer"
 	"github.com/spf13/cobra"
@@ -45,5 +46,5 @@ func doTransferRequest(cmd *cobra.Command, args []string) {
 func doTransferRespond(cmd *cobra.Command, args []string) {
 	c := config.NewTransferConfig(cfgFile)
 	w := transfer.NewTransferResponder(c)
-	w.Run(nanomsg.NewPub(publishURL))
+	w.Run(nanomsg.NewPublisher[message.Mapped](publishURL))
 }

@@ -4,10 +4,11 @@ import (
 	"sync"
 
 	"github.com/munnik/gosk/logger"
-	"go.nanomsg.org/mangos/v3"
+	"github.com/munnik/gosk/message"
 	"go.uber.org/zap"
 
 	// register transports
+	"go.nanomsg.org/mangos/v3"
 	_ "go.nanomsg.org/mangos/v3/transport/all"
 )
 
@@ -19,7 +20,9 @@ type Proxy struct {
 
 // NewProxy creates a new instance
 func NewProxy(url string) *Proxy {
-	return &Proxy{publisher: NewPub(url)}
+	// don't care about the message type, only the internal socket is used
+	p := NewPublisher[message.Raw](url)
+	return &Proxy{publisher: p.socket}
 }
 
 // SubscribeTo a publisher
@@ -27,7 +30,8 @@ func (p *Proxy) SubscribeTo(url string, wg *sync.WaitGroup) {
 	stopChannel := make(chan struct{})
 	p.stopChannels = append(p.stopChannels, stopChannel)
 	topic := []byte("")
-	socket, err := NewSub(url, topic)
+	// don't care about the message type, only the internal socket is used
+	s, err := NewSubscriber[message.Raw](url, topic)
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe",
@@ -36,6 +40,7 @@ func (p *Proxy) SubscribeTo(url string, wg *sync.WaitGroup) {
 			zap.String("Error", err.Error()),
 		)
 	}
+	socket := s.socket
 	go func(url string, topic []byte) {
 		defer socket.Close()
 		for {

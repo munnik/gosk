@@ -4,6 +4,7 @@ import (
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/mapper"
+	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
@@ -25,7 +26,7 @@ func init() {
 }
 
 func doRateLimit(cmd *cobra.Command, args []string) {
-	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
+	subscriber, err := nanomsg.NewSubscriber[message.Mapped](subscribeURL, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe",
@@ -33,7 +34,7 @@ func doRateLimit(cmd *cobra.Command, args []string) {
 			zap.String("Error", err.Error()),
 		)
 	}
-	publisher := nanomsg.NewPub(publishURL)
+	publisher := nanomsg.NewPublisher[message.Mapped](publishURL)
 	c := config.NewRateLimitConfig(cfgFile)
 	f, _ := mapper.NewRateLimitFilter(c)
 	f.Map(subscriber, publisher)

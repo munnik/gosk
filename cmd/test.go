@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -16,6 +15,8 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 )
+
+const bufferCapacity = 5000
 
 var (
 	testCmd = &cobra.Command{
@@ -34,9 +35,11 @@ func init() {
 }
 
 func doTest(cmd *cobra.Command, args []string) {
+	sendBuffer := make(chan *message.Mapped, bufferCapacity)
+	publisher := nanomsg.NewPublisher[message.Mapped](publishURL)
+	go publisher.Send(sendBuffer)
+
 	c := config.NewTestDataConfig(cfgFile)
-	publisher := nanomsg.NewPub(publishURL)
-	defer publisher.Close()
 	ticker := time.NewTicker(c.Delay)
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -65,24 +68,7 @@ func doTest(cmd *cobra.Command, args []string) {
 
 			result.AddUpdate(u)
 			i++
-			// fmt.Println(result)
-			var bytes []byte
-			var err error
-			if bytes, err = json.Marshal(result); err != nil {
-				logger.GetLogger().Warn(
-					"Could not marshal the mapped data",
-					zap.String("Error", err.Error()),
-				)
-				continue
-			}
-			if err := publisher.Send(bytes); err != nil {
-				logger.GetLogger().Warn(
-					"Unable to send the message using NanoMSG",
-					zap.ByteString("Message", bytes),
-					zap.String("Error", err.Error()),
-				)
-				continue
-			}
+			sendBuffer <- result
 		}
 	}()
 	wg.Wait()

@@ -82,7 +82,7 @@ func (w *SignalKWriter) serveFullDataModel(rw http.ResponseWriter, r *http.Reque
 	searchPath := strings.Replace(r.URL.String(), SignalKHTTPPath, "", 1)
 	if searchPath == "" {
 		rw.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(rw, jsonObj.String())
+		fmt.Fprint(rw, jsonObj.String())
 		return
 	}
 
@@ -93,7 +93,7 @@ func (w *SignalKWriter) serveFullDataModel(rw http.ResponseWriter, r *http.Reque
 		return
 	}
 	rw.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(rw, jsonObj.String())
+	fmt.Fprint(rw, jsonObj.String())
 }
 
 func (w *SignalKWriter) readFromDatabase() {
@@ -129,6 +129,6 @@ func (w *SignalKWriter) readFromDatabase() {
 	w.wg.Done()
 }
 
-func (w *SignalKWriter) updateFullDataModel(mapped message.Mapped) {
+func (w *SignalKWriter) updateFullDataModel(mapped *message.Mapped) {
 	w.cache.WriteMapped(mapped)
 }

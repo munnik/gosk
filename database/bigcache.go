@@ -44,7 +44,7 @@ func (c *BigCache) WriteRaw(raw *message.Raw, returnChanges bool) []*message.Raw
 	return []*message.Raw{}
 }
 
-func (c *BigCache) WriteMapped(mappedList ...message.Mapped) []message.Mapped {
+func (c *BigCache) WriteMapped(mappedList ...*message.Mapped) []*message.Mapped {
 	changes := make([]message.SingleValueMapped, 0)
 	for _, mapped := range mappedList {
 		for _, m := range mapped.ToSingleValueMapped() {
@@ -70,7 +70,7 @@ func (c *BigCache) WriteMapped(mappedList ...message.Mapped) []message.Mapped {
 		}
 	}
 
-	result := make([]message.Mapped, 0)
+	result := make([]*message.Mapped, 0)
 	for _, c := range changes {
 		result = append(result, c.ToMapped())
 	}
@@ -127,8 +127,8 @@ func (c *BigCache) ReadRaw(where string, arguments ...interface{}) ([]message.Ra
 	return result, nil
 }
 
-func (c *BigCache) ReadMapped(where string, arguments ...interface{}) ([]message.Mapped, error) {
-	result := make([]message.Mapped, 0)
+func (c *BigCache) ReadMapped(where string, arguments ...interface{}) ([]*message.Mapped, error) {
+	result := make([]*message.Mapped, 0)
 
 	i := c.mappedCache.Iterator()
 	for i.SetNext() {

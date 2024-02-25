@@ -1,6 +1,6 @@
 module github.com/munnik/gosk
 
-go 1.18
+go 1.21
 
 require (
 	github.com/Jeffail/gabs v1.4.0

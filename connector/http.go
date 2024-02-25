@@ -8,7 +8,8 @@ import (
 
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
-	"go.nanomsg.org/mangos/v3"
+	"github.com/munnik/gosk/message"
+	"github.com/munnik/gosk/nanomsg"
 	"go.uber.org/zap"
 )
 
@@ -21,7 +22,7 @@ func NewHttpConnector(c *config.ConnectorConfig, ugc []config.UrlGroupConfig) (*
 	return &HttpConnector{config: c, urlGroups: ugc}, nil
 }
 
-func (r *HttpConnector) Publish(publisher mangos.Socket) {
+func (r *HttpConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
 	stream := make(chan []byte, 1)
 	defer close(stream)
 	go func() {
@@ -38,7 +39,7 @@ func (r *HttpConnector) Publish(publisher mangos.Socket) {
 	process(stream, r.config.Name, r.config.Protocol, publisher)
 }
 
-func (*HttpConnector) Subscribe(subscriber mangos.Socket) {
+func (*HttpConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw]) {
 	// do nothing
 }
 

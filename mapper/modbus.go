@@ -8,15 +8,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/expr-lang/expr/vm"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/message"
+	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/protocol"
-	"go.nanomsg.org/mangos/v3"
 )
 
 const (
-	SLAVE_ENV_PREFIX = "slave_"
+	slaveEnvPrefix = "slave_"
 )
 
 type ModbusMapper struct {
@@ -35,7 +34,7 @@ func NewModbusMapper(c config.MapperConfig, mmc []config.ModbusMappingsConfig) (
 	}, nil
 }
 
-func (m *ModbusMapper) Map(subscriber mangos.Socket, publisher mangos.Socket) {
+func (m *ModbusMapper) Map(subscriber *nanomsg.Subscriber[message.Raw], publisher *nanomsg.Publisher[message.Mapped]) {
 	process(subscriber, publisher, m)
 }
 
@@ -119,9 +118,6 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		m.env["timedeltas"] = timeDeltaMap
 	}
 
-	// Reuse this vm instance between runs
-	vm := vm.VM{}
-
 	for _, mmc := range m.modbusMappingsConfig {
 		if mmc.Slave != slave || mmc.FunctionCode != functionCode {
 			continue
@@ -129,7 +125,7 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		if mmc.Address < address || mmc.Address+mmc.NumberOfCoilsOrRegisters > address+numberOfCoilsOrRegisters {
 			continue
 		}
-		output, err := runExpr(vm, m.env, mmc.MappingConfig)
+		output, err := runExpr(m.env, &mmc.MappingConfig)
 		if err == nil { // don't insert a path twice
 			if v := u.GetValueByPath(mmc.Path); v != nil {
 				v.WithValue(output)
@@ -149,7 +145,7 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 }
 
 func (m *ModbusMapper) loadEnvironmentForSlave(slave uint8) {
-	slaveString := fmt.Sprintf(SLAVE_ENV_PREFIX+"%d", slave)
+	slaveString := fmt.Sprintf("slaveEnvPrefix%d", slave)
 	if slaveEnvironment, ok := m.env[slaveString]; ok {
 		for k, v := range slaveEnvironment.(ExpressionEnvironment) {
 			m.env[k] = v
@@ -158,9 +154,9 @@ func (m *ModbusMapper) loadEnvironmentForSlave(slave uint8) {
 }
 
 func (m *ModbusMapper) writeEnvironmentForSlave(slave uint8) {
-	slaveString := fmt.Sprintf(SLAVE_ENV_PREFIX+"%d", slave)
+	slaveString := fmt.Sprintf("slaveEnvPrefix%d", slave)
 	for k, v := range m.env {
-		if strings.HasPrefix(k, SLAVE_ENV_PREFIX) {
+		if strings.HasPrefix(k, slaveEnvPrefix) {
 			continue
 		}
 		if _, ok := m.env[slaveString]; !ok {

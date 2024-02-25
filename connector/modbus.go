@@ -1,7 +1,6 @@
 package connector
 
 import (
-	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -9,9 +8,9 @@ import (
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
+	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/protocol"
 	"github.com/simonvetter/modbus"
-	"go.nanomsg.org/mangos/v3"
 	"go.uber.org/zap"
 )
 
@@ -19,7 +18,7 @@ type ModbusConnector struct {
 	config               *config.ConnectorConfig
 	registerGroupsConfig []config.RegisterGroupConfig
 	realClient           *modbus.ModbusClient
-	lock                 *sync.Mutex
+	mutex                *sync.Mutex
 }
 
 func NewModbusConnector(c *config.ConnectorConfig, rgcs []config.RegisterGroupConfig) (*ModbusConnector, error) {
@@ -50,10 +49,10 @@ func NewModbusConnector(c *config.ConnectorConfig, rgcs []config.RegisterGroupCo
 		return nil, fmt.Errorf("unable to open modbus client %v, the error that occurred was %v", c.URL.String(), err)
 	}
 
-	return &ModbusConnector{config: c, registerGroupsConfig: rgcs, realClient: realClient, lock: &sync.Mutex{}}, nil
+	return &ModbusConnector{config: c, registerGroupsConfig: rgcs, realClient: realClient, mutex: &sync.Mutex{}}, nil
 }
 
-func (m *ModbusConnector) Publish(publisher mangos.Socket) {
+func (m *ModbusConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
 	stream := make(chan []byte, 1)
 	defer close(stream)
 	go func() {
@@ -70,34 +69,20 @@ func (m *ModbusConnector) Publish(publisher mangos.Socket) {
 	process(stream, m.config.Name, m.config.Protocol, publisher)
 }
 
-func (m *ModbusConnector) Subscribe(subscriber mangos.Socket) {
-	go func(connector *ModbusConnector, subscriber mangos.Socket) {
+func (m *ModbusConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw]) {
+	go func() {
 		client := protocol.NewModbusClient(
-			connector.realClient,
+			m.realClient,
 			nil, // no need to set this because it will not be used in the Write([]byte) function
-			m.lock,
+			m.mutex,
 		)
-		raw := &message.Raw{}
-		for {
-			received, err := subscriber.Recv()
-			if err != nil {
-				logger.GetLogger().Warn(
-					"Could not receive a message from the publisher",
-					zap.String("Error", err.Error()),
-				)
-				continue
-			}
-			if err := json.Unmarshal(received, raw); err != nil {
-				logger.GetLogger().Warn(
-					"Could not unmarshal the received data",
-					zap.ByteString("Received", received),
-					zap.String("Error", err.Error()),
-				)
-				continue
-			}
+		receiveBuffer := make(chan *message.Raw, bufferCapacity)
+		go subscriber.Receive(receiveBuffer)
+
+		for raw := range receiveBuffer {
 			client.Write(raw.Value)
 		}
-	}(m, subscriber)
+	}()
 }
 
 func (m *ModbusConnector) receive(stream chan<- []byte) error {
@@ -112,7 +97,7 @@ func (m *ModbusConnector) receive(stream chan<- []byte) error {
 			client := protocol.NewModbusClient(
 				m.realClient,
 				rgc.ExtractModbusHeader(),
-				m.lock,
+				m.mutex,
 			)
 			if err := client.Poll(stream, rgc.PollingInterval); err != nil {
 				errors <- err

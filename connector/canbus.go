@@ -5,7 +5,8 @@ import (
 
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
-	"go.nanomsg.org/mangos/v3"
+	"github.com/munnik/gosk/message"
+	"github.com/munnik/gosk/nanomsg"
 	"go.uber.org/zap"
 
 	"github.com/brutella/can"
@@ -19,7 +20,7 @@ func NewCanBusConnector(c *config.ConnectorConfig) (*CanBusConnector, error) {
 	return &CanBusConnector{config: c}, nil
 }
 
-func (r *CanBusConnector) Publish(publisher mangos.Socket) {
+func (r *CanBusConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
 	stream := make(chan []byte, 1)
 	defer close(stream)
 	go func() {
@@ -36,7 +37,7 @@ func (r *CanBusConnector) Publish(publisher mangos.Socket) {
 	process(stream, r.config.Name, r.config.Protocol, publisher)
 }
 
-func (*CanBusConnector) Subscribe(subscriber mangos.Socket) {
+func (*CanBusConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw]) {
 	// do nothing
 }
 

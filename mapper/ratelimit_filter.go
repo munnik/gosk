@@ -5,7 +5,7 @@ import (
 
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/message"
-	"go.nanomsg.org/mangos/v3"
+	"github.com/munnik/gosk/nanomsg"
 )
 
 type RateLimitFilter struct {
@@ -22,8 +22,8 @@ func NewRateLimitFilter(c *config.RateLimitFilterConfig) (*RateLimitFilter, erro
 	return &RateLimitFilter{config: c, lastSeen: make(map[string]map[string]time.Time, 0), rateLimit: rateLimit}, nil
 }
 
-func (f *RateLimitFilter) Map(subscriber mangos.Socket, publisher mangos.Socket) {
-	processMapped(subscriber, publisher, f)
+func (f *RateLimitFilter) Map(subscriber *nanomsg.Subscriber[message.Mapped], publisher *nanomsg.Publisher[message.Mapped]) {
+	process(subscriber, publisher, f)
 }
 
 func (m *RateLimitFilter) DoMap(delta *message.Mapped) (*message.Mapped, error) {

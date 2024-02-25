@@ -8,7 +8,7 @@ import (
 	"github.com/munnik/go-nmea"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/message"
-	"go.nanomsg.org/mangos/v3"
+	"github.com/munnik/gosk/nanomsg"
 )
 
 type Nmea0183Mapper struct {
@@ -20,7 +20,7 @@ func NewNmea0183Mapper(c config.MapperConfig) (*Nmea0183Mapper, error) {
 	return &Nmea0183Mapper{config: c, protocol: config.NMEA0183Type}, nil
 }
 
-func (m *Nmea0183Mapper) Map(subscriber mangos.Socket, publisher mangos.Socket) {
+func (m *Nmea0183Mapper) Map(subscriber *nanomsg.Subscriber[message.Raw], publisher *nanomsg.Publisher[message.Mapped]) {
 	process(subscriber, publisher, m)
 }
 

@@ -8,7 +8,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
-	"go.nanomsg.org/mangos/v3"
+	"github.com/munnik/gosk/nanomsg"
 	"go.uber.org/zap"
 )
 
@@ -61,7 +61,7 @@ func (ws *WebsocketWriter) WitSelf(s string) *WebsocketWriter {
 	return ws
 }
 
-func (ws *WebsocketWriter) WriteMapped(subscriber mangos.Socket) {
+func (ws *WebsocketWriter) WriteMapped(subscriber *nanomsg.Subscriber[message.Mapped]) {
 	upgrader.CheckOrigin = func(r *http.Request) bool { return true }
 	go ws.receive(subscriber)
 	go ws.run()
@@ -185,27 +185,13 @@ func (ws *WebsocketWriter) serveWs(w http.ResponseWriter, r *http.Request) {
 	go c.readPump()
 }
 
-func (h *WebsocketWriter) receive(subscriber mangos.Socket) {
-	var mapped *message.Mapped
-	for {
-		received, err := subscriber.Recv()
-		if err != nil {
-			logger.GetLogger().Warn(
-				"Could not receive a message from the publisher",
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
-		if err := json.Unmarshal(received, mapped); err != nil {
-			logger.GetLogger().Warn(
-				"Could not unmarshal the received data",
-				zap.ByteString("Received", received),
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
+func (h *WebsocketWriter) receive(subscriber *nanomsg.Subscriber[message.Mapped]) {
+	receiveBuffer := make(chan *message.Mapped, bufferCapacity)
+	defer close(receiveBuffer)
 
-		h.broadcast <- *mapped
+	go subscriber.Receive(receiveBuffer)
+	for received := range receiveBuffer {
+		h.broadcast <- *received
 	}
 }
 

@@ -21,6 +21,7 @@ import (
 
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
+	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/version"
 	"github.com/munnik/gosk/writer"
@@ -139,7 +140,7 @@ func init() {
 }
 
 func doWriteDatabaseRaw(cmd *cobra.Command, args []string) {
-	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
+	subscriber, err := nanomsg.NewSubscriber[message.Raw](subscribeURL, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the URL",
@@ -154,7 +155,7 @@ func doWriteDatabaseRaw(cmd *cobra.Command, args []string) {
 }
 
 func doWriteDatabaseMapped(cmd *cobra.Command, args []string) {
-	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
+	subscriber, err := nanomsg.NewSubscriber[message.Mapped](subscribeURL, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the URL",
@@ -169,7 +170,7 @@ func doWriteDatabaseMapped(cmd *cobra.Command, args []string) {
 }
 
 func doWriteMQTT(cmd *cobra.Command, args []string) {
-	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
+	subscriber, err := nanomsg.NewSubscriber[message.Mapped](subscribeURL, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the URL",
@@ -183,7 +184,7 @@ func doWriteMQTT(cmd *cobra.Command, args []string) {
 }
 
 func doWriteSignalK(cmd *cobra.Command, args []string) {
-	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
+	subscriber, err := nanomsg.NewSubscriber[message.Mapped](subscribeURL, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the URL",
@@ -197,7 +198,7 @@ func doWriteSignalK(cmd *cobra.Command, args []string) {
 }
 
 func doWriteLWE(cmd *cobra.Command, args []string) {
-	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
+	subscriber, err := nanomsg.NewSubscriber[message.Raw](subscribeURL, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the URL",
@@ -211,7 +212,7 @@ func doWriteLWE(cmd *cobra.Command, args []string) {
 }
 
 func doWriteStdOutMapped(cmd *cobra.Command, args []string) {
-	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
+	subscriber, err := nanomsg.NewSubscriber[message.Mapped](subscribeURL, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the URL",
@@ -224,7 +225,7 @@ func doWriteStdOutMapped(cmd *cobra.Command, args []string) {
 }
 
 func doWriteStdOutRaw(cmd *cobra.Command, args []string) {
-	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
+	subscriber, err := nanomsg.NewSubscriber[message.Raw](subscribeURL, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the URL",
@@ -237,7 +238,7 @@ func doWriteStdOutRaw(cmd *cobra.Command, args []string) {
 }
 
 func doWriteStdOutRawString(cmd *cobra.Command, args []string) {
-	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
+	subscriber, err := nanomsg.NewSubscriber[message.Raw](subscribeURL, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the URL",
@@ -250,7 +251,7 @@ func doWriteStdOutRawString(cmd *cobra.Command, args []string) {
 }
 
 func doWriteGrafana(cmd *cobra.Command, args []string) {
-	subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
+	subscriber, err := nanomsg.NewSubscriber[message.Mapped](subscribeURL, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the URL",

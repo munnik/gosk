@@ -7,11 +7,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/expr-lang/expr/vm"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
-	"go.nanomsg.org/mangos/v3"
+	"github.com/munnik/gosk/nanomsg"
 	"go.uber.org/zap"
 )
 
@@ -25,7 +24,7 @@ func NewCSVMapper(c config.CSVMapperConfig, cmc []config.CSVMappingConfig) (*CSV
 	return &CSVMapper{config: c, protocol: config.CSVType, csvMappingConfig: cmc}, nil
 }
 
-func (m *CSVMapper) Map(subscriber mangos.Socket, publisher mangos.Socket) {
+func (m *CSVMapper) Map(subscriber *nanomsg.Subscriber[message.Raw], publisher *nanomsg.Publisher[message.Mapped]) {
 	process(subscriber, publisher, m)
 }
 
@@ -34,14 +33,12 @@ func (m *CSVMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	s := message.NewSource().WithLabel(r.Connector).WithType(m.protocol).WithUuid(r.Uuid)
 	u := message.NewUpdate().WithSource(*s).WithTimestamp(r.Timestamp)
 
-	// Reuse this vm instance between runs
-	vm := vm.VM{}
+	env := NewExpressionEnvironment()
 
 	for _, cmc := range m.csvMappingConfig {
 		stringInput := string(r.Value)
 		lines := make([]string, 0)
 		if m.config.SplitLines {
-
 			sc := bufio.NewScanner(strings.NewReader(stringInput))
 			for sc.Scan() {
 				lines = append(lines, sc.Text())
@@ -85,12 +82,11 @@ func (m *CSVMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 				}
 			}
 
-			env := NewExpressionEnvironment()
 			env["stringValues"] = stringValues
 			env["floatValues"] = floatValues
 			env["intValues"] = intValues
 
-			output, err := runExpr(vm, env, cmc.MappingConfig)
+			output, err := runExpr(env, &cmc.MappingConfig)
 			if err == nil { // don't insert a path twice
 				if v := u.GetValueByPath(cmc.Path); v != nil {
 					v.WithValue(output)

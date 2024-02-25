@@ -4,21 +4,20 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/expr-lang/expr/vm"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/message"
-	"go.nanomsg.org/mangos/v3"
+	"github.com/munnik/gosk/nanomsg"
 )
 
 type ExpressionFilter struct {
-	filterMappings map[string][]config.ExpressionMappingConfig
+	filterMappings map[string][]*config.ExpressionMappingConfig
 	env            ExpressionEnvironment
 }
 
-func NewExpressionFilter(emc []config.ExpressionMappingConfig) (*ExpressionFilter, error) {
+func NewExpressionFilter(emc []*config.ExpressionMappingConfig) (*ExpressionFilter, error) {
 	env := NewExpressionEnvironment()
 
-	mappings := make(map[string][]config.ExpressionMappingConfig)
+	mappings := make(map[string][]*config.ExpressionMappingConfig)
 	for _, m := range emc {
 		for _, s := range m.SourcePaths {
 			mappings[s] = append(mappings[s], m)
@@ -28,8 +27,8 @@ func NewExpressionFilter(emc []config.ExpressionMappingConfig) (*ExpressionFilte
 	return &ExpressionFilter{env: env, filterMappings: mappings}, nil
 }
 
-func (f *ExpressionFilter) Map(subscriber mangos.Socket, publisher mangos.Socket) {
-	processMapped(subscriber, publisher, f)
+func (f *ExpressionFilter) Map(subscriber *nanomsg.Subscriber[message.Mapped], publisher *nanomsg.Publisher[message.Mapped]) {
+	process(subscriber, publisher, f)
 }
 
 func (f *ExpressionFilter) DoMap(delta *message.Mapped) (*message.Mapped, error) {
@@ -40,16 +39,15 @@ func (f *ExpressionFilter) DoMap(delta *message.Mapped) (*message.Mapped, error)
 		if mappings, ok := f.filterMappings[svm.Path]; ok {
 			path := strings.ReplaceAll(svm.Path, ".", "_")
 			f.env[path] = svm
-			vm := vm.VM{}
 			for _, mapping := range mappings {
-				output, err := runExpr(vm, f.env, mapping.MappingConfig)
+				output, err := runExpr(f.env, &mapping.MappingConfig)
 				if err != nil {
 					return nil, err
 				}
 				if boolOutput, ok := output.(bool); ok {
 					shouldSkip = shouldSkip || boolOutput
 				} else {
-					return nil, fmt.Errorf("Could not cast result of the expression to bool")
+					return nil, fmt.Errorf("could not cast result of the expression to bool")
 				}
 			}
 		}

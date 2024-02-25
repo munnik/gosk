@@ -1,8 +1,6 @@
 package writer
 
 import (
-	"encoding/json"
-	"fmt"
 	"net/http"
 	"sync"
 
@@ -12,7 +10,7 @@ import (
 	"github.com/munnik/gosk/database"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
-	"go.nanomsg.org/mangos/v3"
+	"github.com/munnik/gosk/nanomsg"
 	"go.uber.org/zap"
 )
 
@@ -41,11 +39,17 @@ func NewSignalKWriter(c *config.SignalKConfig) *SignalKWriter {
 	}
 }
 
-func (w *SignalKWriter) WriteMapped(subscriber mangos.Socket) {
+func (w *SignalKWriter) WriteMapped(subscriber *nanomsg.Subscriber[message.Mapped]) {
 	// fill the cache with data from the database
 	w.wg.Add(1)
 	go w.readFromDatabase()
-	go w.receive(subscriber)
+	receiveBuffer := make(chan *message.Mapped, bufferCapacity)
+	go subscriber.Receive(receiveBuffer)
+
+	for mapped := range receiveBuffer {
+		w.updateFullDataModel(mapped)
+		w.updateWebsocket(mapped)
+	}
 
 	router := chi.NewRouter()
 	router.Use(middleware.Compress(5))
@@ -55,37 +59,13 @@ func (w *SignalKWriter) WriteMapped(subscriber mangos.Socket) {
 	router.Get(SignalKWSPath, w.serveWebsocket)
 
 	// listen to port
-	err := http.ListenAndServe(fmt.Sprintf("%s", w.config.URL.Host), router)
+	err := http.ListenAndServe(w.config.URL.Host, router)
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not listen and serve",
 			zap.String("Host", w.config.URL.Host),
 			zap.String("Error", err.Error()),
 		)
-	}
-}
-
-func (w *SignalKWriter) receive(subscriber mangos.Socket) {
-	for {
-		received, err := subscriber.Recv()
-		if err != nil {
-			logger.GetLogger().Warn(
-				"Could not receive a message from the publisher",
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
-		var mapped message.Mapped
-		if err := json.Unmarshal(received, &mapped); err != nil {
-			logger.GetLogger().Warn(
-				"Could not unmarshal the received data",
-				zap.ByteString("Received", received),
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
-		go w.updateFullDataModel(mapped)
-		go w.updateWebsocket(mapped)
 	}
 }
 

@@ -23,6 +23,7 @@ import (
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/connector"
 	"github.com/munnik/gosk/logger"
+	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
@@ -51,7 +52,7 @@ func init() {
 func doConnect(cmd *cobra.Command, args []string) {
 	var err error
 	c := config.NewConnectorConfig(cfgFile)
-	var conn connector.Connector
+	var conn connector.Connector[message.Raw]
 
 	switch c.Protocol {
 	case config.CSVType, config.NMEA0183Type, config.JSONType:
@@ -84,7 +85,7 @@ func doConnect(cmd *cobra.Command, args []string) {
 			return // nothing to subscribe to
 		}
 		for {
-			subscriber, err := nanomsg.NewSub(subscribeURL, []byte{})
+			subscriber, err := nanomsg.NewSubscriber[message.Raw](subscribeURL, []byte{})
 			if err == nil {
 				conn.Subscribe(subscriber)
 				return // subscriber has been added
@@ -99,5 +100,5 @@ func doConnect(cmd *cobra.Command, args []string) {
 		}
 	}()
 
-	conn.Publish(nanomsg.NewPub(publishURL))
+	conn.Publish(nanomsg.NewPublisher[message.Raw](publishURL))
 }

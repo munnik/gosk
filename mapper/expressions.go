@@ -13,7 +13,9 @@ import (
 	"go.uber.org/zap"
 )
 
-type ExpressionEnvironment map[string]interface{}
+type ExpressionEnvironment map[string]any
+
+var virtualMachine = vm.VM{}
 
 func NewExpressionEnvironment() ExpressionEnvironment {
 	return ExpressionEnvironment{
@@ -154,20 +156,15 @@ func ToFloat(mostSignificant, leastSignificant uint16) float32 {
 	return math.Float32frombits(bits)
 }
 
-func runExpr(vm vm.VM, env ExpressionEnvironment, mappingConfig config.MappingConfig) (interface{}, error) {
-	env, err := mergeEnvironments(env, mappingConfig.ExpressionEnvironment)
-	if err != nil {
-		logger.GetLogger().Warn(
-			"Could not merge the environments",
-			zap.String("Error", err.Error()),
-		)
-		return nil, err
+func runExpr(env ExpressionEnvironment, mappingConfig *config.MappingConfig) (interface{}, error) {
+	for key, value := range mappingConfig.ExpressionEnvironment {
+		env[key] = value
 	}
 
 	if mappingConfig.CompiledExpression == nil {
 		// TODO: each iteration the CompiledExpression is nil
 		var err error
-		if mappingConfig.CompiledExpression, err = expr.Compile(mappingConfig.Expression, expr.Env(env)); err != nil {
+		if mappingConfig.CompiledExpression, err = expr.Compile(mappingConfig.Expression); err != nil {
 			logger.GetLogger().Warn(
 				"Could not compile the mapping expression",
 				zap.String("Expression", mappingConfig.Expression),
@@ -177,7 +174,7 @@ func runExpr(vm vm.VM, env ExpressionEnvironment, mappingConfig config.MappingCo
 		}
 	}
 	// the compiled program exists, let's run it
-	output, err := vm.Run(mappingConfig.CompiledExpression, env)
+	output, err := virtualMachine.Run(mappingConfig.CompiledExpression, env)
 	if err != nil {
 		logger.GetLogger().Warn(
 			"Could not run the mapping expression",
@@ -196,20 +193,6 @@ func runExpr(vm vm.VM, env ExpressionEnvironment, mappingConfig config.MappingCo
 	}
 
 	return output, nil
-}
-
-func mergeEnvironments(left ExpressionEnvironment, right ExpressionEnvironment) (ExpressionEnvironment, error) {
-	result := make(ExpressionEnvironment)
-	for k, v := range left {
-		result[k] = v
-	}
-	for k, v := range right {
-		if _, ok := left[k]; ok {
-			return ExpressionEnvironment{}, fmt.Errorf("could not merge right into left because left already contains the key %s", k)
-		}
-		result[k] = v
-	}
-	return result, nil
 }
 
 func swapPointAndComma(input string) string {

@@ -94,11 +94,11 @@ func NewSingleValueMapped() *SingleValueMapped {
 	return &SingleValueMapped{}
 }
 
-func (s SingleValueMapped) ToMapped() Mapped {
+func (s SingleValueMapped) ToMapped() *Mapped {
 	v := NewValue().WithPath(s.Path).WithValue(s.Value)
 	u := NewUpdate().WithSource(s.Source).WithTimestamp(s.Timestamp).AddValue(v)
 	m := NewMapped().WithContext(s.Context).WithOrigin(s.Origin).AddUpdate(u)
-	return *m
+	return m
 }
 
 func (s SingleValueMapped) Equals(other SingleValueMapped) bool {

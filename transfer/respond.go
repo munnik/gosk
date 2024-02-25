@@ -12,18 +12,21 @@ import (
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/database"
 	"github.com/munnik/gosk/logger"
+	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/mqtt"
+	"github.com/munnik/gosk/nanomsg"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"go.nanomsg.org/mangos/v3"
 	"go.uber.org/zap"
 )
+
+const bufferCapacity = 5000
 
 type TransferResponder struct {
 	db                    *database.PostgresqlDatabase
 	config                *config.TransferConfig
 	mqttClient            *mqtt.Client
-	publisher             mangos.Socket
+	sendBuffer            chan *message.Mapped
 	countRequestsReceived prometheus.Counter
 	countRequestsHandled  prometheus.Counter
 	dataRequestsReceived  prometheus.Counter
@@ -45,9 +48,10 @@ func NewTransferResponder(c *config.TransferConfig) *TransferResponder {
 	}
 }
 
-func (t *TransferResponder) Run(publisher mangos.Socket) {
+func (t *TransferResponder) Run(publisher *nanomsg.Publisher[message.Mapped]) {
 	// listen for requests
-	t.publisher = publisher
+	t.sendBuffer = make(chan *message.Mapped, bufferCapacity)
+	go publisher.Send(t.sendBuffer)
 	t.mqttClient = mqtt.New(&t.config.MQTTConfig, t.messageReceived, fmt.Sprintf(requestTopic, t.config.Origin))
 	defer t.mqttClient.Disconnect()
 
@@ -155,22 +159,7 @@ func (t *TransferResponder) injectData(uuidsToTransmit map[uuid.UUID]int, transf
 		for i := range delta.Updates {
 			delta.Updates[i].Source.TransferUuid = transferUuid
 		}
-		bytes, err := json.Marshal(delta)
-		if err != nil {
-			logger.GetLogger().Warn(
-				"Could not marshal delta",
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
-		if err := t.publisher.Send(bytes); err != nil {
-			logger.GetLogger().Warn(
-				"Unable to send the message using NanoMSG",
-				zap.ByteString("Message", bytes),
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
+		t.sendBuffer <- delta
 		t.recordsTransmitted.Inc()
 		time.Sleep(t.config.SleepBetweenRespondDeltas)
 	}

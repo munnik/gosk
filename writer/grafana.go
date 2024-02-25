@@ -9,12 +9,13 @@ import (
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/mqtt"
-	"go.nanomsg.org/mangos/v3"
+	"github.com/munnik/gosk/nanomsg"
 	"go.uber.org/zap"
 )
 
 const (
-	publishTopic = "grafana/%s/%s"
+	publishTopic   = "grafana/%s/%s"
+	bufferCapacity = 5000
 )
 
 type GrafanaWriter struct {
@@ -27,7 +28,7 @@ func NewGrafanaWriter(c *config.MQTTConfig) *GrafanaWriter {
 	return w
 }
 
-func (w *GrafanaWriter) sendMQTT(delta message.Mapped) {
+func (w *GrafanaWriter) sendMQTT(delta *message.Mapped) {
 	for _, svm := range delta.ToSingleValueMapped() {
 		value, err := json.Marshal(svm.Value)
 		if err != nil {
@@ -40,32 +41,17 @@ func (w *GrafanaWriter) sendMQTT(delta message.Mapped) {
 		id := strings.ReplaceAll(svm.Context, ":", "_")
 		topic := strings.ReplaceAll(fmt.Sprintf(publishTopic, id, svm.Path), ".", "/")
 		w.mqttClient.Publish(topic, 0, true, value)
-
 	}
-
 }
 
-func (w *GrafanaWriter) WriteMapped(subscriber mangos.Socket) {
+func (w *GrafanaWriter) WriteMapped(subscriber *nanomsg.Subscriber[message.Mapped]) {
 	w.mqttClient = mqtt.New(w.mqttConfig, nil, "")
 	defer w.mqttClient.Disconnect()
 
-	for {
-		received, err := subscriber.Recv()
-		if err != nil {
-			logger.GetLogger().Warn(
-				"Could not receive a message from the publisher",
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
-		var m message.Mapped
-		if err := json.Unmarshal(received, &m); err != nil {
-			logger.GetLogger().Warn(
-				"Could not unmarshal a message from the publisher",
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
-		w.sendMQTT(m)
+	receiveBuffer := make(chan *message.Mapped, bufferCapacity)
+	go subscriber.Receive(receiveBuffer)
+
+	for mapped := range receiveBuffer {
+		w.sendMQTT(mapped)
 	}
 }

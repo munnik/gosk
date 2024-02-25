@@ -18,6 +18,7 @@ package cmd
 
 import (
 	"github.com/munnik/gosk/config"
+	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/reader"
 	"github.com/spf13/cobra"
@@ -48,5 +49,5 @@ func init() {
 func doMQTTRead(cmd *cobra.Command, args []string) {
 	c := config.NewMQTTConfig(cfgFile)
 	r := reader.NewMqttReader(c)
-	r.ReadMapped(nanomsg.NewPub(publishURL))
+	r.ReadMapped(nanomsg.NewPublisher[message.Mapped](publishURL))
 }

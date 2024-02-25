@@ -1,16 +1,13 @@
 package writer
 
 import (
-	"encoding/json"
 	"fmt"
 	"net"
 	"sync"
 
 	"github.com/munnik/gosk/config"
-	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
-	"go.nanomsg.org/mangos/v3"
-	"go.uber.org/zap"
+	"github.com/munnik/gosk/nanomsg"
 )
 
 const (
@@ -133,30 +130,16 @@ func NewLWEWriter(c *config.LWEConfig) *LWEWriter {
 		IncludeLineCount:          c.IncludeLineCount,
 	}
 }
-func (w *LWEWriter) WriteRaw(subscriber mangos.Socket) {
-	for {
-		received, err := subscriber.Recv()
-		if err != nil {
-			logger.GetLogger().Warn(
-				"Could not receive a message from the publisher",
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
-		raw := message.Raw{}
-		if err := json.Unmarshal(received, &raw); err != nil {
-			logger.GetLogger().Warn(
-				"Could not unmarshal the received data",
-				zap.ByteString("Received", received),
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
-		go w.multicast(raw)
+func (w *LWEWriter) WriteRaw(subscriber *nanomsg.Subscriber[message.Raw]) {
+	receiveBuffer := make(chan *message.Raw, bufferCapacity)
+	go subscriber.Receive(receiveBuffer)
+
+	for raw := range receiveBuffer {
+		w.multicast(raw)
 	}
 }
 
-func (w *LWEWriter) multicast(raw message.Raw) {
+func (w *LWEWriter) multicast(raw *message.Raw) {
 	if raw.Type != config.NMEA0183Type || len(raw.Value) < 3 {
 		return // ignore non nmea0183 messages
 	}
@@ -174,7 +157,7 @@ func (w *LWEWriter) multicast(raw message.Raw) {
 	conn.Write(append(append(append([]byte("UdPbC\x00"), w.createTagBlock(raw)...), raw.Value...), []byte("\r\n")...))
 }
 
-func (w *LWEWriter) createTagBlock(raw message.Raw) []byte {
+func (w *LWEWriter) createTagBlock(raw *message.Raw) []byte {
 	tagBlock := ""
 	if w.DestinationIdentification != "" {
 		tagBlock += "d:" + w.DestinationIdentification + ","

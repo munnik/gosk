@@ -137,7 +137,7 @@ func (db *PostgresqlDatabase) GetConnection() *pgxpool.Pool {
 	return conn
 }
 
-func (db *PostgresqlDatabase) WriteRaw(raw message.Raw) {
+func (db *PostgresqlDatabase) WriteRaw(raw *message.Raw) {
 	db.writes.Inc()
 	db.batch.Queue(rawInsertQuery, raw.Timestamp, raw.Connector, raw.Value, raw.Uuid, raw.Type)
 	db.batchSizeGauge.Inc()
@@ -146,7 +146,7 @@ func (db *PostgresqlDatabase) WriteRaw(raw message.Raw) {
 	}
 }
 
-func (db *PostgresqlDatabase) WriteMapped(mapped message.Mapped) {
+func (db *PostgresqlDatabase) WriteMapped(mapped *message.Mapped) {
 	for _, svm := range mapped.ToSingleValueMapped() {
 		db.WriteSingleValueMapped(svm)
 	}
@@ -187,7 +187,7 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 	}
 }
 
-func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...interface{}) ([]message.Mapped, error) {
+func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...interface{}) ([]*message.Mapped, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
 	defer cancel()
 	rows, err := db.GetConnection().Query(ctx, fmt.Sprintf("%s %s", selectMappedQuery, appendToQuery), arguments...)
@@ -200,7 +200,7 @@ func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...inte
 	}
 	defer rows.Close()
 
-	result := make([]message.Mapped, 0)
+	result := make([]*message.Mapped, 0)
 	for rows.Next() {
 		m := message.NewSingleValueMapped()
 		err := rows.Scan(

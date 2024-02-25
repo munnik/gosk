@@ -5,25 +5,25 @@ import (
 	"strings"
 	"time"
 
-	"github.com/expr-lang/expr/vm"
 	"github.com/google/uuid"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/message"
-	"go.nanomsg.org/mangos/v3"
+	"github.com/munnik/gosk/nanomsg"
 )
 
 type AggregateMapper struct {
 	config            config.MapperConfig
 	protocol          string
 	retentionTime     time.Duration
-	aggregateMappings map[string][]config.ExpressionMappingConfig
+	aggregateMappings map[string][]*config.ExpressionMappingConfig
 	env               ExpressionEnvironment
 }
 
-func NewAggregateMapper(c config.MapperConfig, emc []config.ExpressionMappingConfig) (*AggregateMapper, error) {
+func NewAggregateMapper(c config.MapperConfig, emc []*config.ExpressionMappingConfig) (*AggregateMapper, error) {
 	env := NewExpressionEnvironment()
+	env["history"] = make(map[string][]message.SingleValueMapped, 0)
 	retentionTime := 0 * time.Second
-	mappings := make(map[string][]config.ExpressionMappingConfig)
+	mappings := make(map[string][]*config.ExpressionMappingConfig)
 	for _, m := range emc {
 		for _, s := range m.SourcePaths {
 			mappings[s] = append(mappings[s], m)
@@ -36,8 +36,8 @@ func NewAggregateMapper(c config.MapperConfig, emc []config.ExpressionMappingCon
 	return &AggregateMapper{config: c, protocol: config.SignalKType, retentionTime: retentionTime, aggregateMappings: mappings, env: env}, nil
 }
 
-func (m *AggregateMapper) Map(subscriber mangos.Socket, publisher mangos.Socket) {
-	processMapped(subscriber, publisher, m)
+func (m *AggregateMapper) Map(subscriber *nanomsg.Subscriber[message.Mapped], publisher *nanomsg.Publisher[message.Mapped]) {
+	process(subscriber, publisher, m)
 }
 
 func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) {
@@ -60,8 +60,8 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 			historyMap := m.env["history"].(map[string][]message.SingleValueMapped)
 			if _, ok := historyMap[path]; !ok {
 				historyMap[path] = make([]message.SingleValueMapped, 0)
-
 			}
+
 			// remove old data from buffer
 			for len(historyMap[path]) > 0 && historyMap[path][0].Timestamp.Before(time.Now().Add(-m.retentionTime)) {
 				historyMap[path] = historyMap[path][1:]
@@ -69,9 +69,8 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 			historyMap[path] = append(historyMap[path], svm)
 
 			m.env[path] = svm
-			vm := vm.VM{}
 			for _, mapping := range mappings {
-				output, err := runExpr(vm, m.env, mapping.MappingConfig)
+				output, err := runExpr(m.env, &mapping.MappingConfig)
 				if err == nil { // don't insert a path twice
 					if mapping.Overwrite {
 						overwrites[mapping.Path] = struct{}{}

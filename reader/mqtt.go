@@ -15,18 +15,19 @@ import (
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/mqtt"
-	"go.nanomsg.org/mangos/v3"
+	"github.com/munnik/gosk/nanomsg"
 )
 
 const (
-	mqttTopic = "vessels/#"
+	mqttTopic      = "vessels/#"
+	bufferCapacity = 5000
 )
 
 // var mqttMessagesReceived =
 
 type MqttReader struct {
 	mqttConfig                     *config.MQTTConfig
-	publisher                      mangos.Socket
+	sendBuffer                     chan *message.Mapped
 	decoder                        *zstd.Decoder
 	mqttMessagesReceived           prometheus.Counter
 	mqttMessagesDecompressed       prometheus.Counter
@@ -48,8 +49,9 @@ func NewMqttReader(c *config.MQTTConfig) *MqttReader {
 	}
 }
 
-func (r *MqttReader) ReadMapped(publisher mangos.Socket) {
-	r.publisher = publisher
+func (r *MqttReader) ReadMapped(publisher *nanomsg.Publisher[message.Mapped]) {
+	r.sendBuffer = make(chan *message.Mapped, bufferCapacity)
+	go publisher.Send(r.sendBuffer)
 
 	m := mqtt.New(r.mqttConfig, r.messageReceived, mqttTopic)
 	defer m.Disconnect()
@@ -85,22 +87,7 @@ func (r *MqttReader) messageReceived(c paho.Client, m paho.Message) {
 	r.mqttMessagesUnmarshalled.Inc()
 
 	for _, delta := range deltas {
-		bytes, err := json.Marshal(delta)
-		if err != nil {
-			logger.GetLogger().Warn(
-				"Could not marshal delta",
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
-		if err := r.publisher.Send(bytes); err != nil {
-			logger.GetLogger().Warn(
-				"Unable to send the message using NanoMSG",
-				zap.ByteString("Message", bytes),
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
+		r.sendBuffer <- &delta
 
 		for _, update := range delta.Updates {
 			if update.Source.TransferUuid != uuid.Nil {

@@ -2,7 +2,6 @@ package connector
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -13,7 +12,7 @@ import (
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
-	"go.nanomsg.org/mangos/v3"
+	"github.com/munnik/gosk/nanomsg"
 	"go.uber.org/zap"
 )
 
@@ -33,7 +32,7 @@ func NewLineConnector(c *config.ConnectorConfig) (*LineConnector, error) {
 	return l, nil
 }
 
-func (r *LineConnector) Publish(publisher mangos.Socket) {
+func (r *LineConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
 	stream := make(chan []byte, 1)
 	defer close(stream)
 	go func() {
@@ -50,26 +49,12 @@ func (r *LineConnector) Publish(publisher mangos.Socket) {
 	process(stream, r.config.Name, r.config.Protocol, publisher)
 }
 
-func (r *LineConnector) Subscribe(subscriber mangos.Socket) {
+func (r *LineConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw]) {
 	go func() {
-		raw := &message.Raw{}
-		for {
-			received, err := subscriber.Recv()
-			if err != nil {
-				logger.GetLogger().Warn(
-					"Could not receive a message from the publisher",
-					zap.String("Error", err.Error()),
-				)
-				continue
-			}
-			if err := json.Unmarshal(received, raw); err != nil {
-				logger.GetLogger().Warn(
-					"Could not unmarshal the received data",
-					zap.ByteString("Received", received),
-					zap.String("Error", err.Error()),
-				)
-				continue
-			}
+		receiveBuffer := make(chan *message.Raw, bufferCapacity)
+		go subscriber.Receive(receiveBuffer)
+
+		for raw := range receiveBuffer {
 			r.connection.Write(append(raw.Value, '\r', '\n'))
 		}
 	}()

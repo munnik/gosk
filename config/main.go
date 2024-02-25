@@ -210,8 +210,8 @@ type ExpressionMappingConfig struct {
 	Overwrite     bool          `mapstructure:"overwrite"`
 }
 
-func NewExpressionMappingConfig(configFilePath string) []ExpressionMappingConfig {
-	var result []ExpressionMappingConfig
+func NewExpressionMappingConfig(configFilePath string) []*ExpressionMappingConfig {
+	var result []*ExpressionMappingConfig
 	readConfigFile(&result, configFilePath, "mappings")
 
 	for _, rmc := range result {

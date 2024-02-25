@@ -4,11 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/expr-lang/expr/vm"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
-	"go.nanomsg.org/mangos/v3"
+	"github.com/munnik/gosk/nanomsg"
 	"go.uber.org/zap"
 )
 
@@ -22,7 +21,7 @@ func NewJSONMapper(c config.MapperConfig, jmc []config.JSONMappingConfig) (*JSON
 	return &JSONMapper{config: c, protocol: config.JSONType, jsonMappingConfig: jmc}, nil
 }
 
-func (m *JSONMapper) Map(subscriber mangos.Socket, publisher mangos.Socket) {
+func (m *JSONMapper) Map(subscriber *nanomsg.Subscriber[message.Raw], publisher *nanomsg.Publisher[message.Mapped]) {
 	process(subscriber, publisher, m)
 }
 
@@ -31,8 +30,7 @@ func (m *JSONMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	s := message.NewSource().WithLabel(r.Connector).WithType(m.protocol).WithUuid(r.Uuid)
 	u := message.NewUpdate().WithSource(*s).WithTimestamp(r.Timestamp)
 
-	// Reuse this vm instance between runs
-	vm := vm.VM{}
+	env := NewExpressionEnvironment()
 
 	for _, jmc := range m.jsonMappingConfig {
 		var j map[string]interface{}
@@ -45,10 +43,8 @@ func (m *JSONMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 			continue
 		}
 
-		env := NewExpressionEnvironment()
 		env["json"] = j
-
-		output, err := runExpr(vm, env, jmc.MappingConfig)
+		output, err := runExpr(env, &jmc.MappingConfig)
 		if err == nil { // don't insert a path twice
 			if v := u.GetValueByPath(jmc.Path); v != nil {
 				v.WithValue(output)

@@ -18,6 +18,7 @@ func NewStdOutWriter() *StdOutWriter {
 
 func (w *StdOutWriter) WriteMapped(subscriber *nanomsg.Subscriber[message.Mapped]) {
 	receiveBuffer := make(chan *message.Mapped, bufferCapacity)
+	defer close(receiveBuffer)
 	go subscriber.Receive(receiveBuffer)
 
 	for mapped := range receiveBuffer {
@@ -27,6 +28,7 @@ func (w *StdOutWriter) WriteMapped(subscriber *nanomsg.Subscriber[message.Mapped
 
 func (w *StdOutWriter) WriteRaw(subscriber *nanomsg.Subscriber[message.Raw]) {
 	receiveBuffer := make(chan *message.Raw, bufferCapacity)
+	defer close(receiveBuffer)
 	go subscriber.Receive(receiveBuffer)
 
 	for raw := range receiveBuffer {
@@ -44,6 +46,7 @@ func (w *StdOutWriter) WriteRawString(subscriber *nanomsg.Subscriber[message.Raw
 	}
 	var rs = rawString{}
 	receiveBuffer := make(chan *message.Raw, bufferCapacity)
+	defer close(receiveBuffer)
 	go subscriber.Receive(receiveBuffer)
 
 	for raw := range receiveBuffer {

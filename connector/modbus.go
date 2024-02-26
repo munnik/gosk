@@ -77,6 +77,7 @@ func (m *ModbusConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw])
 			m.mutex,
 		)
 		receiveBuffer := make(chan *message.Raw, bufferCapacity)
+		defer close(receiveBuffer)
 		go subscriber.Receive(receiveBuffer)
 
 		for raw := range receiveBuffer {

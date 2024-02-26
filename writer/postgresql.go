@@ -23,6 +23,8 @@ type PostgresqlWriter struct {
 }
 
 func NewPostgresqlWriter(c *config.PostgresqlConfig) *PostgresqlWriter {
+	// todo: 	defer close(mappedChannel)
+	// todo: 	defer close(rawChannel)
 	return &PostgresqlWriter{
 		db:                   database.NewPostgresqlDatabase(c),
 		mappedChannel:        make(chan *message.Mapped, c.BufferSize),
@@ -51,6 +53,7 @@ func (w *PostgresqlWriter) StartRawWorkers() {
 
 func (w *PostgresqlWriter) WriteRaw(subscriber *nanomsg.Subscriber[message.Raw]) {
 	receiveBuffer := make(chan *message.Raw, bufferCapacity)
+	defer close(receiveBuffer)
 	go subscriber.Receive(receiveBuffer)
 
 	for raw := range receiveBuffer {
@@ -75,6 +78,7 @@ func (w *PostgresqlWriter) StartMappedWorkers() {
 
 func (w *PostgresqlWriter) WriteMapped(subscriber *nanomsg.Subscriber[message.Mapped]) {
 	receiveBuffer := make(chan *message.Mapped, bufferCapacity)
+	defer close(receiveBuffer)
 	go subscriber.Receive(receiveBuffer)
 
 	for mapped := range receiveBuffer {

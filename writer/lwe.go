@@ -132,6 +132,7 @@ func NewLWEWriter(c *config.LWEConfig) *LWEWriter {
 }
 func (w *LWEWriter) WriteRaw(subscriber *nanomsg.Subscriber[message.Raw]) {
 	receiveBuffer := make(chan *message.Raw, bufferCapacity)
+	defer close(receiveBuffer)
 	go subscriber.Receive(receiveBuffer)
 
 	for raw := range receiveBuffer {

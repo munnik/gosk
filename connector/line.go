@@ -52,6 +52,7 @@ func (r *LineConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
 func (r *LineConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw]) {
 	go func() {
 		receiveBuffer := make(chan *message.Raw, bufferCapacity)
+		defer close(receiveBuffer)
 		go subscriber.Receive(receiveBuffer)
 
 		for raw := range receiveBuffer {

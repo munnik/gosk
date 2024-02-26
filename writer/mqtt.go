@@ -65,6 +65,7 @@ func (w *MqttWriter) WriteMapped(subscriber *nanomsg.Subscriber[message.Mapped])
 	w.mqttClient = mqtt.New(w.mqttConfig, nil, "")
 	defer w.mqttClient.Disconnect()
 	receiveBuffer := make(chan *message.Mapped, bufferCapacity)
+	defer close(receiveBuffer)
 	go subscriber.Receive(receiveBuffer)
 
 	for mapped := range receiveBuffer {

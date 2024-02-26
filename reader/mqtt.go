@@ -51,6 +51,7 @@ func NewMqttReader(c *config.MQTTConfig) *MqttReader {
 
 func (r *MqttReader) ReadMapped(publisher *nanomsg.Publisher[message.Mapped]) {
 	r.sendBuffer = make(chan *message.Mapped, bufferCapacity)
+	defer close(r.sendBuffer)
 	go publisher.Send(r.sendBuffer)
 
 	m := mqtt.New(r.mqttConfig, r.messageReceived, mqttTopic)

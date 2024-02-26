@@ -15,6 +15,7 @@ type Connector[T nanomsg.Message] interface {
 
 func process(stream <-chan []byte, connector string, protocol string, publisher *nanomsg.Publisher[message.Raw]) {
 	sendBuffer := make(chan *message.Raw, bufferCapacity)
+	defer close(sendBuffer)
 	go publisher.Send(sendBuffer)
 
 	var m *message.Raw

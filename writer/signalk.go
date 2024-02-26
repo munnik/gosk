@@ -44,6 +44,7 @@ func (w *SignalKWriter) WriteMapped(subscriber *nanomsg.Subscriber[message.Mappe
 	w.wg.Add(1)
 	go w.readFromDatabase()
 	receiveBuffer := make(chan *message.Mapped, bufferCapacity)
+	defer close(receiveBuffer)
 	go subscriber.Receive(receiveBuffer)
 
 	for mapped := range receiveBuffer {

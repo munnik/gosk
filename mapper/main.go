@@ -20,7 +20,9 @@ type RealMapper[T nanomsg.Message] interface {
 
 func process[T nanomsg.Message](subscriber *nanomsg.Subscriber[T], publisher *nanomsg.Publisher[message.Mapped], mapper RealMapper[T]) {
 	receiveBuffer := make(chan *T, bufferCapacity)
+	defer close(receiveBuffer)
 	sendBuffer := make(chan *message.Mapped, bufferCapacity)
+	defer close(sendBuffer)
 	go subscriber.Receive(receiveBuffer)
 	go publisher.Send(sendBuffer)
 
@@ -39,9 +41,6 @@ func process[T nanomsg.Message](subscriber *nanomsg.Subscriber[T], publisher *na
 			}
 		}
 	}
-
-	close(receiveBuffer)
-	close(sendBuffer)
 }
 
 func rawMap(in *message.Raw, mapper RealMapper[message.Raw], sendBuffer chan *message.Mapped) {

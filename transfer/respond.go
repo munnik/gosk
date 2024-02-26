@@ -51,6 +51,7 @@ func NewTransferResponder(c *config.TransferConfig) *TransferResponder {
 func (t *TransferResponder) Run(publisher *nanomsg.Publisher[message.Mapped]) {
 	// listen for requests
 	t.sendBuffer = make(chan *message.Mapped, bufferCapacity)
+	defer close(t.sendBuffer)
 	go publisher.Send(t.sendBuffer)
 	t.mqttClient = mqtt.New(&t.config.MQTTConfig, t.messageReceived, fmt.Sprintf(requestTopic, t.config.Origin))
 	defer t.mqttClient.Disconnect()

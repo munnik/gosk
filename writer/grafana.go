@@ -49,6 +49,7 @@ func (w *GrafanaWriter) WriteMapped(subscriber *nanomsg.Subscriber[message.Mappe
 	defer w.mqttClient.Disconnect()
 
 	receiveBuffer := make(chan *message.Mapped, bufferCapacity)
+	defer close(receiveBuffer)
 	go subscriber.Receive(receiveBuffer)
 
 	for mapped := range receiveBuffer {

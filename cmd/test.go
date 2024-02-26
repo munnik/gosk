@@ -36,6 +36,7 @@ func init() {
 
 func doTest(cmd *cobra.Command, args []string) {
 	sendBuffer := make(chan *message.Mapped, bufferCapacity)
+	defer close(sendBuffer)
 	publisher := nanomsg.NewPublisher[message.Mapped](publishURL)
 	go publisher.Send(sendBuffer)
 

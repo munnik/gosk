@@ -65,8 +65,8 @@ func (s *Subscriber[T]) Receive(buffer chan *T) {
 	bytesBuffer := make(chan []byte, cap(buffer))
 	go s.receive(bytesBuffer)
 
-	message := new(T)
 	for bytes := range bytesBuffer {
+		message := new(T)
 		if err := json.Unmarshal(bytes, message); err != nil {
 			logger.GetLogger().Warn(
 				"Could not unmarshal the received data",

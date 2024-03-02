@@ -2,6 +2,7 @@ package nanomsg
 
 import (
 	"encoding/json"
+	"sync"
 
 	"github.com/munnik/gosk/logger"
 	"github.com/prometheus/client_golang/prometheus"
@@ -15,6 +16,7 @@ import (
 
 type Subscriber[T Message] struct {
 	socket mangos.Socket
+	pool   *sync.Pool
 
 	messagesReceivedFromSubscription prometheus.Counter
 	messagesUnmarshalled             prometheus.Counter
@@ -31,7 +33,14 @@ func NewSubscriber[T Message](url string, topic []byte, opts ...SubscriberOption
 		return nil, err
 	}
 	socket.SetOption(mangos.OptionSubscribe, topic)
-	result := &Subscriber[T]{socket: socket}
+
+	pool := &sync.Pool{
+		New: func() any {
+			return new(T)
+		},
+	}
+
+	result := &Subscriber[T]{socket: socket, pool: pool}
 	for _, o := range opts {
 		o(result)
 	}
@@ -66,7 +75,7 @@ func (s *Subscriber[T]) Receive(buffer chan *T) {
 	go s.receive(bytesBuffer)
 
 	for bytes := range bytesBuffer {
-		message := new(T)
+		message := s.pool.Get().(*T)
 		if err := json.Unmarshal(bytes, message); err != nil {
 			logger.GetLogger().Warn(
 				"Could not unmarshal the received data",
@@ -83,5 +92,6 @@ func (s *Subscriber[T]) Receive(buffer chan *T) {
 		default:
 			go logger.GetLogger().Warn("Buffer is full, dropping unmarshalled data")
 		}
+		s.pool.Put(message)
 	}
 }

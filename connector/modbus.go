@@ -89,7 +89,7 @@ func (m *ModbusConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw])
 func (m *ModbusConnector) receive(stream chan<- []byte) error {
 	errors := make(chan error)
 	done := make(chan bool)
-	var wg sync.WaitGroup
+	wg := new(sync.WaitGroup)
 	wg.Add(len(m.registerGroupsConfig))
 
 	// start a go routine for each register group, if an error occurs send it on the error channel

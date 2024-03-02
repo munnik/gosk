@@ -42,7 +42,7 @@ func doTest(cmd *cobra.Command, args []string) {
 
 	c := config.NewTestDataConfig(cfgFile)
 	ticker := time.NewTicker(c.Delay)
-	var wg sync.WaitGroup
+	wg := new(sync.WaitGroup)
 	wg.Add(1)
 	go func() {
 		i := 0

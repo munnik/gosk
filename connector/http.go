@@ -46,7 +46,7 @@ func (*HttpConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw]) {
 func (h *HttpConnector) receive(stream chan<- []byte) error {
 	errors := make(chan error)
 	done := make(chan bool)
-	var wg sync.WaitGroup
+	wg := new(sync.WaitGroup)
 	wg.Add(len(h.urlGroups))
 	for _, url := range h.urlGroups {
 		go func(url config.UrlGroupConfig) {

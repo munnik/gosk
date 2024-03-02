@@ -37,7 +37,7 @@ func NewPostgresqlWriter(c *config.PostgresqlConfig) *PostgresqlWriter {
 }
 
 func (w *PostgresqlWriter) StartRawWorkers() {
-	var wg sync.WaitGroup
+	wg := new(sync.WaitGroup)
 	wg.Add(w.numberOfWorkers)
 	for i := 0; i < w.numberOfWorkers; i++ {
 		go func() {
@@ -62,7 +62,7 @@ func (w *PostgresqlWriter) WriteRaw(subscriber *nanomsg.Subscriber[message.Raw])
 }
 
 func (w *PostgresqlWriter) StartMappedWorkers() {
-	var wg sync.WaitGroup
+	wg := new(sync.WaitGroup)
 	wg.Add(w.numberOfWorkers)
 	for i := 0; i < w.numberOfWorkers; i++ {
 		go func() {

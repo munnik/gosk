@@ -5,6 +5,7 @@ import (
 
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 )
 
@@ -12,8 +13,8 @@ type Message interface {
 	message.Raw | message.Mapped
 }
 
-func warnBufferSize[T any](buffer chan T, name string) {
-	var fillPercentage int
+func checkBufferSize[T any](buffer chan T, name string, g prometheus.Gauge) {
+	var fillPercentage, lastFillPercentage int
 	c := cap(buffer)
 	timer := time.NewTicker(10 * time.Millisecond)
 	for {
@@ -24,6 +25,10 @@ func warnBufferSize[T any](buffer chan T, name string) {
 				zap.String("buffer", name),
 				zap.Int("fill %", fillPercentage),
 			)
+		}
+		if g != nil && lastFillPercentage != fillPercentage {
+			g.Set(float64(fillPercentage))
+			lastFillPercentage = fillPercentage
 		}
 	}
 }

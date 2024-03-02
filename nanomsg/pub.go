@@ -16,12 +16,37 @@ import (
 type Publisher[T Message] struct {
 	socket mangos.Socket
 
-	messagesReceivedFromSubscription prometheus.Counter
-	messagesMarshalled               prometheus.Counter
-	messagesPublished                prometheus.Counter
+	receivedCounter   prometheus.Counter
+	marshalledCounter prometheus.Counter
+	publishedCounter  prometheus.Counter
+	bufferSizeGauge   prometheus.Gauge
 }
 
 type PublisherOption[T Message] func(*Publisher[T])
+
+func WithPublisherReceivedCounter[T Message](c prometheus.Counter) PublisherOption[T] {
+	return func(p *Publisher[T]) {
+		p.receivedCounter = c
+	}
+}
+
+func WithPublisherMarshalledCounter[T Message](c prometheus.Counter) PublisherOption[T] {
+	return func(p *Publisher[T]) {
+		p.marshalledCounter = c
+	}
+}
+
+func WithPublisherPublishedCounter[T Message](c prometheus.Counter) PublisherOption[T] {
+	return func(p *Publisher[T]) {
+		p.publishedCounter = c
+	}
+}
+
+func WithPublisherBufferSizeGauge[T Message](g prometheus.Gauge) PublisherOption[T] {
+	return func(p *Publisher[T]) {
+		p.bufferSizeGauge = g
+	}
+}
 
 func NewPublisher[T Message](url string, opts ...PublisherOption[T]) *Publisher[T] {
 	socket, err := pub.NewSocket()
@@ -54,17 +79,17 @@ func (p *Publisher[T]) send(bytes []byte) {
 		)
 		return
 	}
-	if p.messagesPublished != nil {
-		p.messagesPublished.Inc()
+	if p.publishedCounter != nil {
+		p.publishedCounter.Inc()
 	}
 }
 
 func (p *Publisher[T]) Send(buffer chan *T) {
-	go warnBufferSize(buffer, "send")
+	go checkBufferSize(buffer, "send", p.bufferSizeGauge)
 
 	for m := range buffer {
-		if p.messagesReceivedFromSubscription != nil {
-			p.messagesReceivedFromSubscription.Inc()
+		if p.receivedCounter != nil {
+			p.receivedCounter.Inc()
 		}
 		go func(m *T) {
 			var bytes []byte
@@ -76,8 +101,8 @@ func (p *Publisher[T]) Send(buffer chan *T) {
 				)
 				return
 			}
-			if p.messagesMarshalled != nil {
-				p.messagesMarshalled.Inc()
+			if p.marshalledCounter != nil {
+				p.marshalledCounter.Inc()
 			}
 			p.send(bytes)
 		}(m)

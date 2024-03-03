@@ -150,7 +150,6 @@ func doWriteDatabaseRaw(cmd *cobra.Command, args []string) {
 	}
 	c := config.NewPostgresqlConfig(cfgFile)
 	w := writer.NewPostgresqlWriter(c)
-	go w.StartRawWorkers()
 	w.WriteRaw(subscriber)
 }
 
@@ -165,7 +164,6 @@ func doWriteDatabaseMapped(cmd *cobra.Command, args []string) {
 	}
 	c := config.NewPostgresqlConfig(cfgFile)
 	w := writer.NewPostgresqlWriter(c)
-	go w.StartMappedWorkers()
 	w.WriteMapped(subscriber)
 }
 

@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -21,8 +22,8 @@ type BigCache struct {
 func NewBigCache(c *config.BigCacheConfig) *BigCache {
 	cacheConfig := bigcache.DefaultConfig(time.Duration(c.LifeWindow) * time.Second)
 	cacheConfig.HardMaxCacheSize = c.HardMaxCacheSize
-	rawCache, _ := bigcache.NewBigCache(cacheConfig)
-	mappedCache, _ := bigcache.NewBigCache(cacheConfig)
+	rawCache, _ := bigcache.New(context.Background(), cacheConfig)
+	mappedCache, _ := bigcache.New(context.Background(), cacheConfig)
 	return &BigCache{rawCache: rawCache, mappedCache: mappedCache}
 }
 

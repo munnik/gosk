@@ -16,12 +16,8 @@ type PostgresqlWriter[T nanomsg.Message] struct {
 }
 
 func NewPostgresqlWriter[T nanomsg.Message](c *config.PostgresqlConfig) *PostgresqlWriter[T] {
-	// todo: 	defer close(mappedChannel)
-	// todo: 	defer close(rawChannel)
 	return &PostgresqlWriter[T]{
-		db: database.NewPostgresqlDatabase(c),
-		// messagesReceived:     promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_messages_received_total", Help: "total number of received nano messages"}),
-		// messagesUnmarshalled: promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_messages_unmarshalled_total", Help: "total number of unmarshalled nano messages"}),
+		db:             database.NewPostgresqlDatabase(c),
 		writtenCounter: promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_messages_written_total", Help: "total number of nano messages sent to db"}),
 	}
 }

@@ -1,8 +1,6 @@
 package writer
 
 import (
-	"sync"
-
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -12,78 +10,41 @@ import (
 	"github.com/munnik/gosk/nanomsg"
 )
 
-type PostgresqlWriter struct {
-	db              *database.PostgresqlDatabase
-	mappedChannel   chan *message.Mapped
-	rawChannel      chan *message.Raw
-	numberOfWorkers int
-	writtenCounter  prometheus.Counter
+type PostgresqlWriter[T nanomsg.Message] struct {
+	db             *database.PostgresqlDatabase
+	writtenCounter prometheus.Counter
 }
 
-func NewPostgresqlWriter(c *config.PostgresqlConfig) *PostgresqlWriter {
+func NewPostgresqlWriter[T nanomsg.Message](c *config.PostgresqlConfig) *PostgresqlWriter[T] {
 	// todo: 	defer close(mappedChannel)
 	// todo: 	defer close(rawChannel)
-	return &PostgresqlWriter{
-		db:              database.NewPostgresqlDatabase(c),
-		mappedChannel:   make(chan *message.Mapped, c.BufferSize),
-		rawChannel:      make(chan *message.Raw, c.BufferSize),
-		numberOfWorkers: c.NumberOfWorkers,
+	return &PostgresqlWriter[T]{
+		db: database.NewPostgresqlDatabase(c),
 		// messagesReceived:     promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_messages_received_total", Help: "total number of received nano messages"}),
 		// messagesUnmarshalled: promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_messages_unmarshalled_total", Help: "total number of unmarshalled nano messages"}),
 		writtenCounter: promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_messages_written_total", Help: "total number of nano messages sent to db"}),
 	}
 }
 
-func (w *PostgresqlWriter) startRawWorkers() {
-	wg := new(sync.WaitGroup)
-	wg.Add(w.numberOfWorkers)
-	for i := 0; i < w.numberOfWorkers; i++ {
-		go func() {
-			for raw := range w.rawChannel {
+func (w *PostgresqlWriter[T]) Write(subscriber *nanomsg.Subscriber[T]) {
+	receiveBuffer := make(chan *T, bufferCapacity)
+	defer close(receiveBuffer)
+	go subscriber.Receive(receiveBuffer)
+
+	if receiveBufferRaw, ok := any(receiveBuffer).(chan *message.Raw); ok {
+		for raw := range receiveBufferRaw {
+			go func(raw *message.Raw) {
 				w.db.WriteRaw(raw)
 				w.writtenCounter.Inc()
-			}
-			wg.Done()
-		}()
+			}(raw)
+		}
 	}
-	wg.Wait()
-}
-
-func (w *PostgresqlWriter) WriteRaw(subscriber *nanomsg.Subscriber[message.Raw]) {
-	receiveBuffer := make(chan *message.Raw, bufferCapacity)
-	defer close(receiveBuffer)
-	go subscriber.Receive(receiveBuffer)
-
-	go w.startRawWorkers()
-
-	for raw := range receiveBuffer {
-		w.rawChannel <- raw
-	}
-}
-
-func (w *PostgresqlWriter) startMappedWorkers() {
-	wg := new(sync.WaitGroup)
-	wg.Add(w.numberOfWorkers)
-	for i := 0; i < w.numberOfWorkers; i++ {
-		go func() {
-			for mapped := range w.mappedChannel {
+	if receiveBufferMapped, ok := any(receiveBuffer).(chan *message.Mapped); ok {
+		for mapped := range receiveBufferMapped {
+			go func(mapped *message.Mapped) {
 				w.db.WriteMapped(mapped)
 				w.writtenCounter.Inc()
-			}
-			wg.Done()
-		}()
-	}
-	wg.Wait()
-}
-
-func (w *PostgresqlWriter) WriteMapped(subscriber *nanomsg.Subscriber[message.Mapped]) {
-	receiveBuffer := make(chan *message.Mapped, bufferCapacity)
-	defer close(receiveBuffer)
-	go subscriber.Receive(receiveBuffer)
-
-	go w.startMappedWorkers()
-
-	for mapped := range receiveBuffer {
-		w.mappedChannel <- mapped
+			}(mapped)
+		}
 	}
 }

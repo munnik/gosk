@@ -149,8 +149,8 @@ func doWriteDatabaseRaw(cmd *cobra.Command, args []string) {
 		)
 	}
 	c := config.NewPostgresqlConfig(cfgFile)
-	w := writer.NewPostgresqlWriter(c)
-	w.WriteRaw(subscriber)
+	w := writer.NewPostgresqlWriter[message.Raw](c)
+	w.Write(subscriber)
 }
 
 func doWriteDatabaseMapped(cmd *cobra.Command, args []string) {
@@ -163,8 +163,8 @@ func doWriteDatabaseMapped(cmd *cobra.Command, args []string) {
 		)
 	}
 	c := config.NewPostgresqlConfig(cfgFile)
-	w := writer.NewPostgresqlWriter(c)
-	w.WriteMapped(subscriber)
+	w := writer.NewPostgresqlWriter[message.Mapped](c)
+	w.Write(subscriber)
 }
 
 func doWriteMQTT(cmd *cobra.Command, args []string) {

@@ -23,53 +23,30 @@ func process[T nanomsg.Message](subscriber *nanomsg.Subscriber[T], publisher *na
 	defer close(receiveBuffer)
 	sendBuffer := make(chan *message.Mapped, bufferCapacity)
 	defer close(sendBuffer)
+
 	go subscriber.Receive(receiveBuffer)
 	go publisher.Send(sendBuffer)
 
-	// ugly hack to call the right function, are there better options?
-	if receiveBufferRaw, ok := any(receiveBuffer).(chan *message.Raw); ok {
-		if mapperRaw, ok := any(mapper).(RealMapper[message.Raw]); ok {
-			for received := range receiveBufferRaw {
-				rawMap(received, mapperRaw, sendBuffer)
-			}
-		}
-	}
-	if receiveBufferMapped, ok := any(receiveBuffer).(chan *message.Mapped); ok {
-		if mapperMapped, ok := any(mapper).(RealMapper[message.Mapped]); ok {
-			for received := range receiveBufferMapped {
-				mappedMap(received, mapperMapped, sendBuffer)
-			}
-		}
-	}
-}
-
-func rawMap(in *message.Raw, mapper RealMapper[message.Raw], sendBuffer chan *message.Mapped) {
-	var out *message.Mapped
 	var err error
-	if out, err = mapper.DoMap(in); err != nil {
-		logger.GetLogger().Warn(
-			"Could not map the received data",
-			zap.ByteString("Raw bytes", in.Value),
-			zap.String("Error", err.Error()),
-		)
-		return
-	}
-	sendBuffer <- out
-}
 
-func mappedMap(in *message.Mapped, mapper RealMapper[message.Mapped], sendBuffer chan *message.Mapped) {
-	var out *message.Mapped
-	var err error
-	if out, err = mapper.DoMap(in); err != nil {
-		logger.GetLogger().Warn(
-			"Could not map the received data",
-			zap.Any("Input data", in),
-			zap.String("Error", err.Error()),
-		)
-		return
+	for in := range receiveBuffer {
+		var out *message.Mapped
+		if out, err = mapper.DoMap(in); err != nil {
+			logger.GetLogger().Warn(
+				"Could not map the received data",
+				zap.Any("Input", in),
+				zap.String("Error", err.Error()),
+			)
+			continue
+		}
+		if len(out.Updates) == 0 {
+			logger.GetLogger().Warn(
+				"No updates after mapping the data",
+				zap.Any("Input", in),
+				zap.Any("Output", out),
+			)
+			continue
+		}
+		sendBuffer <- out
 	}
-	if len(out.Updates) == 0 {
-		return // skip the delta
-	}
-	sendBuffer <- out
 }

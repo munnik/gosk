@@ -54,10 +54,10 @@ type PostgresqlDatabase struct {
 	flushMutex      sync.Mutex
 	upgradeDone     bool
 	databaseTimeout time.Duration
-	flushes         prometheus.Counter
+	flushesCounter  prometheus.Counter
 	lastFlushGauge  prometheus.Gauge
-	writes          prometheus.Counter
-	timeouts        prometheus.Counter
+	writesCounter   prometheus.Counter
+	timeoutsCounter prometheus.Counter
 	batchSizeGauge  prometheus.Gauge
 }
 
@@ -69,10 +69,10 @@ func NewPostgresqlDatabase(c *config.PostgresqlConfig) *PostgresqlDatabase {
 		lastFlush:       time.Now(),
 		upgradeDone:     false,
 		databaseTimeout: c.Timeout,
-		flushes:         promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_flushes_total", Help: "total number batches flushed"}),
+		flushesCounter:  promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_flushes_total", Help: "total number batches flushed"}),
 		lastFlushGauge:  promauto.NewGauge(prometheus.GaugeOpts{Name: "gosk_psql_last_flush_time", Help: "last db flush"}),
-		writes:          promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_writes_total", Help: "total number of deltas added to queue"}),
-		timeouts:        promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_timeouts_total", Help: "total number timeouts"}),
+		writesCounter:   promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_writes_total", Help: "total number of deltas added to queue"}),
+		timeoutsCounter: promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_timeouts_total", Help: "total number timeouts"}),
 		batchSizeGauge:  promauto.NewGauge(prometheus.GaugeOpts{Name: "gosk_psql_batch_length", Help: "number of deltas in current batch"}),
 	}
 	go func() {
@@ -138,7 +138,7 @@ func (db *PostgresqlDatabase) GetConnection() *pgxpool.Pool {
 }
 
 func (db *PostgresqlDatabase) WriteRaw(raw *message.Raw) {
-	db.writes.Inc()
+	db.writesCounter.Inc()
 	db.batch.Queue(rawInsertQuery, raw.Timestamp, raw.Connector, raw.Value, raw.Uuid, raw.Type)
 	db.batchSizeGauge.Inc()
 	if db.batch.Len() > db.batchSize {
@@ -153,7 +153,7 @@ func (db *PostgresqlDatabase) WriteMapped(mapped *message.Mapped) {
 }
 
 func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapped) {
-	db.writes.Inc()
+	db.writesCounter.Inc()
 	if str, ok := svm.Value.(string); ok {
 		svm.Value = strconv.Quote(str)
 	}
@@ -195,7 +195,7 @@ func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...inte
 		return nil, err
 	} else if ctx.Err() != nil {
 		logger.GetLogger().Error("Timeout during database lookup")
-		db.timeouts.Inc()
+		db.timeoutsCounter.Inc()
 		return nil, ctx.Err()
 	}
 	defer rows.Close()
@@ -246,7 +246,7 @@ func (db *PostgresqlDatabase) SelectFirstMappedDataPerOrigin() (map[string]time.
 		return nil, err
 	} else if ctx.Err() != nil {
 		logger.GetLogger().Error("Timeout during database lookup")
-		db.timeouts.Inc()
+		db.timeoutsCounter.Inc()
 		return nil, ctx.Err()
 	}
 	defer rows.Close()
@@ -277,7 +277,7 @@ func (db *PostgresqlDatabase) SelectExistingRemoteCounts(from time.Time) (map[st
 		return nil, err
 	} else if ctx.Err() != nil {
 		logger.GetLogger().Error("Timeout during database lookup")
-		db.timeouts.Inc()
+		db.timeoutsCounter.Inc()
 		return nil, ctx.Err()
 	}
 	defer rows.Close()
@@ -312,7 +312,7 @@ func (db *PostgresqlDatabase) SelectIncompletePeriods() (map[string][]time.Time,
 		return nil, err
 	} else if ctx.Err() != nil {
 		logger.GetLogger().Error("Timeout during database lookup")
-		db.timeouts.Inc()
+		db.timeoutsCounter.Inc()
 		return nil, ctx.Err()
 	}
 	defer rows.Close()
@@ -354,7 +354,7 @@ func (db *PostgresqlDatabase) SelectCountMapped(origin string, start time.Time) 
 		return 0, err
 	} else if ctx.Err() != nil {
 		logger.GetLogger().Error("Timeout during database lookup")
-		db.timeouts.Inc()
+		db.timeoutsCounter.Inc()
 		return 0, ctx.Err()
 	}
 
@@ -370,7 +370,7 @@ func (db *PostgresqlDatabase) SelectCountPerUuid(origin string, start time.Time)
 		return nil, err
 	} else if ctx.Err() != nil {
 		logger.GetLogger().Error("Timeout during database lookup")
-		db.timeouts.Inc()
+		db.timeoutsCounter.Inc()
 		return nil, ctx.Err()
 	}
 	defer rows.Close()
@@ -400,7 +400,7 @@ func (db *PostgresqlDatabase) CreateRemoteCount(start time.Time, origin string, 
 	_, err := db.GetConnection().Exec(ctx, insertOrUpdateRemoteData, start, origin, count)
 	if ctx.Err() != nil {
 		logger.GetLogger().Error("Timeout during database insertion")
-		db.timeouts.Inc()
+		db.timeoutsCounter.Inc()
 		return ctx.Err()
 	}
 	return err
@@ -413,7 +413,7 @@ func (db *PostgresqlDatabase) LogTransferRequest(origin string, message interfac
 	_, err := db.GetConnection().Exec(ctx, logTransferInsertQuery, origin, message)
 	if ctx.Err() != nil {
 		logger.GetLogger().Error("Timeout during database insertion")
-		db.timeouts.Inc()
+		db.timeoutsCounter.Inc()
 		return ctx.Err()
 	}
 	return err
@@ -462,7 +462,7 @@ func (db *PostgresqlDatabase) flushBatch() {
 		return
 	}
 	db.flushMutex.Lock()
-	db.flushes.Inc()
+	db.flushesCounter.Inc()
 	batchPtr := db.batch
 	db.batch = &pgx.Batch{}
 	db.batchSizeGauge.Set(0)
@@ -478,7 +478,7 @@ func (db *PostgresqlDatabase) flushBatch() {
 	if err := result.Close(); err != nil {
 		if ctx.Err() != nil {
 			logger.GetLogger().Error("Timeout during database insertion", zap.Error(ctx.Err()), zap.Error(err))
-			db.timeouts.Inc()
+			db.timeoutsCounter.Inc()
 			return
 		}
 		logger.GetLogger().Error(

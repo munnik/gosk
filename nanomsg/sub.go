@@ -25,18 +25,18 @@ type Subscriber[T Message] struct {
 
 type SubscriberOption[T Message] func(*Subscriber[T])
 
-func WithReceivedCounter[T Message](c prometheus.Counter) SubscriberOption[T] {
+func WithSubscriberReceivedCounter[T Message](c prometheus.Counter) SubscriberOption[T] {
 	return func(s *Subscriber[T]) {
 		s.receivedCounter = c
 	}
 }
-func WithUnmarshalledCounter[T Message](c prometheus.Counter) SubscriberOption[T] {
+func WithSubscriberUnmarshalledCounter[T Message](c prometheus.Counter) SubscriberOption[T] {
 	return func(s *Subscriber[T]) {
 		s.unmarshalledCounter = c
 	}
 }
 
-func WithBufferSizeGauge[T Message](g prometheus.Gauge) SubscriberOption[T] {
+func WithSubscriberBufferSizeGauge[T Message](g prometheus.Gauge) SubscriberOption[T] {
 	return func(s *Subscriber[T]) {
 		s.bufferSizeGauge = g
 	}

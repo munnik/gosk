@@ -25,6 +25,8 @@ import (
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/version"
 	"github.com/munnik/gosk/writer"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/spf13/cobra"
 )
 
@@ -140,7 +142,13 @@ func init() {
 }
 
 func doWriteDatabaseRaw(cmd *cobra.Command, args []string) {
-	subscriber, err := nanomsg.NewSubscriber[message.Raw](subscribeURL, []byte{})
+	subscriber, err := nanomsg.NewSubscriber[message.Raw](
+		subscribeURL,
+		[]byte{},
+		nanomsg.WithSubscriberReceivedCounter[message.Raw](promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_messages_received_total", Help: "total number of received nano messages"})),
+		nanomsg.WithSubscriberUnmarshalledCounter[message.Raw](promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_messages_unmarshalled_total", Help: "total number of unmarshalled nano messages"})),
+		nanomsg.WithSubscriberBufferSizeGauge[message.Raw](promauto.NewGauge(prometheus.GaugeOpts{Name: "gosk_psql_messages_buffer_size", Help: "fill percentage of the subscriber buffer"})),
+	)
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the URL",
@@ -154,7 +162,13 @@ func doWriteDatabaseRaw(cmd *cobra.Command, args []string) {
 }
 
 func doWriteDatabaseMapped(cmd *cobra.Command, args []string) {
-	subscriber, err := nanomsg.NewSubscriber[message.Mapped](subscribeURL, []byte{})
+	subscriber, err := nanomsg.NewSubscriber[message.Mapped](
+		subscribeURL,
+		[]byte{},
+		nanomsg.WithSubscriberReceivedCounter[message.Mapped](promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_messages_received_total", Help: "total number of received nano messages"})),
+		nanomsg.WithSubscriberUnmarshalledCounter[message.Mapped](promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_messages_unmarshalled_total", Help: "total number of unmarshalled nano messages"})),
+		nanomsg.WithSubscriberBufferSizeGauge[message.Mapped](promauto.NewGauge(prometheus.GaugeOpts{Name: "gosk_psql_messages_buffer_size", Help: "fill percentage of the subscriber buffer"})),
+	)
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the URL",
@@ -168,7 +182,13 @@ func doWriteDatabaseMapped(cmd *cobra.Command, args []string) {
 }
 
 func doWriteMQTT(cmd *cobra.Command, args []string) {
-	subscriber, err := nanomsg.NewSubscriber[message.Mapped](subscribeURL, []byte{})
+	subscriber, err := nanomsg.NewSubscriber[message.Mapped](
+		subscribeURL,
+		[]byte{},
+		nanomsg.WithSubscriberReceivedCounter[message.Mapped](promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_mqtt_messages_received_total", Help: "total number of received nano messages"})),
+		nanomsg.WithSubscriberUnmarshalledCounter[message.Mapped](promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_mqtt_messages_unmarshalled_total", Help: "total number of unmarshalled nano messages"})),
+		nanomsg.WithSubscriberBufferSizeGauge[message.Mapped](promauto.NewGauge(prometheus.GaugeOpts{Name: "gosk_mqtt_messages_buffer_size", Help: "fill percentage of the subscriber buffer"})),
+	)
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the URL",
@@ -182,7 +202,13 @@ func doWriteMQTT(cmd *cobra.Command, args []string) {
 }
 
 func doWriteSignalK(cmd *cobra.Command, args []string) {
-	subscriber, err := nanomsg.NewSubscriber[message.Mapped](subscribeURL, []byte{})
+	subscriber, err := nanomsg.NewSubscriber[message.Mapped](
+		subscribeURL,
+		[]byte{},
+		nanomsg.WithSubscriberReceivedCounter[message.Mapped](promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_signalk_messages_received_total", Help: "total number of received nano messages"})),
+		nanomsg.WithSubscriberUnmarshalledCounter[message.Mapped](promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_signalk_messages_unmarshalled_total", Help: "total number of unmarshalled nano messages"})),
+		nanomsg.WithSubscriberBufferSizeGauge[message.Mapped](promauto.NewGauge(prometheus.GaugeOpts{Name: "gosk_signalk_messages_buffer_size", Help: "fill percentage of the subscriber buffer"})),
+	)
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the URL",
@@ -196,7 +222,13 @@ func doWriteSignalK(cmd *cobra.Command, args []string) {
 }
 
 func doWriteLWE(cmd *cobra.Command, args []string) {
-	subscriber, err := nanomsg.NewSubscriber[message.Raw](subscribeURL, []byte{})
+	subscriber, err := nanomsg.NewSubscriber[message.Raw](
+		subscribeURL,
+		[]byte{},
+		nanomsg.WithSubscriberReceivedCounter[message.Raw](promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_lwe_messages_received_total", Help: "total number of received nano messages"})),
+		nanomsg.WithSubscriberUnmarshalledCounter[message.Raw](promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_lwe_messages_unmarshalled_total", Help: "total number of unmarshalled nano messages"})),
+		nanomsg.WithSubscriberBufferSizeGauge[message.Raw](promauto.NewGauge(prometheus.GaugeOpts{Name: "gosk_lwe_messages_buffer_size", Help: "fill percentage of the subscriber buffer"})),
+	)
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the URL",
@@ -249,7 +281,13 @@ func doWriteStdOutRawString(cmd *cobra.Command, args []string) {
 }
 
 func doWriteGrafana(cmd *cobra.Command, args []string) {
-	subscriber, err := nanomsg.NewSubscriber[message.Mapped](subscribeURL, []byte{})
+	subscriber, err := nanomsg.NewSubscriber[message.Mapped](
+		subscribeURL,
+		[]byte{},
+		nanomsg.WithSubscriberReceivedCounter[message.Mapped](promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_grafana_messages_received_total", Help: "total number of received nano messages"})),
+		nanomsg.WithSubscriberUnmarshalledCounter[message.Mapped](promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_grafana_messages_unmarshalled_total", Help: "total number of unmarshalled nano messages"})),
+		nanomsg.WithSubscriberBufferSizeGauge[message.Mapped](promauto.NewGauge(prometheus.GaugeOpts{Name: "gosk_signalk_grafana_buffer_size", Help: "fill percentage of the subscriber buffer"})),
+	)
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the URL",

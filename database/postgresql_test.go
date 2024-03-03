@@ -59,7 +59,7 @@ var _ = Describe("Test database", Ordered, func() {
 	)
 
 	DescribeTable("Write mapped",
-		func(input message.Mapped, expected message.Mapped) {
+		func(input *message.Mapped, expected message.Mapped) {
 			db.WriteMapped(input)
 
 			mappedSelectQuery := `SELECT "time", "connector", "type", "context", "path", "value", "uuid", "origin" FROM "mapped_data" WHERE "uuid" = $1`

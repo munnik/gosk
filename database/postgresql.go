@@ -182,9 +182,52 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 	}
 	query := fmt.Sprintf(mappedInsertQuery, table)
 	db.batch.Queue(query, svm.Timestamp, svm.Source.Label, svm.Source.Type, svm.Context, path, svm.Value, svm.Source.Uuid, svm.Origin, svm.Source.TransferUuid)
+	db.updateStaticData(svm.Context, path, svm.Value)
 	if db.batch.Len() > db.batchSize {
 		go db.flushBatch()
 	}
+}
+
+func (db *PostgresqlDatabase) updateStaticData(context, path string, value any) {
+	var v any
+	var column string
+	switch path {
+	case "mmsi":
+		if vi, ok := value.(message.VesselInfo); ok {
+			v = vi.MMSI
+			column = "mmsi"
+		}
+	case "name":
+		if vi, ok := value.(message.VesselInfo); ok {
+			v = vi.Name
+			column = "name"
+		}
+	case "communication.callsignVhf":
+		v = value
+		column = "callsignvhf"
+	case "registrations.other.eni.registration":
+		v = value
+		column = "eninumber"
+	case "design.length":
+		if l, ok := value.(message.Length); ok {
+			v = l.Overall
+			column = "length"
+		}
+	case "design.beam":
+		v = value
+		column = "beam"
+	case "design.aisShipType":
+		if vt, ok := value.(message.VesselType); ok {
+			v = vt.Name
+			column = "vesseltype"
+		}
+	}
+	if len(column) == 0 {
+		return // column is not set so no update needed
+	}
+
+	query := fmt.Sprintf(`INSERT INTO "gosk"."static_data" ("context", "%s") VALUES ($1, $2) ON CONFLICT("context") DO UPDATE SET "%s" = $2;`, column, column)
+	db.batch.Queue(query, context, v)
 }
 
 func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...interface{}) ([]message.Mapped, error) {

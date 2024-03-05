@@ -19,6 +19,8 @@ func checkBufferSize[T any](buffer chan T, name string, g prometheus.Gauge) {
 	timer := time.NewTicker(10 * time.Millisecond)
 	for {
 		<-timer.C
+
+		// write to log
 		if fillPercentage = (100 * len(buffer)) / c; fillPercentage > 25 {
 			logger.GetLogger().Warn(
 				"Buffer stats",
@@ -26,6 +28,8 @@ func checkBufferSize[T any](buffer chan T, name string, g prometheus.Gauge) {
 				zap.Int("fill %", fillPercentage),
 			)
 		}
+
+		// write to prometheus
 		if g != nil && lastFillPercentage != fillPercentage {
 			g.Set(float64(fillPercentage))
 			lastFillPercentage = fillPercentage

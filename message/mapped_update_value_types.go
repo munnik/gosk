@@ -11,13 +11,28 @@ type Merger interface {
 	Merge(right Merger) (Merger, error)
 }
 
-type VesselInfo struct {
-	MMSI *string `json:"mmsi,omitempty"`
-	Name *string `json:"name,omitempty"`
+type VesselType struct {
+	Id          *int    `json:"id,omitempty"`
+	Description *string `json:"description,omitempty"`
 }
 
-type VesselType struct {
-	Id   *int    `json:"id,omitempty"`
+func (left VesselType) Merge(right Merger) (Merger, error) {
+	var err error
+	if right, ok := right.(VesselType); !ok {
+		err = fmt.Errorf("right has type %T but should be type %T", right, left)
+	} else {
+		if right.Id != nil {
+			left.Id = right.Id
+		}
+		if right.Description != nil {
+			left.Description = right.Description
+		}
+	}
+	return left, err
+}
+
+type VesselInfo struct {
+	MMSI *string `json:"mmsi,omitempty"`
 	Name *string `json:"name,omitempty"`
 }
 
@@ -146,10 +161,16 @@ func Decode(input interface{}) (interface{}, error) {
 		return p, nil
 	}
 
-	v := VesselInfo{}
+	vi := VesselInfo{}
 	metadata = mapstructure.Metadata{}
-	if err := mapstructure.DecodeMetadata(input, &v, &metadata); err == nil && len(metadata.Unused) == 0 {
-		return v, nil
+	if err := mapstructure.DecodeMetadata(input, &vi, &metadata); err == nil && len(metadata.Unused) == 0 {
+		return vi, nil
+	}
+
+	vt := VesselType{}
+	metadata = mapstructure.Metadata{}
+	if err := mapstructure.DecodeMetadata(input, &vt, &metadata); err == nil && len(metadata.Unused) == 0 {
+		return vt, nil
 	}
 
 	l := Length{}

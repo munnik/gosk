@@ -69,7 +69,7 @@ func (m *Nmea0183Mapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	}
 	if v, ok := sentence.(nmea.VesselType); ok {
 		if vesselType, err := v.GetVesselType(); err == nil {
-			u.AddValue(message.NewValue().WithPath("design.aisShipType").WithValue(message.VesselType{Name: &vesselType}))
+			u.AddValue(message.NewValue().WithPath("design.aisShipType").WithValue(message.VesselType{Description: &vesselType}))
 		}
 	}
 

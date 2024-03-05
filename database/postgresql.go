@@ -154,9 +154,6 @@ func (db *PostgresqlDatabase) WriteMapped(mapped *message.Mapped) {
 
 func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapped) {
 	db.writesCounter.Inc()
-	if str, ok := svm.Value.(string); ok {
-		svm.Value = strconv.Quote(str)
-	}
 	path := svm.Path
 	if path == "" {
 		switch v := svm.Value.(type) {
@@ -174,15 +171,21 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 				zap.Any("value", svm.Value))
 		}
 	}
-	db.batchSizeGauge.Inc()
 
+	// run this before quoting the string
+	db.updateStaticData(svm.Context, path, svm.Value)
+
+	if str, ok := svm.Value.(string); ok {
+		svm.Value = strconv.Quote(str)
+	}
 	table := "mapped_data_matching_context"
 	if svm.Context != svm.Origin {
 		table = "mapped_data_other_context"
 	}
 	query := fmt.Sprintf(mappedInsertQuery, table)
 	db.batch.Queue(query, svm.Timestamp, svm.Source.Label, svm.Source.Type, svm.Context, path, svm.Value, svm.Source.Uuid, svm.Origin, svm.Source.TransferUuid)
-	db.updateStaticData(svm.Context, path, svm.Value)
+	db.batchSizeGauge.Inc()
+
 	if db.batch.Len() > db.batchSize {
 		go db.flushBatch()
 	}
@@ -203,10 +206,10 @@ func (db *PostgresqlDatabase) updateStaticData(context, path string, value any) 
 			column = "name"
 		}
 	case "communication.callsignVhf":
-		v = value
+		v = value.(string)
 		column = "callsignvhf"
 	case "registrations.other.eni.registration":
-		v = value
+		v = value.(string)
 		column = "eninumber"
 	case "design.length":
 		if l, ok := value.(message.Length); ok {
@@ -218,7 +221,7 @@ func (db *PostgresqlDatabase) updateStaticData(context, path string, value any) 
 		column = "beam"
 	case "design.aisShipType":
 		if vt, ok := value.(message.VesselType); ok {
-			v = vt.Name
+			v = vt.Description
 			column = "vesseltype"
 		}
 	}
@@ -228,6 +231,7 @@ func (db *PostgresqlDatabase) updateStaticData(context, path string, value any) 
 
 	query := fmt.Sprintf(`INSERT INTO "gosk"."static_data" ("context", "%s") VALUES ($1, $2) ON CONFLICT("context") DO UPDATE SET "%s" = $2;`, column, column)
 	db.batch.Queue(query, context, v)
+	db.batchSizeGauge.Inc()
 }
 
 func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...interface{}) ([]*message.Mapped, error) {

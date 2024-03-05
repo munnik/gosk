@@ -88,7 +88,7 @@ func (t *TransferRequester) Run() {
 		}
 	}()
 
-	wg := new(sync.WaitGroup)
+	var wg sync.WaitGroup
 	wg.Add(1)
 	wg.Wait() // never exit
 }
@@ -125,7 +125,7 @@ func (t *TransferRequester) sendCountRequests() {
 		return
 	}
 
-	wg := new(sync.WaitGroup)
+	var wg sync.WaitGroup
 	wg.Add(len(origins) + 1)
 
 	go func() {
@@ -188,7 +188,7 @@ func (t *TransferRequester) sendDataRequests() {
 		return
 	}
 
-	wg := new(sync.WaitGroup)
+	var wg sync.WaitGroup
 	wg.Add(1)
 
 	go func() {

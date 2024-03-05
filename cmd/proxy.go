@@ -43,10 +43,10 @@ func init() {
 func doProxy(cmd *cobra.Command, args []string) {
 	proxy := nanomsg.NewProxy(publishURL)
 	defer proxy.Close()
-	wg := new(sync.WaitGroup)
+	var wg sync.WaitGroup
 	wg.Add(len(proxySubscribeURLs))
 	for _, proxySubscribeURL := range proxySubscribeURLs {
-		proxy.SubscribeTo(proxySubscribeURL, wg)
+		proxy.SubscribeTo(proxySubscribeURL, &wg)
 	}
 	wg.Wait()
 }

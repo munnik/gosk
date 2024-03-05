@@ -57,7 +57,7 @@ func (t *TransferResponder) Run(publisher *nanomsg.Publisher[message.Mapped]) {
 	defer t.mqttClient.Disconnect()
 
 	// never exit
-	wg := new(sync.WaitGroup)
+	var wg sync.WaitGroup
 	wg.Add(1)
 	wg.Wait()
 }

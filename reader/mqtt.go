@@ -58,7 +58,7 @@ func (r *MqttReader) ReadMapped(publisher *nanomsg.Publisher[message.Mapped]) {
 	defer m.Disconnect()
 
 	// never exit
-	wg := new(sync.WaitGroup)
+	var wg sync.WaitGroup
 	wg.Add(1)
 	wg.Wait()
 }

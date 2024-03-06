@@ -26,38 +26,29 @@ func (r *RateLimitFilter) Map(subscriber *nanomsg.Subscriber[message.Mapped], pu
 	process(subscriber, publisher, r, true)
 }
 
-func (r *RateLimitFilter) DoMap(delta *message.Mapped) (*message.Mapped, error) {
-	result := message.NewMapped().WithContext(delta.Context).WithOrigin(delta.Origin)
+func (r *RateLimitFilter) DoMap(m *message.Mapped) (*message.Mapped, error) {
+	result := message.NewMapped().WithContext(m.Context).WithOrigin(m.Origin)
 
 	// lookup context
-	pathMap, present := r.lastSeen[delta.Context]
+	pathMap, present := r.lastSeen[m.Context]
 	if !present {
-		r.lastSeen[delta.Context] = make(map[string]time.Time)
-		pathMap = r.lastSeen[delta.Context]
+		r.lastSeen[m.Context] = make(map[string]time.Time)
+		pathMap = r.lastSeen[m.Context]
 	}
 
-	for _, svm := range delta.ToSingleValueMapped() {
-		path := svm.Path
-		if path == "" {
-			switch v := svm.Value.(type) {
-			case message.VesselInfo:
-				if v.MMSI == nil {
-					path = "name"
-				} else {
-					path = "mmsi"
-				}
-				// default:
-				// 	logger.GetLogger().Error("unexpected empty path",
-				// 		zap.Time("time", svm.Timestamp),
-				// 		zap.String("origin", svm.Origin),
-				// 		zap.String("context", svm.Context),
-				// 		zap.Any("value", svm.Value))
+	for _, svm := range m.ToSingleValueMapped() {
+		// never filter empty paths
+		// todo: needs better fix
+		if svm.Path == "" {
+			for _, u := range svm.ToMapped().Updates {
+				result.AddUpdate(&u)
 			}
+			continue
 		}
 
-		timestamp, present := pathMap[path]
+		timestamp, present := pathMap[svm.Path]
 		if !present { // this path is never seen before so add to the filteredDelta
-			pathMap[path] = svm.Timestamp
+			pathMap[svm.Path] = svm.Timestamp
 			for _, u := range svm.ToMapped().Updates {
 				result.AddUpdate(&u)
 			}
@@ -65,12 +56,12 @@ func (r *RateLimitFilter) DoMap(delta *message.Mapped) (*message.Mapped, error) 
 		}
 
 		interval := r.config.DefaultInterval
-		if pathInterval, present := r.rateLimit[path]; present {
+		if pathInterval, present := r.rateLimit[svm.Path]; present {
 			interval = pathInterval // a path specific interval is configured so override the default interval
 		}
 
 		if timestamp.Before(svm.Timestamp.Add(-interval)) { // last time seen is more than the configured interval so add to the filteredDelta
-			pathMap[path] = svm.Timestamp
+			pathMap[svm.Path] = svm.Timestamp
 			for _, u := range svm.ToMapped().Updates {
 				result.AddUpdate(&u)
 			}

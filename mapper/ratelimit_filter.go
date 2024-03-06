@@ -25,7 +25,7 @@ func (l *lastSeen) Update(context, path string, timestamp time.Time, interval ti
 		return true
 	}
 
-	if timestamp.Before((*l)[context][path].Add(-interval)) {
+	if timestamp.After((*l)[context][path].Add(interval)) {
 		// seen long enough ago
 		(*l)[context][path] = timestamp
 		return true

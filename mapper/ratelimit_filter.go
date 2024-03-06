@@ -10,24 +10,30 @@ import (
 	"go.uber.org/zap"
 )
 
-type pathMap map[string]time.Time
+type connectorMap map[string]time.Time
+type pathMap map[string]connectorMap
 type lastSeen map[string]pathMap
 type rateLimit map[string]time.Duration
 
-func (l *lastSeen) Update(context, path string, timestamp time.Time, interval time.Duration) bool {
+func (l *lastSeen) Update(context, path, connector string, timestamp time.Time, interval time.Duration) bool {
 	if _, ok := (*l)[context]; !ok {
 		(*l)[context] = make(pathMap)
 	}
 
 	if _, ok := (*l)[context][path]; !ok {
-		// never seen before
-		(*l)[context][path] = timestamp
+		(*l)[context][path] = make(connectorMap)
 		return true
 	}
 
-	if timestamp.After((*l)[context][path].Add(interval)) {
+	if _, ok := (*l)[context][path][connector]; !ok {
+		// never seen before
+		(*l)[context][path][connector] = timestamp
+		return true
+	}
+
+	if timestamp.After((*l)[context][path][connector].Add(interval)) {
 		// seen long enough ago
-		(*l)[context][path] = timestamp
+		(*l)[context][path][connector] = timestamp
 		return true
 	}
 
@@ -83,7 +89,7 @@ func (r *RateLimitFilter) DoMap(m *message.Mapped) (*message.Mapped, error) {
 		}
 
 		interval := r.rateLimit.GetRateLimit(path, r.config.DefaultInterval)
-		if r.lastSeen.Update(m.Context, path, svm.Timestamp, interval) {
+		if r.lastSeen.Update(m.Context, path, svm.Source.Label, svm.Timestamp, interval) {
 			for _, u := range svm.ToMapped().Updates {
 				result.AddUpdate(&u)
 			}

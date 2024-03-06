@@ -100,6 +100,7 @@ func (s *Subscriber[T]) Receive(buffer chan *T) {
 				zap.ByteString("Received", bytes),
 				zap.String("Error", err.Error()),
 			)
+			s.pool.Put(message)
 			continue
 		}
 		select {

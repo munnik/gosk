@@ -23,8 +23,6 @@ const (
 	bufferCapacity = 5000
 )
 
-// var mqttMessagesReceived =
-
 type MqttReader struct {
 	mqttConfig                     *config.MQTTConfig
 	sendBuffer                     chan *message.Mapped
@@ -38,6 +36,7 @@ type MqttReader struct {
 
 func NewMqttReader(c *config.MQTTConfig) *MqttReader {
 	decoder, _ := zstd.NewReader(nil)
+
 	return &MqttReader{
 		mqttConfig:                     c,
 		decoder:                        decoder,
@@ -54,7 +53,7 @@ func (r *MqttReader) ReadMapped(publisher *nanomsg.Publisher[message.Mapped]) {
 	defer close(r.sendBuffer)
 	go publisher.Send(r.sendBuffer)
 
-	m := mqtt.New(r.mqttConfig, r.messageReceived, mqttTopic)
+	m := mqtt.New(r.mqttConfig, r.messageHandler, mqttTopic)
 	defer m.Disconnect()
 
 	// never exit
@@ -63,7 +62,7 @@ func (r *MqttReader) ReadMapped(publisher *nanomsg.Publisher[message.Mapped]) {
 	wg.Wait()
 }
 
-func (r *MqttReader) messageReceived(c paho.Client, m paho.Message) {
+func (r *MqttReader) messageHandler(c paho.Client, m paho.Message) {
 	r.mqttMessagesReceived.Inc()
 	received, err := r.decoder.DecodeAll(m.Payload(), nil)
 	if err != nil {
@@ -76,8 +75,8 @@ func (r *MqttReader) messageReceived(c paho.Client, m paho.Message) {
 	}
 	r.mqttMessagesDecompressed.Inc()
 
-	var deltas []message.Mapped
-	if err := json.Unmarshal(received, &deltas); err != nil {
+	messages := make([]*message.Mapped, 0)
+	if err := json.Unmarshal(received, &messages); err != nil {
 		logger.GetLogger().Warn(
 			"Could not unmarshal buffer",
 			zap.String("Error", err.Error()),
@@ -87,10 +86,10 @@ func (r *MqttReader) messageReceived(c paho.Client, m paho.Message) {
 	}
 	r.mqttMessagesUnmarshalled.Inc()
 
-	for _, delta := range deltas {
-		r.sendBuffer <- &delta
+	for _, message := range messages {
+		r.sendBuffer <- message
 
-		for _, update := range delta.Updates {
+		for _, update := range message.Updates {
 			if update.Source.TransferUuid != uuid.Nil {
 				r.mqttTransferRequestUpdatesSent.Inc()
 			}

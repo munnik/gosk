@@ -4,22 +4,56 @@ import (
 	"time"
 
 	"github.com/munnik/gosk/config"
+	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
+	"go.uber.org/zap"
 )
+
+type pathMap map[string]time.Time
+type lastSeen map[string]pathMap
+type rateLimit map[string]time.Duration
+
+func (l *lastSeen) Update(context, path string, timestamp time.Time, interval time.Duration) bool {
+	if _, ok := (*l)[context]; !ok {
+		(*l)[context] = make(pathMap)
+	}
+
+	if _, ok := (*l)[context][path]; !ok {
+		// never seen before
+		(*l)[context][path] = timestamp
+		return true
+	}
+
+	if timestamp.Before((*l)[context][path].Add(-interval)) {
+		// seen long enough ago
+		(*l)[context][path] = timestamp
+		return true
+	}
+
+	return false
+}
+
+func (r *rateLimit) GetRateLimit(path string, def time.Duration) time.Duration {
+	if d, ok := (*r)[path]; ok {
+		return d
+	}
+
+	return def
+}
 
 type RateLimitFilter struct {
 	config    *config.RateLimitFilterConfig
-	lastSeen  map[string]map[string]time.Time
-	rateLimit map[string]time.Duration
+	lastSeen  lastSeen
+	rateLimit rateLimit
 }
 
 func NewRateLimitFilter(c *config.RateLimitFilterConfig) (*RateLimitFilter, error) {
-	rateLimit := make(map[string]time.Duration)
+	rateLimit := make(rateLimit)
 	for _, mapping := range c.Ratelimits {
 		rateLimit[mapping.Path] = mapping.Interval
 	}
-	return &RateLimitFilter{config: c, lastSeen: make(map[string]map[string]time.Time, 0), rateLimit: rateLimit}, nil
+	return &RateLimitFilter{config: c, lastSeen: make(lastSeen, 0), rateLimit: rateLimit}, nil
 }
 
 func (r *RateLimitFilter) Map(subscriber *nanomsg.Subscriber[message.Mapped], publisher *nanomsg.Publisher[message.Mapped]) {
@@ -29,39 +63,27 @@ func (r *RateLimitFilter) Map(subscriber *nanomsg.Subscriber[message.Mapped], pu
 func (r *RateLimitFilter) DoMap(m *message.Mapped) (*message.Mapped, error) {
 	result := message.NewMapped().WithContext(m.Context).WithOrigin(m.Origin)
 
-	// lookup context
-	pathMap, present := r.lastSeen[m.Context]
-	if !present {
-		r.lastSeen[m.Context] = make(map[string]time.Time)
-		pathMap = r.lastSeen[m.Context]
-	}
-
 	for _, svm := range m.ToSingleValueMapped() {
-		// never filter empty paths
-		// todo: needs better fix
-		if svm.Path == "" {
-			for _, u := range svm.ToMapped().Updates {
-				result.AddUpdate(&u)
+		path := svm.Path
+		if path == "" {
+			switch v := svm.Value.(type) {
+			case message.VesselInfo:
+				if v.MMSI == nil {
+					path = "name"
+				} else {
+					path = "mmsi"
+				}
+			default:
+				logger.GetLogger().Error("unexpected empty path",
+					zap.Time("time", svm.Timestamp),
+					zap.String("origin", svm.Origin),
+					zap.String("context", svm.Context),
+					zap.Any("value", svm.Value))
 			}
-			continue
 		}
 
-		timestamp, present := pathMap[svm.Path]
-		if !present { // this path is never seen before so add to the filteredDelta
-			pathMap[svm.Path] = svm.Timestamp
-			for _, u := range svm.ToMapped().Updates {
-				result.AddUpdate(&u)
-			}
-			continue
-		}
-
-		interval := r.config.DefaultInterval
-		if pathInterval, present := r.rateLimit[svm.Path]; present {
-			interval = pathInterval // a path specific interval is configured so override the default interval
-		}
-
-		if timestamp.Before(svm.Timestamp.Add(-interval)) { // last time seen is more than the configured interval so add to the filteredDelta
-			pathMap[svm.Path] = svm.Timestamp
+		interval := r.rateLimit.GetRateLimit(path, r.config.DefaultInterval)
+		if r.lastSeen.Update(m.Context, path, svm.Timestamp, interval) {
 			for _, u := range svm.ToMapped().Updates {
 				result.AddUpdate(&u)
 			}

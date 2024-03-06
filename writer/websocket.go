@@ -192,7 +192,6 @@ func (h *WebsocketWriter) receive(subscriber *nanomsg.Subscriber[message.Mapped]
 	go subscriber.Receive(receiveBuffer)
 	for received := range receiveBuffer {
 		h.broadcast <- *received
-		subscriber.ReturnToPool(received)
 	}
 }
 

@@ -23,7 +23,6 @@ func (w *StdOutWriter) WriteMapped(subscriber *nanomsg.Subscriber[message.Mapped
 
 	for mapped := range receiveBuffer {
 		fmt.Println(*mapped)
-		subscriber.ReturnToPool(mapped)
 	}
 }
 
@@ -34,7 +33,6 @@ func (w *StdOutWriter) WriteRaw(subscriber *nanomsg.Subscriber[message.Raw]) {
 
 	for raw := range receiveBuffer {
 		fmt.Println(*raw)
-		subscriber.ReturnToPool(raw)
 	}
 }
 
@@ -58,6 +56,5 @@ func (w *StdOutWriter) WriteRawString(subscriber *nanomsg.Subscriber[message.Raw
 		rs.Uuid = raw.Uuid
 		rs.Value = string(raw.Value)
 		fmt.Println(rs)
-		subscriber.ReturnToPool(raw)
 	}
 }

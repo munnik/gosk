@@ -82,7 +82,6 @@ func (m *ModbusConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw])
 
 		for raw := range receiveBuffer {
 			client.Write(raw.Value)
-			subscriber.ReturnToPool(raw)
 		}
 	}()
 }

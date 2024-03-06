@@ -137,6 +137,7 @@ func (w *LWEWriter) WriteRaw(subscriber *nanomsg.Subscriber[message.Raw]) {
 
 	for raw := range receiveBuffer {
 		w.multicast(raw)
+		subscriber.ReturnToPool(raw)
 	}
 }
 

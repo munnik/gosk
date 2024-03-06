@@ -70,6 +70,7 @@ func (w *MqttWriter) WriteMapped(subscriber *nanomsg.Subscriber[message.Mapped])
 
 	for mapped := range receiveBuffer {
 		bytes, err := json.Marshal(mapped)
+		subscriber.ReturnToPool(mapped)
 		if err != nil {
 			logger.GetLogger().Warn("Unable to marshall mapped message")
 			continue

@@ -32,6 +32,7 @@ func (w *PostgresqlWriter[T]) Write(subscriber *nanomsg.Subscriber[T]) {
 			go func(raw *message.Raw) {
 				w.db.WriteRaw(raw)
 				w.writtenCounter.Inc()
+				subscriber.ReturnToPool(any(raw).(*T))
 			}(raw)
 		}
 	}
@@ -40,6 +41,7 @@ func (w *PostgresqlWriter[T]) Write(subscriber *nanomsg.Subscriber[T]) {
 			go func(mapped *message.Mapped) {
 				w.db.WriteMapped(mapped)
 				w.writtenCounter.Inc()
+				subscriber.ReturnToPool(any(mapped).(*T))
 			}(mapped)
 		}
 	}

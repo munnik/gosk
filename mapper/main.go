@@ -37,6 +37,7 @@ func process[T nanomsg.Message](subscriber *nanomsg.Subscriber[T], publisher *na
 				zap.Any("Input", in),
 				zap.String("Error", err.Error()),
 			)
+			subscriber.ReturnToPool(in)
 			continue
 		}
 		if len(out.Updates) == 0 {
@@ -47,8 +48,10 @@ func process[T nanomsg.Message](subscriber *nanomsg.Subscriber[T], publisher *na
 					zap.Any("Output", out),
 				)
 			}
+			subscriber.ReturnToPool(in)
 			continue
 		}
+		subscriber.ReturnToPool(in)
 		sendBuffer <- out
 	}
 }

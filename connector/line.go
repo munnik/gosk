@@ -57,6 +57,7 @@ func (r *LineConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw]) {
 
 		for raw := range receiveBuffer {
 			r.connection.Write(append(raw.Value, '\r', '\n'))
+			subscriber.ReturnToPool(raw)
 		}
 	}()
 }

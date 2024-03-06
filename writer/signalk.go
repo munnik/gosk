@@ -50,6 +50,7 @@ func (w *SignalKWriter) WriteMapped(subscriber *nanomsg.Subscriber[message.Mappe
 	for mapped := range receiveBuffer {
 		w.updateFullDataModel(mapped)
 		w.updateWebsocket(mapped)
+		subscriber.ReturnToPool(mapped)
 	}
 
 	router := chi.NewRouter()

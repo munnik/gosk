@@ -54,5 +54,6 @@ func (w *GrafanaWriter) WriteMapped(subscriber *nanomsg.Subscriber[message.Mappe
 
 	for mapped := range receiveBuffer {
 		w.sendMQTT(mapped)
+		subscriber.ReturnToPool(mapped)
 	}
 }

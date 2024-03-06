@@ -89,28 +89,30 @@ func (s *Subscriber[T]) receive(buffer chan []byte) {
 }
 
 func (s *Subscriber[T]) Receive(buffer chan *T) {
-	bytesBuffer := make(chan []byte, cap(buffer))
-	go s.receive(bytesBuffer)
+	receiveBuffer := make(chan []byte, cap(buffer))
+	go s.receive(receiveBuffer)
 
-	for bytes := range bytesBuffer {
-		message := s.pool.Get().(*T)
-		if err := json.Unmarshal(bytes, message); err != nil {
+	for bytes := range receiveBuffer {
+		m := s.pool.Get().(*T)
+		if err := json.Unmarshal(bytes, m); err != nil {
 			logger.GetLogger().Warn(
 				"Could not unmarshal the received data",
 				zap.ByteString("Received", bytes),
 				zap.String("Error", err.Error()),
 			)
-			s.pool.Put(message)
 			continue
 		}
 		select {
-		case buffer <- message:
+		case buffer <- m:
 			if s.unmarshalledCounter != nil {
 				s.unmarshalledCounter.Inc()
 			}
 		default:
 			go logger.GetLogger().Warn("Buffer is full, dropping unmarshalled data")
 		}
-		s.pool.Put(message)
 	}
+}
+
+func (s *Subscriber[T]) ReturnToPool(m *T) {
+	s.pool.Put(m)
 }

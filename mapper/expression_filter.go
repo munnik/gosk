@@ -28,7 +28,7 @@ func NewExpressionFilter(emc []*config.ExpressionMappingConfig) (*ExpressionFilt
 }
 
 func (f *ExpressionFilter) Map(subscriber *nanomsg.Subscriber[message.Mapped], publisher *nanomsg.Publisher[message.Mapped]) {
-	process(subscriber, publisher, f)
+	process(subscriber, publisher, f, true)
 }
 
 func (f *ExpressionFilter) DoMap(delta *message.Mapped) (*message.Mapped, error) {

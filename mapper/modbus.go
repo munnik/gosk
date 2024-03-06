@@ -35,7 +35,7 @@ func NewModbusMapper(c config.MapperConfig, mmc []config.ModbusMappingsConfig) (
 }
 
 func (m *ModbusMapper) Map(subscriber *nanomsg.Subscriber[message.Raw], publisher *nanomsg.Publisher[message.Mapped]) {
-	process(subscriber, publisher, m)
+	process(subscriber, publisher, m, false)
 }
 
 func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {

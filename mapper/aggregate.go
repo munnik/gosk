@@ -37,7 +37,7 @@ func NewAggregateMapper(c config.MapperConfig, emc []*config.ExpressionMappingCo
 }
 
 func (m *AggregateMapper) Map(subscriber *nanomsg.Subscriber[message.Mapped], publisher *nanomsg.Publisher[message.Mapped]) {
-	process(subscriber, publisher, m)
+	process(subscriber, publisher, m, false)
 }
 
 func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) {

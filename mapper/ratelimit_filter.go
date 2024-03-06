@@ -25,7 +25,7 @@ func NewRateLimitFilter(c *config.RateLimitFilterConfig) (*RateLimitFilter, erro
 }
 
 func (r *RateLimitFilter) Map(subscriber *nanomsg.Subscriber[message.Mapped], publisher *nanomsg.Publisher[message.Mapped]) {
-	process(subscriber, publisher, r)
+	process(subscriber, publisher, r, true)
 }
 
 func (r *RateLimitFilter) DoMap(delta *message.Mapped) (*message.Mapped, error) {

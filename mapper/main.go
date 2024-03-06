@@ -18,7 +18,7 @@ type RealMapper[T nanomsg.Message] interface {
 	DoMap(*T) (*message.Mapped, error)
 }
 
-func process[T nanomsg.Message](subscriber *nanomsg.Subscriber[T], publisher *nanomsg.Publisher[message.Mapped], mapper RealMapper[T]) {
+func process[T nanomsg.Message](subscriber *nanomsg.Subscriber[T], publisher *nanomsg.Publisher[message.Mapped], mapper RealMapper[T], ignoreEmptyUpdates bool) {
 	receiveBuffer := make(chan *T, bufferCapacity)
 	defer close(receiveBuffer)
 	sendBuffer := make(chan *message.Mapped, bufferCapacity)
@@ -40,11 +40,13 @@ func process[T nanomsg.Message](subscriber *nanomsg.Subscriber[T], publisher *na
 			continue
 		}
 		if len(out.Updates) == 0 {
-			logger.GetLogger().Warn(
-				"No updates after mapping the data",
-				zap.Any("Input", in),
-				zap.Any("Output", out),
-			)
+			if !ignoreEmptyUpdates {
+				logger.GetLogger().Warn(
+					"No updates after mapping the data",
+					zap.Any("Input", in),
+					zap.Any("Output", out),
+				)
+			}
 			continue
 		}
 		sendBuffer <- out

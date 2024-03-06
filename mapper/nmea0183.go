@@ -21,7 +21,7 @@ func NewNmea0183Mapper(c config.MapperConfig) (*Nmea0183Mapper, error) {
 }
 
 func (m *Nmea0183Mapper) Map(subscriber *nanomsg.Subscriber[message.Raw], publisher *nanomsg.Publisher[message.Mapped]) {
-	process(subscriber, publisher, m)
+	process(subscriber, publisher, m, false)
 }
 
 func (m *Nmea0183Mapper) DoMap(r *message.Raw) (*message.Mapped, error) {

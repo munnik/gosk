@@ -25,7 +25,7 @@ func NewCSVMapper(c config.CSVMapperConfig, cmc []config.CSVMappingConfig) (*CSV
 }
 
 func (m *CSVMapper) Map(subscriber *nanomsg.Subscriber[message.Raw], publisher *nanomsg.Publisher[message.Mapped]) {
-	process(subscriber, publisher, m)
+	process(subscriber, publisher, m, false)
 }
 
 func (m *CSVMapper) DoMap(r *message.Raw) (*message.Mapped, error) {

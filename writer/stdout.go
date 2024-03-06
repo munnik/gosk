@@ -22,7 +22,7 @@ func (w *StdOutWriter) WriteMapped(subscriber *nanomsg.Subscriber[message.Mapped
 	go subscriber.Receive(receiveBuffer)
 
 	for mapped := range receiveBuffer {
-		fmt.Println(mapped)
+		fmt.Println(*mapped)
 		subscriber.ReturnToPool(mapped)
 	}
 }
@@ -33,7 +33,7 @@ func (w *StdOutWriter) WriteRaw(subscriber *nanomsg.Subscriber[message.Raw]) {
 	go subscriber.Receive(receiveBuffer)
 
 	for raw := range receiveBuffer {
-		fmt.Println(raw)
+		fmt.Println(*raw)
 		subscriber.ReturnToPool(raw)
 	}
 }

@@ -4,10 +4,8 @@ import (
 	"time"
 
 	"github.com/munnik/gosk/config"
-	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
-	"go.uber.org/zap"
 )
 
 type RateLimitFilter struct {
@@ -48,12 +46,12 @@ func (r *RateLimitFilter) DoMap(delta *message.Mapped) (*message.Mapped, error) 
 				} else {
 					path = "mmsi"
 				}
-			default:
-				logger.GetLogger().Error("unexpected empty path",
-					zap.Time("time", svm.Timestamp),
-					zap.String("origin", svm.Origin),
-					zap.String("context", svm.Context),
-					zap.Any("value", svm.Value))
+				// default:
+				// 	logger.GetLogger().Error("unexpected empty path",
+				// 		zap.Time("time", svm.Timestamp),
+				// 		zap.String("origin", svm.Origin),
+				// 		zap.String("context", svm.Context),
+				// 		zap.Any("value", svm.Value))
 			}
 		}
 

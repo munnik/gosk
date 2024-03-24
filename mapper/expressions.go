@@ -26,6 +26,11 @@ func NewExpressionEnvironment() ExpressionEnvironment {
 		"copySign":         CopySign,
 		"powerW":           PowerW,
 		"toFloat":          ToFloat,
+		"bitwiseAnd":       BitwiseAnd,
+		"bitwiseOr":        BitwiseOr,
+		"bitwiseXor":       BitwiseXor,
+		"bitwiseNot":       BitwiseNot,
+		"bitwiseContains":  BitwiseContains,
 	}
 }
 
@@ -154,6 +159,30 @@ func ToFloat(mostSignificant, leastSignificant uint16) float32 {
 
 	bits := binary.BigEndian.Uint32(data)
 	return math.Float32frombits(bits)
+}
+
+func BitwiseAnd(left, right uint16) uint16 {
+	return left & right
+}
+
+func BitwiseOr(left, right uint16) uint16 {
+	return left | right
+}
+
+func BitwiseXor(left, right uint16) uint16 {
+	return left ^ right
+}
+
+func BitwiseNot(left uint16) uint16 {
+	return ^left
+}
+
+func BitwiseContains(left, right uint16) bool {
+	return left&right == right
+}
+
+func BitwiseIsBitSet(input, position uint16) bool {
+	return BitwiseContains(input, 1<<position)
 }
 
 func runExpr(env ExpressionEnvironment, mappingConfig *config.MappingConfig) (interface{}, error) {

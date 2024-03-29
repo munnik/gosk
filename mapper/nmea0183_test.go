@@ -55,7 +55,7 @@ var _ = Describe("DoMap nmea0183", func() {
 				).WithTimestamp(
 					now,
 				).AddValue(
-					message.NewValue().WithPath("notifications.ais").WithValue(message.Alarm{State: &f, Message: &m}),
+					message.NewValue().WithPath("notifications.ais").WithValue(message.Notification{State: &f, Message: &m}),
 				),
 			),
 			false,

@@ -99,14 +99,14 @@ func (left Length) Merge(right Merger) (Merger, error) {
 	return left, err
 }
 
-type Alarm struct {
+type Notification struct {
 	State   *bool   `json:"state,omitempty"`
 	Message *string `json:"message,omitempty"`
 }
 
-func (left Alarm) Merge(right Merger) (Merger, error) {
+func (left Notification) Merge(right Merger) (Merger, error) {
 	var err error
-	if right, ok := right.(Alarm); !ok {
+	if right, ok := right.(Notification); !ok {
 		err = fmt.Errorf("right has type %T but should be type %T", right, left)
 	} else {
 		if right.State != nil {
@@ -179,7 +179,7 @@ func Decode(input interface{}) (interface{}, error) {
 		return l, nil
 	}
 
-	a := Alarm{}
+	a := Notification{}
 	metadata = mapstructure.Metadata{}
 	if err := mapstructure.DecodeMetadata(input, &a, &metadata); err == nil && len(metadata.Unused) == 0 {
 		return a, nil

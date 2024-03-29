@@ -120,23 +120,23 @@ var _ = Describe("DoMap Modbus", func() {
 				).WithTimestamp(
 					now,
 				).AddValue(
-					message.NewValue().WithPath("notifications.tanks.fuel.portAft").WithValue(message.Alarm{State: &f, Message: &m1}),
+					message.NewValue().WithPath("notifications.tanks.fuel.portAft").WithValue(message.Notification{State: &f, Message: &m1}),
 				).AddValue(
-					message.NewValue().WithPath("notifications.tanks.fuel.portAft").WithValue(message.Alarm{State: &f, Message: &m2}),
+					message.NewValue().WithPath("notifications.tanks.fuel.portAft").WithValue(message.Notification{State: &f, Message: &m2}),
 				).AddValue(
-					message.NewValue().WithPath("notifications.tanks.fuel.starboardAft").WithValue(message.Alarm{State: &f, Message: &m1}),
+					message.NewValue().WithPath("notifications.tanks.fuel.starboardAft").WithValue(message.Notification{State: &f, Message: &m1}),
 				).AddValue(
-					message.NewValue().WithPath("notifications.tanks.fuel.starboardAft").WithValue(message.Alarm{State: &f, Message: &m2}),
+					message.NewValue().WithPath("notifications.tanks.fuel.starboardAft").WithValue(message.Notification{State: &f, Message: &m2}),
 				).AddValue(
-					message.NewValue().WithPath("notifications.bilge.engineRoomForward").WithValue(message.Alarm{State: &f, Message: &m3}),
+					message.NewValue().WithPath("notifications.bilge.engineRoomForward").WithValue(message.Notification{State: &f, Message: &m3}),
 				).AddValue(
-					message.NewValue().WithPath("notifications.bilge.hold1").WithValue(message.Alarm{State: &f, Message: &m3}),
+					message.NewValue().WithPath("notifications.bilge.hold1").WithValue(message.Notification{State: &f, Message: &m3}),
 				).AddValue(
-					message.NewValue().WithPath("notifications.bilge.hold2").WithValue(message.Alarm{State: &f, Message: &m3}),
+					message.NewValue().WithPath("notifications.bilge.hold2").WithValue(message.Notification{State: &f, Message: &m3}),
 				).AddValue(
-					message.NewValue().WithPath("notifications.bilge.engineRoomAft").WithValue(message.Alarm{State: &f, Message: &m3}),
+					message.NewValue().WithPath("notifications.bilge.engineRoomAft").WithValue(message.Notification{State: &f, Message: &m3}),
 				).AddValue(
-					message.NewValue().WithPath("notifications.electrical.batteries.main.voltage").WithValue(message.Alarm{State: &f, Message: &m4}),
+					message.NewValue().WithPath("notifications.electrical.batteries.main.voltage").WithValue(message.Notification{State: &f, Message: &m4}),
 				),
 			),
 			false,

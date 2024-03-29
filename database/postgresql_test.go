@@ -20,7 +20,7 @@ var _ = Describe("Test database", Ordered, func() {
 	now := time.Now()
 
 	f := false
-	m := "testingAlarm"
+	m := "testingNotification"
 
 	mappedStringValue := func() message.Mapped {
 		v := message.NewValue().WithPath("testingPath").WithValue("testValue")
@@ -29,8 +29,8 @@ var _ = Describe("Test database", Ordered, func() {
 		u.Timestamp = u.Timestamp.Add(-time.Duration(u.Timestamp.Nanosecond())) // resolution of time in postgresql is lower
 		return *message.NewMapped().WithOrigin("testingOrigin").WithContext("testingContext").AddUpdate(u)
 	}()
-	mappedAlarmValue := func() message.Mapped {
-		v := message.NewValue().WithPath("testingPath").WithValue(message.Alarm{State: &f, Message: &m})
+	mappedNotificationValue := func() message.Mapped {
+		v := message.NewValue().WithPath("testingPath").WithValue(message.Notification{State: &f, Message: &m})
 		s := message.NewSource().WithLabel("testingLabel").WithType("testingType").WithUuid(uuid.New())
 		u := message.NewUpdate().WithSource(*s).WithTimestamp(now).AddValue(v)
 		u.Timestamp = u.Timestamp.Add(-time.Duration(u.Timestamp.Nanosecond())) // resolution of time in postgresql is lower
@@ -94,8 +94,8 @@ var _ = Describe("Test database", Ordered, func() {
 		},
 		Entry(
 			"Mapped with alarm value",
-			mappedAlarmValue,
-			mappedAlarmValue,
+			mappedNotificationValue,
+			mappedNotificationValue,
 		),
 		Entry(
 			"Mapped with string value",

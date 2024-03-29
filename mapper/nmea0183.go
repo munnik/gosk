@@ -239,7 +239,7 @@ func (m *Nmea0183Mapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		if err != nil {
 			active = true
 		}
-		u.AddValue(message.NewValue().WithPath("notifications.ais").WithValue(message.Alarm{State: &active, Message: &description}))
+		u.AddValue(message.NewValue().WithPath("notifications.ais").WithValue(message.Notification{State: &active, Message: &description}))
 	}
 
 	if len(u.Values) == 0 {

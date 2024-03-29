@@ -71,11 +71,14 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 			m.env[path] = svm
 			for _, mapping := range mappings {
 				output, err := runExpr(m.env, &mapping.MappingConfig)
-				if err == nil { // don't insert a path twice
+				if err == nil {
 					if mapping.Overwrite {
 						overwrites[mapping.Path] = struct{}{}
 					}
-					if v := u.GetValueByPath(mapping.Path); v != nil {
+					// don't insert a path twice, except notifications
+					v := u.GetValueByPath(mapping.Path)
+					_, ok := output.(message.Notification)
+					if v != nil && !ok {
 						v.WithValue(output)
 					} else {
 						u.AddValue(message.NewValue().WithPath(mapping.Path).WithValue(output))

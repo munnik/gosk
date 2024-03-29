@@ -64,7 +64,6 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		}
 		m.env["coils"] = coilsMap
 	} else if functionCode == protocol.READ_HOLDING_REGISTERS || functionCode == protocol.READ_INPUT_REGISTERS {
-
 		skipFaultDetection := false
 		if _, ok := m.config.ProtocolOptions[config.ProtocolOptionModbusSkipFaultDetection]; ok {
 			skipFaultDetection, _ = strconv.ParseBool(m.config.ProtocolOptions[config.ProtocolOptionModbusSkipFaultDetection])
@@ -126,8 +125,11 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 			continue
 		}
 		output, err := runExpr(m.env, &mmc.MappingConfig)
-		if err == nil { // don't insert a path twice
-			if v := u.GetValueByPath(mmc.Path); v != nil {
+		if err == nil {
+			// don't insert a path twice, except notifications
+			v := u.GetValueByPath(mmc.Path)
+			_, ok := output.(message.Notification)
+			if v != nil && !ok {
 				v.WithValue(output)
 			} else {
 				u.AddValue(message.NewValue().WithPath(mmc.Path).WithValue(output))

@@ -31,6 +31,7 @@ func NewExpressionEnvironment() ExpressionEnvironment {
 		"bitwiseXor":       BitwiseXor,
 		"bitwiseNot":       BitwiseNot,
 		"bitwiseContains":  BitwiseContains,
+		"isBitSet":         IsBitSet,
 	}
 }
 
@@ -177,11 +178,11 @@ func BitwiseNot(left uint16) uint16 {
 	return ^left
 }
 
-func BitwiseContains(left, right uint16) bool {
-	return left&right == right
+func BitwiseContains(input, pattern uint16) bool {
+	return (input & pattern) == pattern
 }
 
-func BitwiseIsBitSet(input, position uint16) bool {
+func IsBitSet(input uint16, position int) bool {
 	return BitwiseContains(input, 1<<position)
 }
 

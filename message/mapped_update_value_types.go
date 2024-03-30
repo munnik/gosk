@@ -179,10 +179,16 @@ func Decode(input interface{}) (interface{}, error) {
 		return l, nil
 	}
 
-	a := Notification{}
+	n := Notification{}
 	metadata = mapstructure.Metadata{}
-	if err := mapstructure.DecodeMetadata(input, &a, &metadata); err == nil && len(metadata.Unused) == 0 {
-		return a, nil
+	if err := mapstructure.DecodeMetadata(input, &n, &metadata); err == nil && len(metadata.Unused) == 0 {
+		return n, nil
+	}
+
+	ns := []Notification{}
+	metadata = mapstructure.Metadata{}
+	if err := mapstructure.DecodeMetadata(input, &ns, &metadata); err == nil && len(metadata.Unused) == 0 {
+		return ns, nil
 	}
 
 	d := Draft{}

@@ -126,14 +126,7 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		}
 		output, err := runExpr(m.env, &mmc.MappingConfig)
 		if err == nil {
-			// don't insert a path twice, except notifications
-			v := u.GetValueByPath(mmc.Path)
-			_, ok := output.(message.Notification)
-			if v != nil && !ok {
-				v.WithValue(output)
-			} else {
-				u.AddValue(message.NewValue().WithPath(mmc.Path).WithValue(output))
-			}
+			u.AddValue(message.NewValue().WithPath(mmc.Path).WithValue(output))
 		}
 	}
 

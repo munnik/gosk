@@ -46,14 +46,7 @@ func (m *JSONMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		env["json"] = j
 		output, err := runExpr(env, &jmc.MappingConfig)
 		if err == nil {
-			// don't insert a path twice, except notifications
-			v := u.GetValueByPath(jmc.Path)
-			_, ok := output.(message.Notification)
-			if v != nil && !ok {
-				v.WithValue(output)
-			} else {
-				u.AddValue(message.NewValue().WithPath(jmc.Path).WithValue(output))
-			}
+			u.AddValue(message.NewValue().WithPath(jmc.Path).WithValue(output))
 		}
 	}
 

@@ -88,14 +88,7 @@ func (m *CSVMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 
 			output, err := runExpr(env, &cmc.MappingConfig)
 			if err == nil {
-				// don't insert a path twice, except notifications
-				v := u.GetValueByPath(cmc.Path)
-				_, ok := output.(message.Notification)
-				if v != nil && !ok {
-					v.WithValue(output)
-				} else {
-					u.AddValue(message.NewValue().WithPath(cmc.Path).WithValue(output))
-				}
+				u.AddValue(message.NewValue().WithPath(cmc.Path).WithValue(output))
 			}
 		}
 	}

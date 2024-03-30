@@ -187,11 +187,8 @@ func IsBitSet(input uint16, position int) bool {
 	return BitwiseContains(input, 1<<position)
 }
 
-func Notify(s bool, m string) message.Notification {
-	return message.Notification{
-		State:   &s,
-		Message: &m,
-	}
+func Notify(s bool, m string) []message.Notification {
+	return []message.Notification{{State: &s, Message: &m}}
 }
 
 func runExpr(env ExpressionEnvironment, mappingConfig *config.MappingConfig) (interface{}, error) {

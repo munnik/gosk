@@ -75,14 +75,7 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 					if mapping.Overwrite {
 						overwrites[mapping.Path] = struct{}{}
 					}
-					// don't insert a path twice, except notifications
-					v := u.GetValueByPath(mapping.Path)
-					_, ok := output.(message.Notification)
-					if v != nil && !ok {
-						v.WithValue(output)
-					} else {
-						u.AddValue(message.NewValue().WithPath(mapping.Path).WithValue(output))
-					}
+					u.AddValue(message.NewValue().WithPath(mapping.Path).WithValue(output))
 				}
 			}
 		}

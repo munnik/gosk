@@ -43,14 +43,17 @@ func (u *Update) AddValue(new *Value) *Update {
 		if reflect.ValueOf(existing.Value).Kind() == reflect.Slice && reflect.ValueOf(new.Value).Kind() == reflect.Slice && reflect.TypeOf(existing.Value).Elem() == reflect.TypeOf(new.Value).Elem() {
 			l1 := reflect.ValueOf(existing.Value)
 			l2 := reflect.ValueOf(new.Value)
-			mergedList := make([]interface{}, 0, l1.Len()+l2.Len())
+
+			typ := reflect.TypeOf(new.Value).Elem()
+			mergedList := reflect.MakeSlice(reflect.SliceOf(typ), 0, l1.Len()+l2.Len())
+
 			for i := 0; i < l1.Len(); i++ {
-				mergedList = append(mergedList, l1.Index(i).Interface())
+				mergedList = reflect.Append(mergedList, l1.Index(i))
 			}
 			for i := 0; i < l2.Len(); i++ {
-				mergedList = append(mergedList, l2.Index(i).Interface())
+				mergedList = reflect.Append(mergedList, l2.Index(i))
 			}
-			new.Value = &mergedList
+			new.Value = mergedList.Interface()
 		}
 	}
 

@@ -66,16 +66,25 @@ func (m Mapped) Equals(other Mapped) bool {
 func (m Mapped) ToSingleValueMapped() []SingleValueMapped {
 	result := make([]SingleValueMapped, 0)
 
+	var notificationOffset time.Duration
 	for _, u := range m.Updates {
+		notificationOffset = 0
 		for _, v := range u.Values {
-			result = append(result, SingleValueMapped{
+			s := SingleValueMapped{
 				Context:   m.Context,
 				Origin:    m.Origin,
 				Source:    u.Source,
 				Timestamp: u.Timestamp,
 				Path:      v.Path,
 				Value:     v.Value,
-			})
+			}
+
+			// hack to allow multiple notifications with the same path on the same time, the time is shifted by 1ns for each notification
+			if _, ok := s.Value.(Notification); ok {
+				s.Timestamp = s.Timestamp.Add(notificationOffset)
+				notificationOffset += 1 * time.Nanosecond
+			}
+			result = append(result, s)
 		}
 	}
 	return result

@@ -79,5 +79,5 @@ func (r *Raw) UnmarshalJSON(data []byte) error {
 func (r Raw) Equals(other Raw) bool {
 	return r.Connector == other.Connector &&
 		r.Type == other.Type &&
-		bytes.Compare(r.Value, other.Value) == 0
+		bytes.Equal(r.Value, other.Value)
 }

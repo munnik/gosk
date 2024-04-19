@@ -46,7 +46,7 @@ func doProxy(cmd *cobra.Command, args []string) {
 	var wg sync.WaitGroup
 	wg.Add(len(proxySubscribeURLs))
 	for _, proxySubscribeURL := range proxySubscribeURLs {
-		proxy.SubscribeTo(proxySubscribeURL, &wg)
+		go proxy.SubscribeTo(proxySubscribeURL, &wg)
 	}
 	wg.Wait()
 }

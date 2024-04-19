@@ -2,7 +2,9 @@ package nanomsg
 
 import (
 	"encoding/json"
+	"time"
 
+	"github.com/jpillora/backoff"
 	"github.com/munnik/gosk/logger"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.nanomsg.org/mangos/v3"
@@ -45,10 +47,33 @@ func NewSubscriber[T Message](url string, topic []byte, opts ...SubscriberOption
 	if err != nil {
 		return nil, err
 	}
-	if err := socket.Dial(url); err != nil {
+
+	b := &backoff.Backoff{
+		//These are the defaults
+		Min:    1 * time.Millisecond,
+		Max:    5 * time.Minute,
+		Factor: 1.5,
+		Jitter: false,
+	}
+	var d time.Duration
+
+	for {
+		err := socket.Dial(url)
+		if err == nil {
+			break
+		}
+		d = b.Duration()
+		logger.GetLogger().Warn(
+			"Could not dial the publisher, will retry",
+			zap.String("URL", url),
+			zap.String("Error", err.Error()),
+			zap.Duration("Back off time", d),
+		)
+		time.Sleep(d)
+	}
+	if err := socket.SetOption(mangos.OptionSubscribe, topic); err != nil {
 		return nil, err
 	}
-	socket.SetOption(mangos.OptionSubscribe, topic)
 
 	result := &Subscriber[T]{socket: socket}
 	for _, o := range opts {

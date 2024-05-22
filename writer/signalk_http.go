@@ -5,12 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/Jeffail/gabs"
-	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
-	"go.uber.org/zap"
 )
 
 type endpoint struct {
@@ -39,8 +36,6 @@ func (w *SignalKWriter) serveEndpoints(rw http.ResponseWriter, r *http.Request) 
 }
 
 func (w *SignalKWriter) serveFullDataModel(rw http.ResponseWriter, r *http.Request) {
-	w.wg.Wait()
-
 	mapped, err := w.cache.ReadMapped("")
 	if err != nil {
 		http.NotFound(rw, r)
@@ -94,41 +89,4 @@ func (w *SignalKWriter) serveFullDataModel(rw http.ResponseWriter, r *http.Reque
 	}
 	rw.Header().Set("Content-Type", "application/json")
 	fmt.Fprint(rw, jsonObj.String())
-}
-
-func (w *SignalKWriter) readFromDatabase() {
-	appendToQuery := `
-		INNER JOIN 
-			(
-				SELECT  
-					"context" AS "max_context", 
-					"path" AS "max_path",
-					MAX("time") AS "max_time"
-				FROM 
-					"mapped_data" 
-				GROUP BY 
-					1, 2
-			) "max" 
-		ON 
-			"time" = "max_time" AND 
-			"context" = "max_context" AND 
-			"path" = "max_path"
-		WHERE
-			"time" > $1
-		;
-	`
-	mapped, err := w.database.ReadMapped(appendToQuery, time.Now().Add(-time.Second*time.Duration(w.config.BigCacheConfig.LifeWindow)))
-	if err != nil {
-		logger.GetLogger().Warn(
-			"Could not retrieve all mapped data from database",
-			zap.String("Error", err.Error()),
-		)
-		return
-	}
-	w.cache.WriteMapped(mapped...)
-	w.wg.Done()
-}
-
-func (w *SignalKWriter) updateFullDataModel(mapped *message.Mapped) {
-	w.cache.WriteMapped(mapped)
 }

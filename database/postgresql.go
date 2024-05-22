@@ -30,6 +30,7 @@ const (
 	selectRawQuery                 = `SELECT "time", "connector", "value", "uuid", "type" FROM "raw_data"`
 	mappedInsertQuery              = `INSERT INTO "%s" ("time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT ("time", "origin", "context", "connector", "path") DO NOTHING`
 	selectMappedQuery              = `SELECT "time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid" FROM "mapped_data"`
+	selectMostRecentMappedQuery    = `SELECT DISTINCT ON ("context", "path") "time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid" FROM "mapped_data" WHERE "time" > $1 ORDER BY "context", "path", "time" DESC`
 	selectLocalCountQuery          = `SELECT "count" FROM "transfer_local_data" WHERE "origin" = $1 AND "start" = $2`
 	selectExistingRemoteCounts     = `SELECT "origin", "start" FROM "transfer_remote_data" WHERE "start" >= $1`
 	selectIncompletePeriodsQuery   = `SELECT "origin", "start" FROM "transfer_data" WHERE "local_count" < "remote_count" ORDER BY "start" DESC`
@@ -232,6 +233,57 @@ func (db *PostgresqlDatabase) updateStaticData(context, path string, value any) 
 	query := fmt.Sprintf(`INSERT INTO "gosk"."static_data" ("context", "%s") VALUES ($1, $2) ON CONFLICT("context") DO UPDATE SET "%s" = $2;`, column, column)
 	db.batch.Queue(query, context, v)
 	db.batchSizeGauge.Inc()
+}
+
+func (db *PostgresqlDatabase) ReadMostRecentMapped(fromTime time.Time) ([]*message.Mapped, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout*10)
+	defer cancel()
+	rows, err := db.GetConnection().Query(ctx, selectMostRecentMappedQuery, fromTime)
+
+	if err != nil {
+		return nil, err
+	} else if ctx.Err() != nil {
+		logger.GetLogger().Error("Timeout during database lookup")
+		db.timeoutsCounter.Inc()
+		return nil, ctx.Err()
+	}
+	defer rows.Close()
+
+	result := make([]*message.Mapped, 0)
+	for rows.Next() {
+		m := message.NewSingleValueMapped()
+		err := rows.Scan(
+			&m.Timestamp,
+			&m.Source.Label,
+			&m.Source.Type,
+			&m.Context,
+			&m.Path,
+			&m.Value,
+			&m.Source.Uuid,
+			&m.Origin,
+			&m.Source.TransferUuid,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if m.Value, err = message.Decode(m.Value); err != nil {
+			logger.GetLogger().Warn(
+				"Could not decode value",
+				zap.String("Error", err.Error()),
+				zap.Any("Value", m.Value),
+			)
+		}
+		if m.Path == "mmsi" || m.Path == "name" {
+			m.Path = ""
+		}
+		result = append(result, m.ToMapped())
+	}
+	// check for errors after last call to .Next()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return result, nil
 }
 
 func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...interface{}) ([]*message.Mapped, error) {

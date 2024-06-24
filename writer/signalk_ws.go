@@ -22,7 +22,7 @@ type Handler struct {
 	sessions *gws.ConcurrentMap[string, *gws.Conn]
 }
 
-func NewHanlder(w *SignalKWriter) *Handler {
+func NewHandler(w *SignalKWriter) *Handler {
 	result := &Handler{w: w, sessions: gws.NewConcurrentMap[string, *gws.Conn](16)}
 	go result.ping()
 

@@ -14,9 +14,9 @@ import (
 )
 
 const (
-	SignalKEndpointsPath = "/signalk"
-	SignalKHTTPPath      = "/signalk/v1/api/"
-	SignalKWSPath        = "/signalk/v1/stream"
+	SignalKEndpointsPath = "GET /signalk"
+	SignalKHTTPPath      = "GET /signalk/v1/api"
+	SignalKWSPath        = "GET /signalk/v1/stream"
 )
 
 type SignalKWriter struct {
@@ -36,13 +36,12 @@ func NewSignalKWriter(c *config.SignalKConfig) *SignalKWriter {
 func (w *SignalKWriter) WriteMapped(subscriber *nanomsg.Subscriber[message.Mapped]) {
 	// fill the cache with data from the database
 	w.readFromDatabase()
-	h := NewHanlder(w)
+	h := NewHandler(w)
 	upgrader := gws.NewUpgrader(h, &gws.ServerOption{
 		ParallelEnabled:   true,                                 // Parallel message processing
 		Recovery:          gws.Recovery,                         // Exception recovery
 		PermessageDeflate: gws.PermessageDeflate{Enabled: true}, // Enable compression
 	})
-	logger.GetLogger().Info("SignalK server is ready to serve")
 
 	go func() {
 		receiveBuffer := make(chan *message.Mapped, bufferCapacity)
@@ -54,7 +53,8 @@ func (w *SignalKWriter) WriteMapped(subscriber *nanomsg.Subscriber[message.Mappe
 		}
 	}()
 
-	http.HandleFunc(SignalKWSPath, func(writer http.ResponseWriter, request *http.Request) {
+	mux := http.NewServeMux()
+	mux.HandleFunc(SignalKWSPath, func(writer http.ResponseWriter, request *http.Request) {
 		socket, err := upgrader.Upgrade(writer, request)
 		if err != nil {
 			return
@@ -63,11 +63,12 @@ func (w *SignalKWriter) WriteMapped(subscriber *nanomsg.Subscriber[message.Mappe
 			socket.ReadLoop() // Blocking prevents the context from being GC.
 		}()
 	})
-	http.HandleFunc(SignalKEndpointsPath, w.serveEndpoints)
-	http.HandleFunc(SignalKHTTPPath+"*", w.serveFullDataModel)
+	mux.HandleFunc(SignalKHTTPPath, w.serveFullDataModel)
+	mux.HandleFunc(SignalKEndpointsPath, w.serveEndpoints)
 
 	// listen to port
-	err := http.ListenAndServe(w.config.URL.Host, nil)
+	logger.GetLogger().Info("SignalK server is ready to serve")
+	err := http.ListenAndServe(w.config.URL.Host, mux)
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not listen and serve",

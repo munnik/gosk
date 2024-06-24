@@ -73,12 +73,45 @@ func NewModbusClient(realClient *modbus.ModbusClient, header *ModbusHeader, lock
 	}
 }
 
-func (m *ModbusClient) Read(bytes []byte) (n int, err error) {
+func (m *ModbusClient) Read(bytes []byte) (int, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
-	m.realClient.SetUnitId(m.header.Slave)
-	switch m.header.FunctionCode {
+	count, err := m.execute(m.header, bytes)
+	if err != nil {
+		if err := m.realClient.Open(); err != nil {
+			return 0, fmt.Errorf("could not reopen the connection, the error was %v", err)
+		}
+		return m.execute(m.header, bytes)
+	}
+	return count, nil
+}
+
+func (m *ModbusClient) Write(bytes []byte) (int, error) {
+	header, bytes, err := ExtractModbusHeader(bytes)
+	if err != nil {
+		return 0, err
+	}
+
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	count, err := m.execute(header, bytes)
+	if err != nil {
+		if err := m.realClient.Open(); err != nil {
+			return 0, fmt.Errorf("could not reopen the connection, the error was %v", err)
+		}
+		return m.execute(header, bytes)
+	}
+	return count, nil
+}
+
+func (m *ModbusClient) execute(header *ModbusHeader, bytes []byte) (int, error) {
+	if err := m.realClient.SetUnitId(header.Slave); err != nil {
+		return 0, err
+	}
+
+	switch header.FunctionCode {
 	case READ_COILS:
 		result, err := m.realClient.ReadCoils(m.header.Address, m.header.NumberOfCoilsOrRegisters)
 		if err != nil {
@@ -107,23 +140,6 @@ func (m *ModbusClient) Read(bytes []byte) (n int, err error) {
 		}
 		bytes = bytes[:0]
 		bytes = append(bytes, InjectModbusHeader(m.header, RegistersToBytes(result))...)
-	default:
-		return 0, fmt.Errorf("unsupported function code type %v", m.header.FunctionCode)
-	}
-	return len(bytes), nil
-}
-
-func (m *ModbusClient) Write(bytes []byte) (n int, err error) {
-	header, bytes, err := ExtractModbusHeader(bytes)
-	if err != nil {
-		return 0, err
-	}
-
-	m.lock.Lock()
-	defer m.lock.Unlock()
-
-	m.realClient.SetUnitId(header.Slave)
-	switch header.FunctionCode {
 	case WRITE_SINGLE_COIL:
 		if header.NumberOfCoilsOrRegisters != 1 {
 			return 0, fmt.Errorf("expected only 1 register but got %d", header.NumberOfCoilsOrRegisters)
@@ -268,7 +284,7 @@ func InjectModbusHeader(header *ModbusHeader, bytes []byte) []byte {
 
 func ExtractModbusHeader(bytes []byte) (*ModbusHeader, []byte, error) {
 	if len(bytes) < MODBUS_HEADER_LENGTH {
-		return nil, nil, fmt.Errorf("expected at least %d bytes but got %d", MODBUS_HEADER_LENGTH, len(bytes))
+		return nil, nil, fmt.Errorf("unable to extract the modbus header, expected at least %d bytes but got %d", MODBUS_HEADER_LENGTH, len(bytes))
 	}
 
 	header := &ModbusHeader{

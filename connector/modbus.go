@@ -81,7 +81,13 @@ func (m *ModbusConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw])
 		go subscriber.Receive(receiveBuffer)
 
 		for raw := range receiveBuffer {
-			client.Write(raw.Value)
+			if _, err := client.Write(raw.Value); err != nil {
+				logger.GetLogger().Warn(
+					"Error while writing data",
+					zap.String("URL", m.config.URL.String()),
+					zap.String("Error", err.Error()),
+				)
+			}
 		}
 	}()
 }

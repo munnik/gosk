@@ -1,7 +1,6 @@
 package protocol_test
 
 import (
-	"github.com/munnik/gosk/protocol"
 	. "github.com/munnik/gosk/protocol"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -11,7 +10,7 @@ var _ = Describe("Modbus protocol functions", func() {
 	DescribeTable(
 		"RegistersToCoils",
 		func(input []uint16, expected []bool) {
-			result := protocol.RegistersToCoils(input)
+			result := RegistersToCoils(input)
 			Expect(result).To(Equal(expected))
 		},
 		Entry("One register", []uint16{0xff00}, []bool{
@@ -28,7 +27,7 @@ var _ = Describe("Modbus protocol functions", func() {
 	DescribeTable(
 		"CoilsToRegisters",
 		func(expected []uint16, input []bool) {
-			result := protocol.CoilsToRegisters(input)
+			result := CoilsToRegisters(input)
 			Expect(result).To(Equal(expected))
 		},
 		Entry("2 coils, both false", []uint16{0x0000, 0x0000}, []bool{

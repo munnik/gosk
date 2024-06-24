@@ -177,5 +177,5 @@ func (u UdpListenerConnection) Read(p []byte) (n int, err error) {
 }
 
 func (u UdpListenerConnection) Write(p []byte) (n int, err error) {
-	return 0, fmt.Errorf("Could not write to UDP")
+	return 0, fmt.Errorf("could not write to UDP")
 }

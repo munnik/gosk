@@ -88,6 +88,7 @@ func (m *ModbusClient) Read(bytes []byte) (int, error) {
 
 	count, err := m.execute(header, bytes)
 	if err != nil {
+		m.realClient.Close()
 		m.connected = false
 		return 0, err
 	}
@@ -111,6 +112,7 @@ func (m *ModbusClient) Write(bytes []byte) (int, error) {
 
 	count, err := m.execute(header, bytes)
 	if err != nil {
+		m.realClient.Close()
 		m.connected = false
 		return 0, err
 	}

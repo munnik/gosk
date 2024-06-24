@@ -63,6 +63,7 @@ type ModbusClient struct {
 	realClient *modbus.ModbusClient
 	header     *ModbusHeader
 	lock       *sync.Mutex
+	connected  bool
 }
 
 func NewModbusClient(realClient *modbus.ModbusClient, header *ModbusHeader, lock *sync.Mutex) *ModbusClient {
@@ -74,15 +75,21 @@ func NewModbusClient(realClient *modbus.ModbusClient, header *ModbusHeader, lock
 }
 
 func (m *ModbusClient) Read(bytes []byte) (int, error) {
+	header := m.header
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
-	count, err := m.execute(m.header, bytes)
-	if err != nil {
+	if !m.connected {
 		if err := m.realClient.Open(); err != nil {
-			return 0, fmt.Errorf("could not reopen the connection, the error was %v", err)
+			return 0, fmt.Errorf("could not open the connection, the error was %v", err)
 		}
-		return m.execute(m.header, bytes)
+		m.connected = true
+	}
+
+	count, err := m.execute(header, bytes)
+	if err != nil {
+		m.connected = false
+		return 0, err
 	}
 	return count, nil
 }
@@ -92,16 +99,20 @@ func (m *ModbusClient) Write(bytes []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
+	if !m.connected {
+		if err := m.realClient.Open(); err != nil {
+			return 0, fmt.Errorf("could not open the connection, the error was %v", err)
+		}
+		m.connected = true
+	}
+
 	count, err := m.execute(header, bytes)
 	if err != nil {
-		if err := m.realClient.Open(); err != nil {
-			return 0, fmt.Errorf("could not reopen the connection, the error was %v", err)
-		}
-		return m.execute(header, bytes)
+		m.connected = false
+		return 0, err
 	}
 	return count, nil
 }

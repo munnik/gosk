@@ -45,9 +45,6 @@ func NewModbusConnector(c *config.ConnectorConfig, rgcs []config.RegisterGroupCo
 	if err != nil {
 		return nil, fmt.Errorf("unable to create modbus client %v, the error that occurred was %v", c.URL.String(), err)
 	}
-	if err := realClient.Open(); err != nil {
-		return nil, fmt.Errorf("unable to open modbus client %v, the error that occurred was %v", c.URL.String(), err)
-	}
 
 	return &ModbusConnector{config: c, registerGroupsConfig: rgcs, realClient: realClient, mutex: &sync.Mutex{}}, nil
 }

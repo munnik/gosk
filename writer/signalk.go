@@ -1,7 +1,6 @@
 package writer
 
 import (
-	"net/http"
 	"time"
 
 	"github.com/lxzan/gws"
@@ -11,12 +10,6 @@ import (
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
 	"go.uber.org/zap"
-)
-
-const (
-	SignalKEndpointsPath = "GET /signalk"
-	SignalKHTTPPath      = "GET /signalk/v1/api"
-	SignalKWSPath        = "GET /signalk/v1/stream"
 )
 
 type SignalKWriter struct {
@@ -53,29 +46,7 @@ func (w *SignalKWriter) WriteMapped(subscriber *nanomsg.Subscriber[message.Mappe
 		}
 	}()
 
-	mux := http.NewServeMux()
-	mux.HandleFunc(SignalKWSPath, func(writer http.ResponseWriter, request *http.Request) {
-		socket, err := upgrader.Upgrade(writer, request)
-		if err != nil {
-			return
-		}
-		go func() {
-			socket.ReadLoop() // Blocking prevents the context from being GC.
-		}()
-	})
-	mux.HandleFunc(SignalKHTTPPath, w.serveFullDataModel)
-	mux.HandleFunc(SignalKEndpointsPath, w.serveEndpoints)
-
-	// listen to port
-	logger.GetLogger().Info("SignalK server is ready to serve")
-	err := http.ListenAndServe(w.config.URL.Host, mux)
-	if err != nil {
-		logger.GetLogger().Fatal(
-			"Could not listen and serve",
-			zap.String("Host", w.config.URL.Host),
-			zap.String("Error", err.Error()),
-		)
-	}
+	w.startHTTPServer(upgrader)
 }
 
 func (w *SignalKWriter) readFromDatabase() {

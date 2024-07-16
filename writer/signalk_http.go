@@ -7,28 +7,76 @@ import (
 	"strings"
 
 	"github.com/Jeffail/gabs"
+	"github.com/lxzan/gws"
+	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
+	"go.uber.org/zap"
 )
+
+const (
+	SignalKEndpointsPath = "/signalk/"
+	SignalKHTTPPath      = "/signalk/v1/api/"
+	SignalKWSPath        = "/signalk/v1/stream/"
+)
+
+type server struct {
+	Id      string `json:"id"`
+	Version string `json:"version"`
+}
 
 type endpoint struct {
 	Version     string `json:"version"`
 	SignalKHTTP string `json:"signalk-http"`
 	SignalKWS   string `json:"signalk-ws"`
 }
-type server struct {
-	Id      string `json:"id"`
-	Version string `json:"version"`
-}
+
 type endpoints struct {
 	Endpoints map[string]endpoint `json:"endpoints"`
 	Server    server              `json:"server"`
 }
 
+func (w *SignalKWriter) startHTTPServer(upgrader *gws.Upgrader) error {
+	mux := http.NewServeMux()
+	mux.HandleFunc(SignalKWSPath, func(writer http.ResponseWriter, request *http.Request) {
+		socket, err := upgrader.Upgrade(writer, request)
+		if err != nil {
+			logger.GetLogger().Warn(
+				"Could not upgrade to a websocket connection connection",
+				zap.String("Host", w.config.URL.Host),
+				zap.String("Error", err.Error()),
+			)
+			return
+		}
+		go func() {
+			socket.ReadLoop()
+		}()
+	})
+	mux.HandleFunc(SignalKHTTPPath+"{path...}", w.serveFullDataModel)
+	mux.HandleFunc(SignalKEndpointsPath, w.serveEndpoints)
+
+	logger.GetLogger().Info("SignalK server is ready to serve")
+	err := http.ListenAndServe(w.config.URL.Host, mux)
+	if err != nil {
+		logger.GetLogger().Fatal(
+			"Could not listen and serve",
+			zap.String("Host", w.config.URL.Host),
+			zap.String("Error", err.Error()),
+		)
+	}
+	return err
+}
+
 func (w *SignalKWriter) serveEndpoints(rw http.ResponseWriter, r *http.Request) {
 	e := endpoints{
 		// TODO: detect https/wss
-		Endpoints: map[string]endpoint{"v1": {Version: w.config.Version, SignalKHTTP: "http://" + r.Host + SignalKHTTPPath, SignalKWS: "ws://" + r.Host + SignalKWSPath}},
-		Server:    server{Id: "gosk", Version: w.config.Version},
+		Endpoints: map[string]endpoint{
+			"v1": {
+				Version:     w.config.Version,
+				SignalKHTTP: "http://" + r.Host + SignalKHTTPPath,
+				SignalKWS:   "ws://" + r.Host + SignalKWSPath,
+			},
+		},
+		Server: server{Id: "gosk", Version: w.config.Version},
 	}
 	result, _ := json.Marshal(e)
 	rw.Header().Set("Content-Type", "application/json")
@@ -74,15 +122,8 @@ func (w *SignalKWriter) serveFullDataModel(rw http.ResponseWriter, r *http.Reque
 		}
 	}
 
-	searchPath := strings.Replace(r.URL.String(), SignalKHTTPPath, "", 1)
-	if searchPath == "" {
-		rw.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(rw, jsonObj.String())
-		return
-	}
-
-	searchPath = "/" + searchPath
-	jsonObj, err = jsonObj.JSONPointer(searchPath)
+	path := "/" + r.PathValue("path")
+	jsonObj, err = jsonObj.JSONPointer(path)
 	if err != nil {
 		http.NotFound(rw, r)
 		return

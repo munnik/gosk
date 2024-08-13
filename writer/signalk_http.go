@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Jeffail/gabs"
 	"github.com/lxzan/gws"
@@ -14,9 +15,10 @@ import (
 )
 
 const (
-	SignalKEndpointsPath = "/signalk/"
-	SignalKHTTPPath      = "/signalk/v1/api/"
-	SignalKWSPath        = "/signalk/v1/stream/"
+	SignalKEndpointsPath    = "/signalk/"
+	SignalKHTTPApiPath      = "/signalk/v1/api/"
+	SignalKHTTPSnapshotPath = "/signalk/v1/snapshot/"
+	SignalKWSPath           = "/signalk/v1/stream/"
 )
 
 type server struct {
@@ -51,7 +53,8 @@ func (w *SignalKWriter) startHTTPServer(upgrader *gws.Upgrader) error {
 			socket.ReadLoop()
 		}()
 	})
-	mux.HandleFunc(SignalKHTTPPath+"{path...}", w.serveFullDataModel)
+	mux.HandleFunc(SignalKHTTPApiPath+"{path...}", w.serveApi)
+	mux.HandleFunc(SignalKHTTPSnapshotPath+"{path...}", w.serveSnapshot)
 	mux.HandleFunc(SignalKEndpointsPath, w.serveEndpoints)
 
 	logger.GetLogger().Info("SignalK server is ready to serve")
@@ -72,7 +75,7 @@ func (w *SignalKWriter) serveEndpoints(rw http.ResponseWriter, r *http.Request) 
 		Endpoints: map[string]endpoint{
 			"v1": {
 				Version:     w.config.Version,
-				SignalKHTTP: "http://" + r.Host + SignalKHTTPPath,
+				SignalKHTTP: "http://" + r.Host + SignalKHTTPApiPath,
 				SignalKWS:   "ws://" + r.Host + SignalKWSPath,
 			},
 		},
@@ -83,13 +86,26 @@ func (w *SignalKWriter) serveEndpoints(rw http.ResponseWriter, r *http.Request) 
 	rw.Write(result)
 }
 
-func (w *SignalKWriter) serveFullDataModel(rw http.ResponseWriter, r *http.Request) {
+func (w *SignalKWriter) serveSnapshot(rw http.ResponseWriter, r *http.Request) {
+	mapped, err := w.database.ReadMostRecentMapped(time.Now().Add(-time.Second * time.Duration(w.config.BigCacheConfig.LifeWindow)))
+	if err != nil {
+		http.NotFound(rw, r)
+		return
+	}
+
+	w.serve(mapped, rw, r)
+}
+
+func (w *SignalKWriter) serveApi(rw http.ResponseWriter, r *http.Request) {
 	mapped, err := w.cache.ReadMapped("")
 	if err != nil {
 		http.NotFound(rw, r)
 		return
 	}
 
+	w.serve(mapped, rw, r)
+}
+func (w *SignalKWriter) serve(mapped []*message.Mapped, rw http.ResponseWriter, r *http.Request) {
 	jsonObj := gabs.New()
 	jsonObj.Set(w.config.Version, "version")
 	jsonObj.Set(w.config.SelfContext, "self")
@@ -123,7 +139,7 @@ func (w *SignalKWriter) serveFullDataModel(rw http.ResponseWriter, r *http.Reque
 	}
 
 	path := "/" + r.PathValue("path")
-	jsonObj, err = jsonObj.JSONPointer(path)
+	jsonObj, err := jsonObj.JSONPointer(path)
 	if err != nil {
 		http.NotFound(rw, r)
 		return

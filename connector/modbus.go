@@ -11,20 +11,20 @@ import (
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/protocol"
 	"github.com/simonvetter/modbus"
+	"go.bug.st/serial"
 	"go.uber.org/zap"
 )
 
 type ModbusConnector struct {
 	config               *config.ConnectorConfig
 	registerGroupsConfig []config.RegisterGroupConfig
-	realClient           *modbus.ModbusClient
-	mutex                *sync.Mutex
+	realClient           *modbus.Client
 }
 
 func NewModbusConnector(c *config.ConnectorConfig, rgcs []config.RegisterGroupConfig) (*ModbusConnector, error) {
 	for _, rgc := range rgcs {
 		// TODO add write function codes
-		if rgc.FunctionCode == protocol.READ_COILS || rgc.FunctionCode == protocol.READ_DISCRETE_INPUTS {
+		if rgc.FunctionCode == protocol.ReadCoils || rgc.FunctionCode == protocol.ReadDiscreteInputs {
 			if rgc.NumberOfCoilsOrRegisters > protocol.MODBUS_MAXIMUM_NUMBER_OF_COILS {
 				return nil, fmt.Errorf("maximum number %v of coils exceeded for register group %v", protocol.MODBUS_MAXIMUM_NUMBER_OF_COILS, rgc)
 			}
@@ -34,19 +34,38 @@ func NewModbusConnector(c *config.ConnectorConfig, rgcs []config.RegisterGroupCo
 			}
 		}
 	}
-	realClient, err := modbus.NewClient(&modbus.ClientConfiguration{
+	cc := &modbus.Configuration{
 		URL:      c.URL.String(),
-		Speed:    uint(c.BaudRate),
-		DataBits: uint(c.DataBits),
-		Parity:   uint(c.Parity),
-		StopBits: uint(c.StopBits),
+		Speed:    c.BaudRate,
+		DataBits: c.DataBits,
 		Timeout:  1 * time.Second,
-	})
+	}
+	switch c.StopBits {
+	case "1":
+		cc.StopBits = serial.OneStopBit
+	case "1.5":
+		cc.StopBits = serial.OnePointFiveStopBits
+	case "2":
+		cc.StopBits = serial.TwoStopBits
+	default:
+		return nil, fmt.Errorf("unsupport stop bits: %s", c.StopBits)
+	}
+	switch c.Parity {
+	case "N":
+		cc.Parity = serial.NoParity
+	case "O":
+		cc.Parity = serial.OddParity
+	case "E":
+		cc.Parity = serial.EvenParity
+	default:
+		return nil, fmt.Errorf("unsupport parity: %s", c.Parity)
+	}
+	realClient, err := modbus.NewClient(cc)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create modbus client %v, the error that occurred was %v", c.URL.String(), err)
 	}
 
-	return &ModbusConnector{config: c, registerGroupsConfig: rgcs, realClient: realClient, mutex: &sync.Mutex{}}, nil
+	return &ModbusConnector{config: c, registerGroupsConfig: rgcs, realClient: realClient}, nil
 }
 
 func (m *ModbusConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
@@ -71,7 +90,6 @@ func (m *ModbusConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw])
 		client := protocol.NewModbusClient(
 			m.realClient,
 			nil, // no need to set this because it will not be used in the Write([]byte) function
-			m.mutex,
 		)
 		receiveBuffer := make(chan *message.Raw, bufferCapacity)
 		defer close(receiveBuffer)
@@ -101,8 +119,8 @@ func (m *ModbusConnector) receive(stream chan<- []byte) error {
 			client := protocol.NewModbusClient(
 				m.realClient,
 				rgc.ExtractModbusHeader(),
-				m.mutex,
 			)
+			fmt.Printf("Created a new modbus cient for slave %d, function code %d, address %d, # registers %d\n", rgc.Slave, rgc.FunctionCode, rgc.Address, rgc.NumberOfCoilsOrRegisters)
 			if err := client.Poll(stream, rgc.PollingInterval); err != nil {
 				errors <- err
 			}

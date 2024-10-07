@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"net/url"
-	"strings"
 	"time"
 
 	"github.com/expr-lang/expr/vm"
@@ -32,30 +31,28 @@ const (
 )
 
 type ConnectorConfig struct {
-	Name         string   `mapstructure:"name"`
-	URL          *url.URL `mapstructure:"_"`
-	URLString    string   `mapstructure:"url"`
-	Listen       bool     `mapstructure:"listen"`
-	BaudRate     int      `mapstructure:"baudRate"`
-	DataBits     int      `mapstructure:"dataBits"`
-	StopBits     int      `mapstructure:"stopBits"`
-	Parity       int      `mapstructure:"_"`
-	ParityString string   `mapstructure:"parity"`
-	Protocol     string   `mapstructure:"protocol"`
+	Name      string   `mapstructure:"name"`
+	URL       *url.URL `mapstructure:"_"`
+	URLString string   `mapstructure:"url"`
+	Listen    bool     `mapstructure:"listen"`
+	BaudRate  int      `mapstructure:"baudRate"`
+	DataBits  int      `mapstructure:"dataBits"`
+	StopBits  string   `mapstructure:"stopBits"`
+	Parity    string   `mapstructure:"parity"`
+	Protocol  string   `mapstructure:"protocol"`
 }
 
 func NewConnectorConfig(configFilePath string) *ConnectorConfig {
 	result := &ConnectorConfig{
-		Listen:       false,
-		BaudRate:     4800,
-		DataBits:     8,
-		StopBits:     1,
-		ParityString: "N",
+		Listen:   false,
+		BaudRate: 4800,
+		DataBits: 8,
+		StopBits: "1",
+		Parity:   "N",
 	}
 	readConfigFile(result, configFilePath)
 
 	result.URL, _ = url.Parse(result.URLString)
-	result.Parity = strings.Index(ParityMap, result.ParityString)
 
 	return result
 }

@@ -8,11 +8,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/goburrow/serial"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
+	"go.bug.st/serial"
 	"go.uber.org/zap"
 )
 
@@ -135,14 +135,32 @@ func (l LineConnector) createFileConnection() (io.ReadWriter, error) {
 	}
 	var connection io.ReadWriter
 	if fi.Mode()&os.ModeCharDevice == os.ModeCharDevice {
-		// the file is a serial device
-		connection, err = serial.Open(&serial.Config{
-			Address:  l.config.URL.Path,
+		mode := &serial.Mode{
 			BaudRate: l.config.BaudRate,
 			DataBits: l.config.DataBits,
-			StopBits: l.config.StopBits,
-			Parity:   string(config.ParityMap[l.config.Parity]),
-		})
+		}
+		switch l.config.StopBits {
+		case "1":
+			mode.StopBits = serial.OneStopBit
+		case "1.5":
+			mode.StopBits = serial.OnePointFiveStopBits
+		case "2":
+			mode.StopBits = serial.TwoStopBits
+		default:
+			return nil, fmt.Errorf("unsupport stop bits: %s", l.config.StopBits)
+		}
+		switch l.config.Parity {
+		case "N":
+			mode.Parity = serial.NoParity
+		case "O":
+			mode.Parity = serial.OddParity
+		case "E":
+			mode.Parity = serial.EvenParity
+		default:
+			return nil, fmt.Errorf("unsupport parity: %s", l.config.Parity)
+		}
+		// the file is a serial device
+		connection, err = serial.Open(l.config.URL.Path, mode)
 		if err != nil {
 			return nil, fmt.Errorf("unable to open the port %v for reading and writing, the error that occurred was %v", l.config.URL.Path, err)
 		}

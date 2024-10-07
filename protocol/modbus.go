@@ -3,7 +3,6 @@ package protocol
 import (
 	"encoding/binary"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/munnik/gosk/logger"
@@ -22,34 +21,34 @@ const (
 
 const (
 	// 01 (0x01) Read Coils
-	READ_COILS = 0x01
+	ReadCoils = 0x01
 	// 02 (0x02) Read Discrete Inputs
-	READ_DISCRETE_INPUTS = 0x02
+	ReadDiscreteInputs = 0x02
 	// 03 (0x03) Read Holding Registers
-	READ_HOLDING_REGISTERS = 0x03
+	ReadHoldingRegisters = 0x03
 	// 04 (0x04) Read Input Registers
-	READ_INPUT_REGISTERS = 0x04
+	ReadInputRegisters = 0x04
 	// 05 (0x05) Write Single Coil
-	WRITE_SINGLE_COIL = 0x05
+	WriteSingleCoil = 0x05
 	// 06 (0x06) Write Single Register
-	WRITE_SINGLE_REGISTER = 0x06
+	WriteSingleRegister = 0x06
 	// 08 (0x08) Diagnostics (Serial Line only)
-	DIAGNOSTICS = 0x08
+	Diagnostics = 0x08
 	// 11 (0x0B) Get Comm Event Counter (Serial Line only)
-	GET_COMM_EVENT_COUNTER = 0x0B
+	GetCommEventCounter = 0x0B
 	// 15 (0x0F) Write Multiple Coils
-	WRITE_MULTIPLE_COILS = 0x0F
+	WriteMultipleCoils = 0x0F
 	// 16 (0x10) Write Multiple Registers
-	WRITE_MULTIPLE_REGISTERS = 0x10
+	WriteMultipleRegisters = 0x10
 	// 17 (0x11) Report Server ID (Serial Line only)
-	REPORT_SERVER_ID = 0x11
+	ReportServerID = 0x11
 	// 22 (0x16) Mask Write Register
-	MASK_WRITE_REGISTERS = 0x16
+	MaskWriteRegisters = 0x16
 	// 23 (0x17) Read/Write Multiple Registers
-	READ_WRITE_MULTIPLE_REGISTERS = 0x17
+	ReadWriteMultipleRegisters = 0x17
 	// 43 / 14 (0x2B / 0x0E) Read Device Identification
-	READ_DEVICE_IDENTIFICATION_A = 0x0E
-	READ_DEVICE_IDENTIFICATION_B = 0x43
+	ReadDeviceIdentificationA = 0x0E
+	ReadDeviceIdentificationB = 0x43
 )
 
 type ModbusHeader struct {
@@ -60,36 +59,20 @@ type ModbusHeader struct {
 }
 
 type ModbusClient struct {
-	realClient *modbus.ModbusClient
+	realClient *modbus.Client
 	header     *ModbusHeader
-	lock       *sync.Mutex
-	connected  bool
 }
 
-func NewModbusClient(realClient *modbus.ModbusClient, header *ModbusHeader, lock *sync.Mutex) *ModbusClient {
+func NewModbusClient(realClient *modbus.Client, header *ModbusHeader) *ModbusClient {
 	return &ModbusClient{
 		realClient: realClient,
 		header:     header,
-		lock:       lock,
 	}
 }
 
 func (m *ModbusClient) Read(bytes []byte) (int, error) {
-	header := m.header
-	m.lock.Lock()
-	defer m.lock.Unlock()
-
-	if !m.connected {
-		if err := m.realClient.Open(); err != nil {
-			return 0, fmt.Errorf("could not open the connection, the error was %v", err)
-		}
-		m.connected = true
-	}
-
-	count, err := m.execute(header, bytes)
+	count, err := m.execute(m.header, bytes)
 	if err != nil {
-		m.realClient.Close()
-		m.connected = false
 		return 0, err
 	}
 	return count, nil
@@ -100,60 +83,49 @@ func (m *ModbusClient) Write(bytes []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	m.lock.Lock()
-	defer m.lock.Unlock()
-
-	if !m.connected {
-		if err := m.realClient.Open(); err != nil {
-			return 0, fmt.Errorf("could not open the connection, the error was %v", err)
-		}
-		m.connected = true
-	}
-
 	count, err := m.execute(header, bytes)
 	if err != nil {
 		m.realClient.Close()
-		m.connected = false
 		return 0, err
 	}
 	return count, nil
 }
 
 func (m *ModbusClient) execute(header *ModbusHeader, bytes []byte) (int, error) {
-	if err := m.realClient.SetUnitId(header.Slave); err != nil {
+	if err := m.realClient.Open(); err != nil && err != modbus.ErrTransportIsAlreadyOpen {
 		return 0, err
 	}
 
 	switch header.FunctionCode {
-	case READ_COILS:
-		result, err := m.realClient.ReadCoils(m.header.Address, m.header.NumberOfCoilsOrRegisters)
+	case ReadCoils:
+		result, err := m.realClient.ReadCoils(m.header.Address, m.header.NumberOfCoilsOrRegisters, modbus.WithUnitID(m.header.Slave))
 		if err != nil {
 			return 0, fmt.Errorf("error while reading slave %v coils %v, with length %v and function code %v, the error that occurred was %v", m.header.Slave, m.header.Address, m.header.NumberOfCoilsOrRegisters, m.header.FunctionCode, err)
 		}
 		bytes = bytes[:0]
 		bytes = append(bytes, InjectModbusHeader(m.header, CoilsToBytes(result))...)
-	case READ_DISCRETE_INPUTS:
-		result, err := m.realClient.ReadDiscreteInputs(m.header.Address, m.header.NumberOfCoilsOrRegisters)
+	case ReadDiscreteInputs:
+		result, err := m.realClient.ReadDiscreteInputs(m.header.Address, m.header.NumberOfCoilsOrRegisters, modbus.WithUnitID(m.header.Slave))
 		if err != nil {
 			return 0, fmt.Errorf("error while reading slave %v discrete inputs %v, with length %v and function code %v, the error that occurred was %v", m.header.Slave, m.header.Address, m.header.NumberOfCoilsOrRegisters, m.header.FunctionCode, err)
 		}
 		bytes = bytes[:0]
 		bytes = append(bytes, InjectModbusHeader(m.header, CoilsToBytes(result))...)
-	case READ_HOLDING_REGISTERS:
-		result, err := m.realClient.ReadRegisters(m.header.Address, m.header.NumberOfCoilsOrRegisters, modbus.HOLDING_REGISTER)
+	case ReadHoldingRegisters:
+		result, err := m.realClient.ReadRegisters(m.header.Address, m.header.NumberOfCoilsOrRegisters, modbus.HoldingRegister, modbus.WithUnitID(m.header.Slave))
 		if err != nil {
 			return 0, fmt.Errorf("error while reading slave %v holding register %v, with length %v and function code %v, the error that occurred was %v", m.header.Slave, m.header.Address, m.header.NumberOfCoilsOrRegisters, m.header.FunctionCode, err)
 		}
 		bytes = bytes[:0]
 		bytes = append(bytes, InjectModbusHeader(m.header, RegistersToBytes(result))...)
-	case READ_INPUT_REGISTERS:
-		result, err := m.realClient.ReadRegisters(m.header.Address, m.header.NumberOfCoilsOrRegisters, modbus.INPUT_REGISTER)
+	case ReadInputRegisters:
+		result, err := m.realClient.ReadRegisters(m.header.Address, m.header.NumberOfCoilsOrRegisters, modbus.InputRegister, modbus.WithUnitID(m.header.Slave))
 		if err != nil {
 			return 0, fmt.Errorf("error while reading slave %v input register %v, with length %v and function code %v, the error that occurred was %v", m.header.Slave, m.header.Address, m.header.NumberOfCoilsOrRegisters, m.header.FunctionCode, err)
 		}
 		bytes = bytes[:0]
 		bytes = append(bytes, InjectModbusHeader(m.header, RegistersToBytes(result))...)
-	case WRITE_SINGLE_COIL:
+	case WriteSingleCoil:
 		if header.NumberOfCoilsOrRegisters != 1 {
 			return 0, fmt.Errorf("expected only 1 register but got %d", header.NumberOfCoilsOrRegisters)
 		}
@@ -161,8 +133,8 @@ func (m *ModbusClient) execute(header *ModbusHeader, bytes []byte) (int, error) 
 		if err != nil {
 			return 0, err
 		}
-		m.realClient.WriteCoil(header.Address, coils[0])
-	case WRITE_SINGLE_REGISTER:
+		m.realClient.WriteCoil(header.Address, coils[0], modbus.WithUnitID(m.header.Slave))
+	case WriteSingleRegister:
 		if header.NumberOfCoilsOrRegisters != 1 {
 			return 0, fmt.Errorf("expected only 1 register but got %d", header.NumberOfCoilsOrRegisters)
 		}
@@ -173,14 +145,14 @@ func (m *ModbusClient) execute(header *ModbusHeader, bytes []byte) (int, error) 
 		if len(registers) != int(header.NumberOfCoilsOrRegisters) {
 			return 0, fmt.Errorf("expected %d registers but got %d register", header.NumberOfCoilsOrRegisters, len(registers))
 		}
-		m.realClient.WriteRegister(header.Address, registers[0])
-	case WRITE_MULTIPLE_COILS:
+		m.realClient.WriteRegister(header.Address, registers[0], modbus.WithUnitID(m.header.Slave))
+	case WriteMultipleCoils:
 		coils, err := BytesToCoils(bytes)
 		if err != nil {
 			return 0, err
 		}
-		m.realClient.WriteCoils(header.Address, coils)
-	case WRITE_MULTIPLE_REGISTERS:
+		m.realClient.WriteCoils(header.Address, coils, modbus.WithUnitID(m.header.Slave))
+	case WriteMultipleRegisters:
 		registers, err := BytesToRegisters(bytes)
 		if err != nil {
 			return 0, err
@@ -188,7 +160,7 @@ func (m *ModbusClient) execute(header *ModbusHeader, bytes []byte) (int, error) 
 		if len(registers) != int(header.NumberOfCoilsOrRegisters) {
 			return 0, fmt.Errorf("expected %d registers but got %d register", header.NumberOfCoilsOrRegisters, len(registers))
 		}
-		m.realClient.WriteRegisters(header.Address, registers)
+		m.realClient.WriteRegisters(header.Address, registers, modbus.WithUnitID(m.header.Slave))
 	default:
 		return 0, fmt.Errorf("unsupported function code type %v", header.FunctionCode)
 	}

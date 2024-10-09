@@ -10,7 +10,7 @@ import (
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/protocol"
-	"github.com/simonvetter/modbus"
+	"github.com/munnik/modbus"
 	"go.bug.st/serial"
 	"go.uber.org/zap"
 )

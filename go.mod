@@ -4,8 +4,6 @@ go 1.22.0
 
 toolchain go1.22.7
 
-replace github.com/simonvetter/modbus => github.com/simonvetter/modbus v1.6.4
-
 require (
 	github.com/Jeffail/gabs v1.4.0
 	github.com/allegro/bigcache/v3 v3.1.0
@@ -23,10 +21,10 @@ require (
 	github.com/lxzan/gws v1.8.8
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/munnik/go-nmea v1.8.0
+	github.com/munnik/modbus v1.6.5
 	github.com/onsi/ginkgo/v2 v2.20.2
 	github.com/onsi/gomega v1.34.2
 	github.com/prometheus/client_golang v1.20.4
-	github.com/simonvetter/modbus v1.6.3
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.19.0
 	go.bug.st/serial v1.6.2
@@ -45,8 +43,8 @@ require (
 	github.com/dolthub/maphash v0.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
-	github.com/go-task/slim-sprig v0.0.0-20230315185526-52ccab3ef572 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
+	github.com/goburrow/serial v0.1.0 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/pprof v0.0.0-20241001023024-f4c0cfd0cf1d // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
@@ -83,7 +81,7 @@ require (
 	golang.org/x/sys v0.26.0 // indirect
 	golang.org/x/text v0.19.0 // indirect
 	golang.org/x/tools v0.26.0 // indirect
-	google.golang.org/protobuf v1.34.2 // indirect
+	google.golang.org/protobuf v1.35.1 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

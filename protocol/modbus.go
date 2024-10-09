@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/munnik/gosk/logger"
-	"github.com/simonvetter/modbus"
+	"github.com/munnik/modbus"
 	"go.uber.org/zap"
 )
 

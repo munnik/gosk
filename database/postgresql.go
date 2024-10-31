@@ -226,12 +226,15 @@ func (db *PostgresqlDatabase) updateStaticData(context, path string, value any) 
 			column = "vesseltype"
 		}
 	}
-	if column == "" || v == nil {
+	if column == "" {
+		return // column is not set, so the path is not static data
+	}
+	if v == nil {
 		logger.GetLogger().Warn("Could not update static data, check path and value",
 			zap.String("path", path),
 			zap.Any("value", value),
 		)
-		return // column is not set so no update needed
+		return
 	}
 
 	query := fmt.Sprintf(`INSERT INTO "gosk"."static_data" ("context", "%s") VALUES ($1, $2) ON CONFLICT("context") DO UPDATE SET "%s" = $2;`, column, column)

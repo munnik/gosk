@@ -226,7 +226,11 @@ func (db *PostgresqlDatabase) updateStaticData(context, path string, value any) 
 			column = "vesseltype"
 		}
 	}
-	if len(column) == 0 {
+	if column == "" || v == nil {
+		logger.GetLogger().Warn("Could not update static data, check path and value",
+			zap.String("path", path),
+			zap.Any("value", value),
+		)
 		return // column is not set so no update needed
 	}
 
@@ -571,8 +575,15 @@ func (db *PostgresqlDatabase) flushBatch() {
 	rowsAffected := 0
 	result := db.GetConnection().SendBatch(ctx, batchPtr)
 	for i := 0; i < batchPtr.Len(); i++ {
-		tag, _ := result.Exec()
+		tag, err := result.Exec()
 		rowsAffected += int(tag.RowsAffected())
+		if err != nil || tag.RowsAffected() == 0 {
+			logger.GetLogger().Warn("Got an error or zero rows where effected while executing statement from batch",
+				zap.String("tag", tag.String()),
+				zap.Int64("rows effected", tag.RowsAffected()),
+				zap.Error(err),
+			)
+		}
 	}
 	if err := result.Close(); err != nil {
 		if ctx.Err() != nil {

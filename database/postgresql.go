@@ -140,7 +140,14 @@ func (db *PostgresqlDatabase) GetConnection() *pgxpool.Pool {
 
 func (db *PostgresqlDatabase) WriteRaw(raw *message.Raw) {
 	db.writesCounter.Inc()
-	db.batch.Queue(rawInsertQuery, raw.Timestamp, raw.Connector, raw.Value, raw.Uuid, raw.Type)
+	db.batch.Queue(rawInsertQuery, raw.Timestamp, raw.Connector, raw.Value, raw.Uuid, raw.Type).Query(func(rows pgx.Rows) error {
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("query failed with an error: %w", err)
+		}
+
+		return nil
+	})
 	db.batchSizeGauge.Inc()
 	if db.batch.Len() > db.batchSize {
 		go db.flushBatch()
@@ -184,7 +191,14 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 		table = "mapped_data_other_context"
 	}
 	query := fmt.Sprintf(mappedInsertQuery, table)
-	db.batch.Queue(query, svm.Timestamp, svm.Source.Label, svm.Source.Type, svm.Context, path, svm.Value, svm.Source.Uuid, svm.Origin, svm.Source.TransferUuid)
+	db.batch.Queue(query, svm.Timestamp, svm.Source.Label, svm.Source.Type, svm.Context, path, svm.Value, svm.Source.Uuid, svm.Origin, svm.Source.TransferUuid).Query(func(rows pgx.Rows) error {
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("query failed with an error: %w", err)
+		}
+
+		return nil
+	})
 	db.batchSizeGauge.Inc()
 
 	if db.batch.Len() > db.batchSize {
@@ -238,7 +252,14 @@ func (db *PostgresqlDatabase) updateStaticData(context, path string, value any) 
 	}
 
 	query := fmt.Sprintf(`INSERT INTO "gosk"."static_data" ("context", "%s") VALUES ($1, $2) ON CONFLICT("context") DO UPDATE SET "%s" = $2;`, column, column)
-	db.batch.Queue(query, context, v)
+	db.batch.Queue(query, context, v).Query(func(rows pgx.Rows) error {
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("query failed with an error: %w", err)
+		}
+
+		return nil
+	})
 	db.batchSizeGauge.Inc()
 }
 

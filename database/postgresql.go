@@ -143,6 +143,15 @@ func (db *PostgresqlDatabase) WriteRaw(raw *message.Raw) {
 	db.batch.Queue(rawInsertQuery, raw.Timestamp, raw.Connector, raw.Value, raw.Uuid, raw.Type).Query(func(rows pgx.Rows) error {
 		rows.Close()
 		if err := rows.Err(); err != nil {
+			logger.GetLogger().Error("Query failed",
+				zap.String("query", rawInsertQuery),
+				zap.Time("timestamp", raw.Timestamp),
+				zap.String("connector", raw.Connector),
+				zap.ByteString("value", raw.Value),
+				zap.String("uuid", raw.Uuid.String()),
+				zap.String("type", raw.Type),
+			)
+
 			return fmt.Errorf("query failed with an error: %w", err)
 		}
 
@@ -194,6 +203,19 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 	db.batch.Queue(query, svm.Timestamp, svm.Source.Label, svm.Source.Type, svm.Context, path, svm.Value, svm.Source.Uuid, svm.Origin, svm.Source.TransferUuid).Query(func(rows pgx.Rows) error {
 		rows.Close()
 		if err := rows.Err(); err != nil {
+			logger.GetLogger().Error("Query failed",
+				zap.String("query", query),
+				zap.Time("timestamp", svm.Timestamp),
+				zap.String("source.label", svm.Source.Label),
+				zap.String("source.type", svm.Source.Type),
+				zap.String("context", svm.Context),
+				zap.String("path", path),
+				zap.Any("value", svm.Value),
+				zap.String("source.uuid", svm.Source.Uuid.String()),
+				zap.String("origin", svm.Origin),
+				zap.String("source.transferuuid", svm.Source.TransferUuid.String()),
+			)
+
 			return fmt.Errorf("query failed with an error: %w", err)
 		}
 
@@ -255,6 +277,12 @@ func (db *PostgresqlDatabase) updateStaticData(context, path string, value any) 
 	db.batch.Queue(query, context, v).Query(func(rows pgx.Rows) error {
 		rows.Close()
 		if err := rows.Err(); err != nil {
+			logger.GetLogger().Error("Query failed",
+				zap.String("query", query),
+				zap.String("context", context),
+				zap.Any("v", v),
+			)
+
 			return fmt.Errorf("query failed with an error: %w", err)
 		}
 

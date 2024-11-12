@@ -22,6 +22,8 @@ import (
 
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/version"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
@@ -34,6 +36,7 @@ var (
 	profilingAndMetricsPort string
 	subscribeURL            string
 	publishURL              string
+	gosk_info_gauge         prometheus.Gauge
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -71,6 +74,8 @@ func init() {
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "path to config file")
 	rootCmd.PersistentFlags().StringVar(&profilingAndMetricsPort, "pmport", "", "port to run the http server for pprof and prometheus")
+	gosk_info_gauge = promauto.NewGauge(prometheus.GaugeOpts{Name: "gosk_info", Help: "general information about this gosk process", ConstLabels: prometheus.Labels{"version": version.Version}})
+	gosk_info_gauge.Set(1)
 }
 
 // initConfig reads in config file

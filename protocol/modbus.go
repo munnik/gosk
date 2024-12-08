@@ -71,11 +71,7 @@ func NewModbusClient(realClient *modbus.Client, header *ModbusHeader) *ModbusCli
 }
 
 func (m *ModbusClient) Read(bytes []byte) (int, error) {
-	count, err := m.execute(m.header, bytes)
-	if err != nil {
-		return 0, err
-	}
-	return count, nil
+	return m.execute(m.header, bytes)
 }
 
 func (m *ModbusClient) Write(bytes []byte) (int, error) {
@@ -93,6 +89,10 @@ func (m *ModbusClient) Write(bytes []byte) (int, error) {
 
 func (m *ModbusClient) execute(header *ModbusHeader, bytes []byte) (int, error) {
 	if err := m.realClient.Open(); err != nil && err != modbus.ErrTransportIsAlreadyOpen {
+		logger.GetLogger().Error(
+			"Could not open real client",
+			zap.Error(err),
+		)
 		return 0, err
 	}
 
@@ -179,11 +179,12 @@ func (m *ModbusClient) Poll(stream chan<- []byte, pollingInterval time.Duration)
 			if err != nil {
 				logger.GetLogger().Warn(
 					"Error while reading",
-					zap.String("Error", err.Error()),
+					zap.Error(err),
 				)
-			} else {
-				stream <- bytes[:n]
+				continue
 			}
+
+			stream <- bytes[:n]
 		case <-done:
 			ticker.Stop()
 			return nil

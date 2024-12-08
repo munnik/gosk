@@ -3,7 +3,6 @@ package connector
 import (
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
@@ -38,7 +37,6 @@ func NewModbusConnector(c *config.ConnectorConfig, rgcs []config.RegisterGroupCo
 		URL:      c.URL.String(),
 		Speed:    c.BaudRate,
 		DataBits: c.DataBits,
-		Timeout:  1 * time.Second,
 	}
 	switch c.StopBits {
 	case "1":
@@ -109,7 +107,10 @@ func (m *ModbusConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw])
 
 func (m *ModbusConnector) receive(stream chan<- []byte) error {
 	errors := make(chan error)
+	defer close(errors)
 	done := make(chan bool)
+	defer close(done)
+
 	var wg sync.WaitGroup
 	wg.Add(len(m.registerGroupsConfig))
 
@@ -122,6 +123,10 @@ func (m *ModbusConnector) receive(stream chan<- []byte) error {
 			)
 			fmt.Printf("Created a new modbus cient for slave %d, function code %d, address %d, # registers %d\n", rgc.Slave, rgc.FunctionCode, rgc.Address, rgc.NumberOfCoilsOrRegisters)
 			if err := client.Poll(stream, rgc.PollingInterval); err != nil {
+				logger.GetLogger().Error(
+					"An error occurred while polling the client",
+					zap.Error(err),
+				)
 				errors <- err
 			}
 			wg.Done()
@@ -130,14 +135,12 @@ func (m *ModbusConnector) receive(stream chan<- []byte) error {
 	go func() {
 		// if the reading of all register groups is finished close the done channel
 		wg.Wait()
-		close(done)
 	}()
 	select {
 	case <-done:
 		// all reading is done, break the select statement
 		break
 	case err := <-errors:
-		close(errors)
 		return err
 	}
 	return nil

@@ -164,6 +164,9 @@ func (l LineConnector) createFileConnection() (io.ReadWriter, error) {
 		if err != nil {
 			return nil, fmt.Errorf("unable to open the port %v for reading and writing, the error that occurred was %v", l.config.URL.Path, err)
 		}
+		if port, ok := connection.(serial.Port); ok {
+			port.SetReadTimeout(time.Second)
+		}
 	} else {
 		connection, err = os.Open(l.config.URL.Path)
 		if err != nil {

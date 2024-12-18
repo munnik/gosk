@@ -14,3 +14,4 @@ dist/*
 config/**/*.yaml
 config/**/*.dbc
 !config/**/sample-*.yaml
+.direnv/

@@ -3,7 +3,6 @@ package transfer
 import (
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/zap"
+	"golang.org/x/exp/rand"
 )
 
 type OriginPeriod struct {
@@ -66,8 +66,6 @@ func NewTransferRequester(c *config.TransferConfig) *TransferRequester {
 }
 
 func (t *TransferRequester) Run() {
-	rand.Seed(time.Now().UnixNano())
-
 	t.mqttClient = mqtt.New(t.mqttConfig, t.messageReceived, fmt.Sprintf(respondTopic, "#"))
 	defer t.mqttClient.Disconnect()
 

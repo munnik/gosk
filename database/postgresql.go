@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	zapadapter "github.com/jackc/pgx-zap"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/tracelog"
 	"github.com/munnik/gosk/config"
@@ -28,7 +29,7 @@ import (
 const (
 	rawInsertQuery                 = `INSERT INTO "raw_data" ("time", "connector", "value", "uuid", "type") VALUES ($1, $2, $3, $4, $5)`
 	selectRawQuery                 = `SELECT "time", "connector", "value", "uuid", "type" FROM "raw_data"`
-	mappedInsertQuery              = `INSERT INTO "%s" ("time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT ("time", "origin", "context", "connector", "path") DO NOTHING`
+	mappedInsertQuery              = `INSERT INTO "%s" ("time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT ("time", "origin", "context", "connector", "path") DO UPDATE SET value = EXCLUDED.value`
 	selectMappedQuery              = `SELECT "time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid" FROM "mapped_data"`
 	selectMostRecentMappedQuery    = `SELECT DISTINCT ON ("context", "path") "time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid" FROM "mapped_data" WHERE "time" > $1 ORDER BY "context", "path", "time" DESC`
 	selectLocalCountQuery          = `SELECT "count" FROM "transfer_local_data" WHERE "origin" = $1 AND "start" = $2`
@@ -53,6 +54,7 @@ type PostgresqlDatabase struct {
 	batchSize       int
 	lastFlush       time.Time
 	flushMutex      sync.Mutex
+	batchMutex      sync.Mutex
 	upgradeDone     bool
 	databaseTimeout time.Duration
 	flushesCounter  prometheus.Counter
@@ -140,10 +142,10 @@ func (db *PostgresqlDatabase) GetConnection() *pgxpool.Pool {
 
 func (db *PostgresqlDatabase) WriteRaw(raw *message.Raw) {
 	db.writesCounter.Inc()
-	db.batch.Queue(rawInsertQuery, raw.Timestamp, raw.Connector, raw.Value, raw.Uuid, raw.Type).Query(func(rows pgx.Rows) error {
-		rows.Close()
-		if err := rows.Err(); err != nil {
-			logger.GetLogger().Error("Query failed",
+	db.batchMutex.Lock()
+	db.batch.Queue(rawInsertQuery, raw.Timestamp, raw.Connector, raw.Value, raw.Uuid, raw.Type).Exec(func(ct pgconn.CommandTag) error {
+		if ct.RowsAffected() == 0 {
+			logger.GetLogger().Warn("0 rows affected",
 				zap.String("query", rawInsertQuery),
 				zap.Time("timestamp", raw.Timestamp),
 				zap.String("connector", raw.Connector),
@@ -151,12 +153,12 @@ func (db *PostgresqlDatabase) WriteRaw(raw *message.Raw) {
 				zap.String("uuid", raw.Uuid.String()),
 				zap.String("type", raw.Type),
 			)
-
-			return fmt.Errorf("query failed with an error: %w", err)
 		}
 
 		return nil
 	})
+	db.batchMutex.Unlock()
+
 	db.batchSizeGauge.Inc()
 	if db.batch.Len() > db.batchSize {
 		go db.flushBatch()
@@ -200,10 +202,10 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 		table = "mapped_data_other_context"
 	}
 	query := fmt.Sprintf(mappedInsertQuery, table)
-	db.batch.Queue(query, svm.Timestamp, svm.Source.Label, svm.Source.Type, svm.Context, path, svm.Value, svm.Source.Uuid, svm.Origin, svm.Source.TransferUuid).Query(func(rows pgx.Rows) error {
-		rows.Close()
-		if err := rows.Err(); err != nil {
-			logger.GetLogger().Error("Query failed",
+	db.batchMutex.Lock()
+	db.batch.Queue(query, svm.Timestamp, svm.Source.Label, svm.Source.Type, svm.Context, path, svm.Value, svm.Source.Uuid, svm.Origin, svm.Source.TransferUuid).Exec(func(ct pgconn.CommandTag) error {
+		if ct.RowsAffected() == 0 {
+			logger.GetLogger().Warn("0 rows affected",
 				zap.String("query", query),
 				zap.Time("timestamp", svm.Timestamp),
 				zap.String("source.label", svm.Source.Label),
@@ -215,14 +217,13 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 				zap.String("origin", svm.Origin),
 				zap.String("source.transferuuid", svm.Source.TransferUuid.String()),
 			)
-
-			return fmt.Errorf("query failed with an error: %w", err)
 		}
 
 		return nil
 	})
-	db.batchSizeGauge.Inc()
+	db.batchMutex.Unlock()
 
+	db.batchSizeGauge.Inc()
 	if db.batch.Len() > db.batchSize {
 		go db.flushBatch()
 	}
@@ -274,21 +275,24 @@ func (db *PostgresqlDatabase) updateStaticData(context, path string, value any) 
 	}
 
 	query := fmt.Sprintf(`INSERT INTO "gosk"."static_data" ("context", "%s") VALUES ($1, $2) ON CONFLICT("context") DO UPDATE SET "%s" = $2;`, column, column)
-	db.batch.Queue(query, context, v).Query(func(rows pgx.Rows) error {
-		rows.Close()
-		if err := rows.Err(); err != nil {
-			logger.GetLogger().Error("Query failed",
+	db.batchMutex.Lock()
+	db.batch.Queue(query, context, v).Exec(func(ct pgconn.CommandTag) error {
+		if ct.RowsAffected() == 0 {
+			logger.GetLogger().Warn("0 rows affected",
 				zap.String("query", query),
 				zap.String("context", context),
 				zap.Any("v", v),
 			)
-
-			return fmt.Errorf("query failed with an error: %w", err)
 		}
 
 		return nil
 	})
+	db.batchMutex.Unlock()
+
 	db.batchSizeGauge.Inc()
+	if db.batch.Len() > db.batchSize {
+		go db.flushBatch()
+	}
 }
 
 func (db *PostgresqlDatabase) ReadMostRecentMapped(fromTime time.Time) ([]*message.Mapped, error) {
@@ -612,31 +616,32 @@ func (db *PostgresqlDatabase) DowngradeDatabase() error {
 }
 
 func (db *PostgresqlDatabase) flushBatch() {
-	start := time.Now()
-	if db.batch.Len() < 1 { // prevent flushing when queue is empty
+	db.flushMutex.Lock() // make sure only one flush runs at the same time, to prevent deadlocks
+	defer db.flushMutex.Unlock()
+
+	// start := time.Now()
+	batchToFlush := db.copyBatch()
+	// prevent flushing when queue is empty
+	if batchToFlush == nil {
 		return
 	}
-	db.flushMutex.Lock()
-	db.flushesCounter.Inc()
-	batchPtr := db.batch
-	db.batch = &pgx.Batch{}
-	db.batchSizeGauge.Set(0)
-	db.flushMutex.Unlock() // new batch created, no need to keep the lock
 	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
 	defer cancel()
-	rowsAffected := 0
-	result := db.GetConnection().SendBatch(ctx, batchPtr)
-	for i := 0; i < batchPtr.Len(); i++ {
-		tag, err := result.Exec()
-		rowsAffected += int(tag.RowsAffected())
-		if err != nil || tag.RowsAffected() == 0 {
-			logger.GetLogger().Warn("Got an error or zero rows where effected while executing statement from batch",
-				zap.String("tag", tag.String()),
-				zap.Int64("rows effected", tag.RowsAffected()),
-				zap.Error(err),
-			)
-		}
-	}
+	// rowsAffected := 0
+	result := db.GetConnection().SendBatch(ctx, batchToFlush)
+
+	// for i := 0; i < batchToFlush.Len(); i++ {
+	// 	tag, err := result.Exec()
+	// 	rowsAffected += int(tag.RowsAffected())
+	// 	if err != nil || tag.RowsAffected() == 0 {
+	// 		logger.GetLogger().Warn("Got an error or zero rows where effected while executing statement from batch",
+	// 			zap.String("tag", tag.String()),
+	// 			zap.Int64("rows effected", tag.RowsAffected()),
+	// 			zap.Error(err),
+	// 		)
+	// 	}
+	// }
+
 	if err := result.Close(); err != nil {
 		if ctx.Err() != nil {
 			logger.GetLogger().Error("Timeout during database insertion", zap.Error(ctx.Err()), zap.Error(err))
@@ -649,12 +654,32 @@ func (db *PostgresqlDatabase) flushBatch() {
 		)
 		return
 	}
-	logger.GetLogger().Info(
-		"Batch flushed",
-		zap.Int("Rows inserted", rowsAffected),
-		zap.Int("Rows expected to insert", batchPtr.Len()),
-		zap.Duration("time", time.Since(start)),
-	)
+	// if rowsAffected != batchToFlush.Len() {
+	// 	logger.GetLogger().Info(
+	// 		"Batch flushed",
+	// 		zap.Int("Rows inserted", rowsAffected),
+	// 		zap.Int("Rows expected to insert", batchToFlush.Len()),
+	// 		zap.Duration("time", time.Since(start)),
+	// 	)
+	// }
 	db.lastFlush = time.Now()
 	db.lastFlushGauge.SetToCurrentTime()
+}
+
+func (db *PostgresqlDatabase) copyBatch() *pgx.Batch {
+	db.batchMutex.Lock()
+	defer db.batchMutex.Unlock()
+
+	if db.batch.Len() < 1 {
+		return nil
+	}
+
+	db.flushesCounter.Inc()
+	queuedQueries := make([]*pgx.QueuedQuery, db.batch.Len())
+	copy(queuedQueries, db.batch.QueuedQueries)
+	db.batch.QueuedQueries = db.batch.QueuedQueries[:0]
+	db.batchSizeGauge.Set(0)
+
+	batchToFlush := &pgx.Batch{QueuedQueries: queuedQueries}
+	return batchToFlush
 }

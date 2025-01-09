@@ -113,42 +113,45 @@ func (t *TransferResponder) respondWithCount(request RequestMessage) {
 	}
 	topic := fmt.Sprintf(respondTopic, t.config.Origin)
 	t.mqttClient.Publish(topic, 0, true, bytes)
+	t.db.LogTransferRequest(t.config.Origin, response)
 	t.countRequestsHandled.Inc()
 }
 
-func (t *TransferResponder) respondWithData(request RequestMessage) {
-	localCountsPerUuid, err := t.db.SelectCountPerUuid(t.config.Origin, request.PeriodStart)
+func (t *TransferResponder) respondWithData(requestMessage RequestMessage) {
+	localCountsPerUuid, err := t.db.SelectCountPerUuid(t.config.Origin, requestMessage.PeriodStart)
 	if err != nil {
 		logger.GetLogger().Warn(
 			"Could not retrieve counts per uuid from database",
 			zap.String("Error", err.Error()),
 			zap.String("Origin", t.config.Origin),
-			zap.Time("Start", request.PeriodStart),
+			zap.Time("Start", requestMessage.PeriodStart),
 		)
 		return
 	}
 
-	for uuid, count := range request.CountsPerUuid {
+	for uuid, count := range requestMessage.CountsPerUuid {
 		if _, ok := localCountsPerUuid[uuid]; ok && (localCountsPerUuid[uuid] <= count) {
 			// remove from list because remote already has complete set
 			delete(localCountsPerUuid, uuid)
 		}
 	}
 
-	t.injectData(localCountsPerUuid, request.UUID, request.PeriodStart)
+	requestMessage.CountsPerUuid = localCountsPerUuid
+	t.injectData(requestMessage)
+	t.db.LogTransferRequest(t.config.Origin, requestMessage)
 	t.uuidsTransmitted.Add(float64(len(localCountsPerUuid)))
 	t.dataRequestsHandled.Inc()
 }
 
-func (t *TransferResponder) injectData(uuidsToTransmit map[uuid.UUID]int, transferUuid uuid.UUID, period time.Time) {
-	uuids := make([]uuid.UUID, len(uuidsToTransmit))
-	for uuid := range uuidsToTransmit {
+func (t *TransferResponder) injectData(requestMessage RequestMessage) {
+	uuids := make([]uuid.UUID, len(requestMessage.CountsPerUuid))
+	for uuid := range requestMessage.CountsPerUuid {
 		uuids = append(uuids, uuid)
 	}
 	pgUuids := &pgtype.UUIDArray{}
 	pgUuids.Set(uuids)
 
-	deltas, err := t.db.ReadMapped(`WHERE "uuid" = ANY ($1) AND "time" BETWEEN $2 AND $2 + '5m'::interval`, pgUuids, period)
+	deltas, err := t.db.ReadMapped(`WHERE "uuid" = ANY ($1) AND "time" BETWEEN $2 AND $2 + '5m'::interval`, pgUuids, requestMessage.PeriodStart)
 	if err != nil {
 		logger.GetLogger().Warn(
 			"Could not retrieve mapped data from database",
@@ -158,7 +161,7 @@ func (t *TransferResponder) injectData(uuidsToTransmit map[uuid.UUID]int, transf
 	}
 	for _, delta := range deltas {
 		for i := range delta.Updates {
-			delta.Updates[i].Source.TransferUuid = transferUuid
+			delta.Updates[i].Source.TransferUuid = requestMessage.UUID
 		}
 		t.sendBuffer <- delta
 		t.recordsTransmitted.Inc()

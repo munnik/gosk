@@ -58,7 +58,7 @@ func NewTransferRequester(c *config.TransferConfig) *TransferRequester {
 	}
 
 	if result.numberOfRequestWorkers == 0 {
-		result.numberOfRequestWorkers = 5
+		result.numberOfRequestWorkers = 1
 	}
 	result.dataRequestChannel = make(chan OriginPeriod, result.numberOfRequestWorkers)
 

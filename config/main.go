@@ -332,6 +332,7 @@ func NewTransferConfig(configFilePath string) *TransferConfig {
 		SleepBetweenDataRequests:  6 * time.Hour,
 		SleepBetweenRespondDeltas: 100 * time.Millisecond,
 		MaxPeriodsToRequest:       500,
+		NumberOfRequestWorkers:    5,
 	}
 	readConfigFile(result, configFilePath)
 

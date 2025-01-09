@@ -54,7 +54,6 @@ func (r *CanBusConnector) receive(stream chan<- []byte) error {
 
 func handleCanFrameStream(stream chan<- []byte) can.HandlerFunc {
 	return func(frm can.Frame) {
-		// fmt.Println(frm)
 		bytes := FrameToBytes(frm)
 		stream <- bytes
 

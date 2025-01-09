@@ -1,7 +1,6 @@
 package mapper
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
@@ -32,7 +31,6 @@ func NewAggregateMapper(c config.MapperConfig, emc []*config.ExpressionMappingCo
 			retentionTime = m.RetentionTime
 		}
 	}
-	fmt.Println(retentionTime)
 	return &AggregateMapper{config: c, protocol: config.SignalKType, retentionTime: retentionTime, aggregateMappings: mappings, env: env}, nil
 }
 

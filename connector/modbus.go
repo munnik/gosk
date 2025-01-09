@@ -121,7 +121,12 @@ func (m *ModbusConnector) receive(stream chan<- []byte) error {
 				m.realClient,
 				rgc.ExtractModbusHeader(),
 			)
-			fmt.Printf("Created a new modbus cient for slave %d, function code %d, address %d, # registers %d\n", rgc.Slave, rgc.FunctionCode, rgc.Address, rgc.NumberOfCoilsOrRegisters)
+			logger.GetLogger().Info("Created a new modbus cient",
+				zap.Uint8("slave", rgc.Slave),
+				zap.Uint16("function code", rgc.FunctionCode),
+				zap.Uint16("address", rgc.Address),
+				zap.Uint16("number of coils or registers", rgc.NumberOfCoilsOrRegisters),
+			)
 			if err := client.Poll(stream, rgc.PollingInterval); err != nil {
 				logger.GetLogger().Error(
 					"An error occurred while polling the client",

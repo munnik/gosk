@@ -71,7 +71,6 @@ func (m *CanBusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		}
 	}
 
-	// fmt.Println(u)
 	return result.AddUpdate(u), nil
 }
 
@@ -118,7 +117,6 @@ func extractSignal(mapping dbc.SignalDef, origin string, frm can.Frame) Signal {
 
 	// get conversion
 	res := val*mapping.Factor + mapping.Offset
-	// fmt.Printf("[%s %f]\n", name, res)
 	return Signal{origin: origin, name: string(name), value: res}
 }
 

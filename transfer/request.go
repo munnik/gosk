@@ -32,6 +32,7 @@ type TransferRequester struct {
 	sleepBetweenDataRequests  time.Duration
 	numberOfRequestWorkers    int
 	maxPeriodsToRequest       int
+	completenessFactor        float64
 	dataRequestChannel        chan OriginPeriod
 	countRequestsSent         prometheus.CounterVec
 	countResponsesReceived    prometheus.CounterVec
@@ -49,6 +50,7 @@ func NewTransferRequester(c *config.TransferConfig) *TransferRequester {
 		sleepBetweenDataRequests:  c.SleepBetweenDataRequests,
 		numberOfRequestWorkers:    c.NumberOfRequestWorkers,
 		maxPeriodsToRequest:       c.MaxPeriodsToRequest,
+		completenessFactor:        c.CompletenessFactor,
 		countRequestsSent:         *promauto.NewCounterVec(prometheus.CounterOpts{Name: "gosk_transfer_count_requests_total", Help: "total number of count requests sent, partitioned by origin"}, []string{"origin"}),
 		countResponsesReceived:    *promauto.NewCounterVec(prometheus.CounterOpts{Name: "gosk_transfer_count_responses_total", Help: "total number of count responses received, partitioned by origin"}, []string{"origin"}),
 		dataRequestsSent:          *promauto.NewCounterVec(prometheus.CounterOpts{Name: "gosk_transfer_data_requests_total", Help: "total number of data requests sent, partitioned by origin"}, []string{"origin"}),
@@ -174,7 +176,7 @@ func (t *TransferRequester) countResponseReceived(origin string, response Respon
 }
 
 func (t *TransferRequester) sendDataRequests() {
-	origins, err := t.db.SelectIncompletePeriods()
+	origins, err := t.db.SelectIncompletePeriods(t.completenessFactor)
 	if err != nil {
 		logger.GetLogger().Warn(
 			"Could not retrieve incomplete periods per origin",
@@ -211,6 +213,11 @@ func (t *TransferRequester) sendDataRequests() {
 
 func (t *TransferRequester) sendDataRequestWorker(dataRequests <-chan OriginPeriod) {
 	for request := range dataRequests {
+		logger.GetLogger().Info(
+			"Sending data request for",
+			zap.String("Origin", request.origin),
+			zap.Time("Start", request.period),
+		)
 		countsPerUuid, err := t.db.SelectCountPerUuid(request.origin, request.period)
 		if err != nil {
 			logger.GetLogger().Warn(

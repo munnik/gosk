@@ -34,7 +34,7 @@ const (
 	selectMostRecentMappedQuery    = `SELECT DISTINCT ON ("context", "path") "time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid" FROM "mapped_data" WHERE "time" > $1 ORDER BY "context", "path", "time" DESC`
 	selectLocalCountQuery          = `SELECT "count" FROM "transfer_local_data" WHERE "origin" = $1 AND "start" = $2`
 	selectExistingRemoteCounts     = `SELECT "origin", "start" FROM "transfer_remote_data" WHERE "start" >= $1`
-	selectIncompletePeriodsQuery   = `SELECT "origin", "start" FROM "transfer_data" WHERE "local_count" < "remote_count" ORDER BY "start" DESC`
+	selectIncompletePeriodsQuery   = `SELECT "origin", "start" FROM "transfer_data" WHERE "local_count" < "remote_count" * $1 ORDER BY "start" DESC`
 	insertOrUpdateRemoteData       = `INSERT INTO "transfer_remote_data" ("start", "origin", "count") VALUES ($1, $2, $3) ON CONFLICT ("start", "origin") DO UPDATE SET "count" = $3`
 	logTransferInsertQuery         = `INSERT INTO "transfer_log" ("time", "origin", "message") VALUES (NOW(), $1, $2)`
 	selectMappedCountPerUuid       = `SELECT "uuid", COUNT("uuid") FROM "mapped_data" WHERE "origin" = $1 AND "time" BETWEEN $2 AND $2 + '5m'::interval GROUP BY 1`
@@ -463,10 +463,10 @@ func (db *PostgresqlDatabase) SelectExistingRemoteCounts(from time.Time) (map[st
 }
 
 // Returns the start timestamp of each period that has the same or more local rows than remote
-func (db *PostgresqlDatabase) SelectIncompletePeriods() (map[string][]time.Time, error) {
+func (db *PostgresqlDatabase) SelectIncompletePeriods(completenessFactor float64) (map[string][]time.Time, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
 	defer cancel()
-	rows, err := db.GetConnection().Query(ctx, selectIncompletePeriodsQuery)
+	rows, err := db.GetConnection().Query(ctx, selectIncompletePeriodsQuery, completenessFactor)
 	if err != nil {
 		return nil, err
 	} else if ctx.Err() != nil {

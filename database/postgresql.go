@@ -34,7 +34,7 @@ const (
 	selectMostRecentMappedQuery    = `SELECT DISTINCT ON ("context", "path") "time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid" FROM "mapped_data" WHERE "time" > $1 ORDER BY "context", "path", "time" DESC`
 	selectLocalCountQuery          = `SELECT "count" FROM "transfer_local_data" WHERE "origin" = $1 AND "start" = $2`
 	selectExistingRemoteCounts     = `SELECT "origin", "start" FROM "transfer_remote_data" WHERE "start" >= $1`
-	selectIncompletePeriodsQuery   = `SELECT "origin", "start" FROM "transfer_data" WHERE "local_count" < "remote_count" * $1 ORDER BY "start" DESC`
+	selectIncompletePeriodsQuery   = `SELECT "origin", "start", "local_count", "remote_count" FROM "transfer_data" WHERE "local_count" < "remote_count" * $1::double precision ORDER BY "start" DESC`
 	insertOrUpdateRemoteData       = `INSERT INTO "transfer_remote_data" ("start", "origin", "count") VALUES ($1, $2, $3) ON CONFLICT ("start", "origin") DO UPDATE SET "count" = $3`
 	logTransferInsertQuery         = `INSERT INTO "transfer_log" ("time", "origin", "message") VALUES (NOW(), $1, $2)`
 	selectMappedCountPerUuid       = `SELECT "uuid", COUNT("uuid") FROM "mapped_data" WHERE "origin" = $1 AND "time" BETWEEN $2 AND $2 + '5m'::interval GROUP BY 1`
@@ -44,7 +44,12 @@ const (
 //go:embed migrations/*.sql
 var fs embed.FS
 
-// const databaseTimeout time.Duration = 1 * time.Second
+type IncompletePeriod struct {
+	Origin      string
+	Period      time.Time
+	LocalCount  int
+	RemoteCount int
+}
 
 type PostgresqlDatabase struct {
 	url             string
@@ -463,7 +468,7 @@ func (db *PostgresqlDatabase) SelectExistingRemoteCounts(from time.Time) (map[st
 }
 
 // Returns the start timestamp of each period that has the same or more local rows than remote
-func (db *PostgresqlDatabase) SelectIncompletePeriods(completenessFactor float64) (map[string][]time.Time, error) {
+func (db *PostgresqlDatabase) SelectIncompletePeriods(completenessFactor float64) ([]IncompletePeriod, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
 	defer cancel()
 	rows, err := db.GetConnection().Query(ctx, selectIncompletePeriodsQuery, completenessFactor)
@@ -476,18 +481,22 @@ func (db *PostgresqlDatabase) SelectIncompletePeriods(completenessFactor float64
 	}
 	defer rows.Close()
 
-	result := make(map[string][]time.Time)
+	result := make([]IncompletePeriod, 0)
 	var origin string
-	var start time.Time
+	var period time.Time
+	var localCount int
+	var remoteCount int
 	for rows.Next() {
-		err := rows.Scan(&origin, &start)
+		err := rows.Scan(&origin, &period, &localCount, &remoteCount)
 		if err != nil {
 			return nil, err
 		}
-		if _, ok := result[origin]; !ok {
-			result[origin] = make([]time.Time, 0)
-		}
-		result[origin] = append(result[origin], start)
+		result = append(result, IncompletePeriod{
+			Origin:      origin,
+			Period:      period,
+			LocalCount:  localCount,
+			RemoteCount: remoteCount,
+		})
 	}
 	// check for errors after last call to .Next()
 	if err := rows.Err(); err != nil {
@@ -616,31 +625,23 @@ func (db *PostgresqlDatabase) DowngradeDatabase() error {
 }
 
 func (db *PostgresqlDatabase) flushBatch() {
-	db.flushMutex.Lock() // make sure only one flush runs at the same time, to prevent deadlocks
-	defer db.flushMutex.Unlock()
+	// db.flushMutex.Lock() // make sure only one flush runs at the same time, to prevent deadlocks
+	// defer db.flushMutex.Unlock()
 
-	// start := time.Now()
 	batchToFlush := db.copyBatch()
 	// prevent flushing when queue is empty
 	if batchToFlush == nil {
 		return
 	}
+	uuid := uuid.New()
+	start := time.Now()
+	logger.GetLogger().Info(
+		"Going to flush",
+		zap.String("uuid", uuid.String()),
+	)
 	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
 	defer cancel()
-	// rowsAffected := 0
 	result := db.GetConnection().SendBatch(ctx, batchToFlush)
-
-	// for i := 0; i < batchToFlush.Len(); i++ {
-	// 	tag, err := result.Exec()
-	// 	rowsAffected += int(tag.RowsAffected())
-	// 	if err != nil || tag.RowsAffected() == 0 {
-	// 		logger.GetLogger().Warn("Got an error or zero rows where effected while executing statement from batch",
-	// 			zap.String("tag", tag.String()),
-	// 			zap.Int64("rows effected", tag.RowsAffected()),
-	// 			zap.Error(err),
-	// 		)
-	// 	}
-	// }
 
 	if err := result.Close(); err != nil {
 		if ctx.Err() != nil {
@@ -649,19 +650,22 @@ func (db *PostgresqlDatabase) flushBatch() {
 			return
 		}
 		logger.GetLogger().Error(
-			"Unable to flush batch",
+			"Unable to flush batch, reinserting queries to the queue",
 			zap.String("Error", err.Error()),
 		)
+		for _, query := range batchToFlush.QueuedQueries {
+			db.batchMutex.Lock()
+			db.batch.QueuedQueries = append(db.batch.QueuedQueries, query)
+			db.batchMutex.Unlock()
+			time.Sleep(10 * time.Second / time.Duration(batchToFlush.Len())) // spread out the queries over 10 seconds
+		}
 		return
 	}
-	// if rowsAffected != batchToFlush.Len() {
-	// 	logger.GetLogger().Info(
-	// 		"Batch flushed",
-	// 		zap.Int("Rows inserted", rowsAffected),
-	// 		zap.Int("Rows expected to insert", batchToFlush.Len()),
-	// 		zap.Duration("time", time.Since(start)),
-	// 	)
-	// }
+	logger.GetLogger().Info(
+		"Flush completed",
+		zap.String("uuid", uuid.String()),
+		zap.Duration("duration", time.Since(start)),
+	)
 	db.lastFlush = time.Now()
 	db.lastFlushGauge.SetToCurrentTime()
 }

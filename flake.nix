@@ -14,14 +14,19 @@
 
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
-            go-migrate
             delve
             gdlv
             go
+            go-migrate
+            go-outline
+            gocode
+            gocode-gomod
+            godef
             gofumpt
             golines
             golint
             gomodifytags
+            gopkgs
             gopls
             goreleaser
             gotests

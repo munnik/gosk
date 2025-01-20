@@ -19,11 +19,6 @@ import (
 	"golang.org/x/exp/rand"
 )
 
-type OriginPeriod struct {
-	origin string
-	period time.Time
-}
-
 type TransferRequester struct {
 	db                        *database.PostgresqlDatabase
 	mqttConfig                *config.MQTTConfig
@@ -33,7 +28,7 @@ type TransferRequester struct {
 	numberOfRequestWorkers    int
 	maxPeriodsToRequest       int
 	completenessFactor        float64
-	dataRequestChannel        chan OriginPeriod
+	dataRequestChannel        chan database.IncompletePeriod
 	countRequestsSent         prometheus.CounterVec
 	countResponsesReceived    prometheus.CounterVec
 	dataRequestsSent          prometheus.CounterVec
@@ -62,7 +57,7 @@ func NewTransferRequester(c *config.TransferConfig) *TransferRequester {
 	if result.numberOfRequestWorkers == 0 {
 		result.numberOfRequestWorkers = 1
 	}
-	result.dataRequestChannel = make(chan OriginPeriod, result.numberOfRequestWorkers)
+	result.dataRequestChannel = make(chan database.IncompletePeriod, result.numberOfRequestWorkers)
 
 	return result
 }
@@ -176,7 +171,7 @@ func (t *TransferRequester) countResponseReceived(origin string, response Respon
 }
 
 func (t *TransferRequester) sendDataRequests() {
-	origins, err := t.db.SelectIncompletePeriods(t.completenessFactor)
+	incompletePeriods, err := t.db.SelectIncompletePeriods(t.completenessFactor)
 	if err != nil {
 		logger.GetLogger().Warn(
 			"Could not retrieve incomplete periods per origin",
@@ -188,6 +183,14 @@ func (t *TransferRequester) sendDataRequests() {
 		return
 	}
 
+	incompletePeriodsGrouped := map[string][]database.IncompletePeriod{}
+	for _, i := range incompletePeriods {
+		if _, ok := incompletePeriodsGrouped[i.Origin]; !ok {
+			incompletePeriodsGrouped[i.Origin] = make([]database.IncompletePeriod, 0)
+		}
+		incompletePeriodsGrouped[i.Origin] = append(incompletePeriodsGrouped[i.Origin], i)
+	}
+
 	var wg sync.WaitGroup
 	wg.Add(1)
 
@@ -195,49 +198,54 @@ func (t *TransferRequester) sendDataRequests() {
 		time.Sleep(t.sleepBetweenDataRequests)
 		wg.Done()
 	}()
-	for origin, periods := range origins {
-		go func(origin string, periods []time.Time) {
-			t.dataMissingPeriods.With(prometheus.Labels{"origin": origin}).Set(float64(len(periods)))
-			for i, period := range periods {
+	for origin, incompletePeriods := range incompletePeriodsGrouped {
+		go func(incompletePeriods []database.IncompletePeriod) {
+			t.dataMissingPeriods.With(prometheus.Labels{"origin": origin}).Set(float64(len(incompletePeriods)))
+			var i int
+			for i = range incompletePeriods {
 				if i > t.maxPeriodsToRequest {
-					t.firstPeriodRequested.With(prometheus.Labels{"origin": origin}).Set(float64(period.Unix()))
+					t.firstPeriodRequested.With(prometheus.Labels{"origin": origin}).Set(float64(incompletePeriods[i].Period.Unix()))
 					break
 				}
-				t.dataRequestChannel <- OriginPeriod{origin: origin, period: period}
+				t.dataRequestChannel <- incompletePeriods[i]
 			}
-			t.lastPeriodRequested.With(prometheus.Labels{"origin": origin}).Set(float64(periods[0].Unix()))
-		}(origin, periods)
+			t.firstPeriodRequested.With(prometheus.Labels{"origin": origin}).Set(float64(incompletePeriods[i].Period.Unix()))
+			t.lastPeriodRequested.With(prometheus.Labels{"origin": origin}).Set(float64(incompletePeriods[0].Period.Unix()))
+		}(incompletePeriods)
 	}
 	wg.Wait()
 }
 
-func (t *TransferRequester) sendDataRequestWorker(dataRequests <-chan OriginPeriod) {
+func (t *TransferRequester) sendDataRequestWorker(dataRequests <-chan database.IncompletePeriod) {
 	for request := range dataRequests {
-		logger.GetLogger().Info(
-			"Sending data request for",
-			zap.String("Origin", request.origin),
-			zap.Time("Start", request.period),
-		)
-		countsPerUuid, err := t.db.SelectCountPerUuid(request.origin, request.period)
+		countsPerUuid, err := t.db.SelectCountPerUuid(request.Origin, request.Period)
 		if err != nil {
 			logger.GetLogger().Warn(
 				"Could not retrieve counts per uuid from database",
 				zap.String("Error", err.Error()),
-				zap.String("Origin", request.origin),
-				zap.Time("Start", request.period),
+				zap.String("Origin", request.Origin),
+				zap.Time("Start", request.Period),
 			)
 			continue
 		}
 
+		logger.GetLogger().Info(
+			"Sending data request for",
+			zap.String("Origin", request.Origin),
+			zap.Time("Period", request.Period),
+			zap.Int("Local count", request.LocalCount),
+			zap.Int("Remote count", request.RemoteCount),
+			zap.Float64("Completeness", float64(request.LocalCount)/float64(request.RemoteCount)),
+		)
 		requestMessage := RequestMessage{
 			Command:       dataCmd,
 			UUID:          uuid.New(),
-			PeriodStart:   request.period,
+			PeriodStart:   request.Period,
 			CountsPerUuid: countsPerUuid,
 		}
-		t.sendMQTTCommand(request.origin, requestMessage)
-		t.db.LogTransferRequest(request.origin, requestMessage)
-		t.dataRequestsSent.With(prometheus.Labels{"origin": request.origin}).Inc()
+		t.sendMQTTCommand(request.Origin, requestMessage)
+		t.db.LogTransferRequest(request.Origin, requestMessage)
+		t.dataRequestsSent.With(prometheus.Labels{"origin": request.Origin}).Inc()
 	}
 }
 

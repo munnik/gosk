@@ -331,7 +331,7 @@ func NewTransferConfig(configFilePath string) *TransferConfig {
 		PostgresqlConfig:          defaultPostgresqlConfig(),
 		SleepBetweenCountRequests: 30 * time.Minute,
 		SleepBetweenDataRequests:  6 * time.Hour,
-		SleepBetweenRespondDeltas: 100 * time.Millisecond,
+		SleepBetweenRespondDeltas: 10 * time.Millisecond,
 		NumberOfRequestWorkers:    5,
 		MaxPeriodsToRequest:       500,
 		CompletenessFactor:        0.99,

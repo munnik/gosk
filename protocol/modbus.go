@@ -133,7 +133,7 @@ func (m *ModbusClient) execute(header *ModbusHeader, bytes []byte) (int, error) 
 		if err != nil {
 			return 0, err
 		}
-		m.realClient.WriteCoil(header.Address, coils[0], modbus.WithUnitID(m.header.Slave))
+		m.realClient.WriteCoil(header.Address, coils[0], modbus.WithUnitID(header.Slave))
 	case WriteSingleRegister:
 		if header.NumberOfCoilsOrRegisters != 1 {
 			return 0, fmt.Errorf("expected only 1 register but got %d", header.NumberOfCoilsOrRegisters)
@@ -145,13 +145,13 @@ func (m *ModbusClient) execute(header *ModbusHeader, bytes []byte) (int, error) 
 		if len(registers) != int(header.NumberOfCoilsOrRegisters) {
 			return 0, fmt.Errorf("expected %d registers but got %d register", header.NumberOfCoilsOrRegisters, len(registers))
 		}
-		m.realClient.WriteRegister(header.Address, registers[0], modbus.WithUnitID(m.header.Slave))
+		m.realClient.WriteRegister(header.Address, registers[0], modbus.WithUnitID(header.Slave))
 	case WriteMultipleCoils:
 		coils, err := BytesToCoils(bytes)
 		if err != nil {
 			return 0, err
 		}
-		m.realClient.WriteCoils(header.Address, coils, modbus.WithUnitID(m.header.Slave))
+		m.realClient.WriteCoils(header.Address, coils, modbus.WithUnitID(header.Slave))
 	case WriteMultipleRegisters:
 		registers, err := BytesToRegisters(bytes)
 		if err != nil {
@@ -160,7 +160,7 @@ func (m *ModbusClient) execute(header *ModbusHeader, bytes []byte) (int, error) 
 		if len(registers) != int(header.NumberOfCoilsOrRegisters) {
 			return 0, fmt.Errorf("expected %d registers but got %d register", header.NumberOfCoilsOrRegisters, len(registers))
 		}
-		m.realClient.WriteRegisters(header.Address, registers, modbus.WithUnitID(m.header.Slave))
+		m.realClient.WriteRegisters(header.Address, registers, modbus.WithUnitID(header.Slave))
 	default:
 		return 0, fmt.Errorf("unsupported function code type %v", header.FunctionCode)
 	}

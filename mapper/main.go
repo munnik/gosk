@@ -18,6 +18,10 @@ type RealMapper[T nanomsg.Message] interface {
 	DoMap(*T) (*message.Mapped, error)
 }
 
+type RealRawMapper[T nanomsg.Message] interface {
+	DoMap(*T) (*message.Raw, error)
+}
+
 func process[T nanomsg.Message](subscriber *nanomsg.Subscriber[T], publisher *nanomsg.Publisher[message.Mapped], mapper RealMapper[T], ignoreEmptyUpdates bool) {
 	receiveBuffer := make(chan *T, bufferCapacity)
 	defer close(receiveBuffer)
@@ -50,5 +54,32 @@ func process[T nanomsg.Message](subscriber *nanomsg.Subscriber[T], publisher *na
 			continue
 		}
 		sendBuffer <- out
+	}
+}
+
+func processRaw[T nanomsg.Message](subscriber *nanomsg.Subscriber[T], publisher *nanomsg.Publisher[message.Raw], mapper RealRawMapper[T]) {
+	receiveBuffer := make(chan *T, bufferCapacity)
+	defer close(receiveBuffer)
+	sendBuffer := make(chan *message.Raw, bufferCapacity)
+	defer close(sendBuffer)
+
+	go subscriber.Receive(receiveBuffer)
+	go publisher.Send(sendBuffer)
+
+	var err error
+
+	for in := range receiveBuffer {
+		var out *message.Raw
+		if out, err = mapper.DoMap(in); err != nil {
+			logger.GetLogger().Warn(
+				"Could not map the received data",
+				zap.Any("Input", in),
+				zap.String("Error", err.Error()),
+			)
+			continue
+		}
+		if out != nil {
+			sendBuffer <- out
+		}
 	}
 }

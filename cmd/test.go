@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"encoding/binary"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -23,15 +25,28 @@ var (
 		Use:   "testdata",
 		Short: "test data",
 		Long:  `generate test data`,
+	}
+	testMappedCmd = &cobra.Command{
+		Use:   "mapped",
+		Short: "mapped test data",
+		Long:  `generate mapped test data`,
 		Run:   doTest,
+	}
+	testRawCmd = &cobra.Command{
+		Use:   "raw",
+		Short: "raw test data",
+		Long:  `generate raw test data`,
+		Run:   doRawTest,
 	}
 )
 
 func init() {
 	rootCmd.AddCommand(testCmd)
-	testCmd.Flags().StringVarP(&publishURL, "publishURL", "p", "", "Nanomsg URL, the URL is used to publish the collected data on. It listens for connections.")
+	testCmd.PersistentFlags().StringVarP(&publishURL, "publishURL", "p", "", "Nanomsg URL, the URL is used to publish the collected data on. It listens for connections.")
 	testCmd.MarkFlagRequired("publishURL")
 
+	testCmd.AddCommand(testMappedCmd)
+	testCmd.AddCommand(testRawCmd)
 }
 
 func doTest(cmd *cobra.Command, args []string) {
@@ -70,6 +85,62 @@ func doTest(cmd *cobra.Command, args []string) {
 			result.AddUpdate(u)
 			i++
 			sendBuffer <- result
+		}
+	}()
+	wg.Wait()
+}
+
+func doRawTest(cmd *cobra.Command, args []string) {
+	sendBuffer := make(chan *message.Raw, bufferCapacity)
+	defer close(sendBuffer)
+	publisher := nanomsg.NewPublisher[message.Raw](publishURL)
+	go publisher.Send(sendBuffer)
+
+	c := config.NewTestDataConfig(cfgFile)
+	ticker := time.NewTicker(c.Delay)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		i := 0
+		for range ticker.C {
+			for _, path := range c.Paths {
+				result := message.NewRaw().WithConnector("sampleData").WithType("sample")
+
+				vm := vm.VM{}
+				env := make(map[string]interface{})
+				env["value"] = i
+				output, err := runExpr(vm, env, path)
+				if err == nil {
+					array, ok := output.([]interface{})
+					if !ok {
+						logger.GetLogger().Error("expression should return an array of register values")
+					}
+					registers := make([]int, len(array))
+					for i, v := range array {
+						value := v.(int)
+						registers[i] = value
+					}
+					bytes := make([]byte, 0, len(array)*2)
+					for _, v := range registers {
+						if v > math.MaxUint16 || v < 0 {
+							logger.GetLogger().Error("register value out of range.", zap.Int("value", v))
+						} else {
+							uv := uint16(v)
+							bytes = binary.BigEndian.AppendUint16(bytes, uv)
+						}
+					}
+					result.WithValue(bytes)
+				} else {
+					logger.GetLogger().Error(
+						"Could not parse value",
+						zap.String("path", path.Path),
+						zap.String("error", err.Error()),
+					)
+				}
+				sendBuffer <- result
+			}
+
+			i++
 		}
 	}()
 	wg.Wait()

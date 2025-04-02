@@ -17,6 +17,7 @@ limitations under the License.
 package cmd
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 
@@ -48,7 +49,7 @@ for different protocols (e.g. NMEA0183, NMEA200, Canbus or Modbus). This raw dat
 can be stored in a database for later usage. The data can also be forwarded to a 
 mapper to process the data and convert it to SignalK key/value pairs. Finally the 
 data can be published in different ways (e.g. HTTP or Websocket).`,
-	Version: version.Version,
+	Version: fmt.Sprintf("%s, %s", version.Version, version.Commit),
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -74,7 +75,7 @@ func init() {
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "path to config file")
 	rootCmd.PersistentFlags().StringVar(&profilingAndMetricsPort, "pmport", "", "port to run the http server for pprof and prometheus")
-	gosk_info_gauge = promauto.NewGauge(prometheus.GaugeOpts{Name: "gosk_info", Help: "general information about this gosk process", ConstLabels: prometheus.Labels{"version": version.Version}})
+	gosk_info_gauge = promauto.NewGauge(prometheus.GaugeOpts{Name: "gosk_info", Help: "general information about this gosk process", ConstLabels: prometheus.Labels{"version": version.Version, "commit": version.Commit}})
 	gosk_info_gauge.Set(1)
 }
 

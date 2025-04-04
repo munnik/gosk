@@ -65,6 +65,8 @@ func doConnect(cmd *cobra.Command, args []string) {
 	case config.HttpType:
 		ugc := config.NewUrlGroupsConfig(cfgFile)
 		conn, err = connector.NewHttpConnector(c, ugc)
+	case config.MannerEthernetType:
+		conn, err = connector.NewMannerEthernetConnector(c)
 	default:
 		logger.GetLogger().Fatal(
 			"Not a supported protocol",

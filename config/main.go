@@ -27,6 +27,8 @@ const (
 
 	HttpType = "http"
 
+	MannerEthernetType = "manner_ethernet"
+
 	ParityMap string = "NOE" // None, Odd, Even
 )
 

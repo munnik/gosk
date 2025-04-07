@@ -29,6 +29,8 @@ const (
 
 	MannerEthernetType = "manner_ethernet"
 
+	BinaryType = "binary"
+
 	ParityMap string = "NOE" // None, Odd, Even
 )
 
@@ -227,6 +229,15 @@ type CanBusMappingConfig struct {
 
 func NewCanBusMappingConfig(configFilePath string) []CanBusMappingConfig {
 	var result []CanBusMappingConfig
+	readConfigFile(&result, configFilePath, "mappings")
+	for _, rmc := range result {
+		rmc.verify()
+	}
+	return result
+}
+
+func NewMappingConfig(configFilePath string) []MappingConfig {
+	var result []MappingConfig
 	readConfigFile(&result, configFilePath, "mappings")
 	for _, rmc := range result {
 		rmc.verify()

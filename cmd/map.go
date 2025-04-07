@@ -162,6 +162,25 @@ func doMap(cmd *cobra.Command, args []string) {
 		}
 		m.Map(subscriber, publisher)
 
+	case config.BinaryType:
+		subscriber, err := nanomsg.NewSubscriber[message.Raw](subscribeURL, []byte{})
+		if err != nil {
+			logger.GetLogger().Fatal(
+				"Could not subscribe",
+				zap.String("URL", subscribeURL),
+				zap.String("Error", err.Error()),
+			)
+		}
+		mc := config.NewMappingConfig(cfgFile)
+		m, err := mapper.NewBinaryMapper(c, mc)
+		if err != nil {
+			logger.GetLogger().Fatal(
+				"Error while creating the mapper",
+				zap.String("Config file", cfgFile),
+				zap.String("Error", err.Error()),
+			)
+		}
+		m.Map(subscriber, publisher)
 	default:
 		logger.GetLogger().Fatal(
 			"Not a supported protocol",

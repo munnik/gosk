@@ -1,0 +1,6 @@
+---
+context: "vessels.urn:mrn:imo:mmsi:244770688" # if the data itself doesn't provide a context then this context is used
+protocol: "binary"
+mappings:
+  - expression: "toUInt(value[0],value[1])"
+    path: "propulsion.mainEngine.intakeManifoldTemperature"

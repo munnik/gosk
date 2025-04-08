@@ -36,8 +36,7 @@ type MqttWriter struct {
 
 func NewMqttWriter(c *config.MQTTConfig) *MqttWriter {
 	w := &MqttWriter{mqttConfig: c, useA: true}
-	encoder, _ := zstd.NewWriter(nil)
-	w.encoder = encoder
+	w.encoder, _ = zstd.NewWriter(nil)
 	w.bufferCapacity = int(math.Floor(1.1 * float64(c.BufferSize)))
 	w.bufferA = make([]*[]byte, 0, w.bufferCapacity)
 	w.bufferB = make([]*[]byte, 0, w.bufferCapacity)

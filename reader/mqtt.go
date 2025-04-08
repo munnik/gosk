@@ -64,16 +64,22 @@ func (r *MqttReader) ReadMapped(publisher *nanomsg.Publisher[message.Mapped]) {
 
 func (r *MqttReader) messageHandler(c paho.Client, m paho.Message) {
 	r.mqttMessagesReceived.Inc()
-	received, err := r.decoder.DecodeAll(m.Payload(), nil)
-	if err != nil {
-		logger.GetLogger().Warn(
-			"Could not decompress payload",
-			zap.String("Error", err.Error()),
-			zap.ByteString("Bytes", m.Payload()),
-		)
-		return
+	var received []byte
+	var err error
+	if r.mqttConfig.Compress {
+		received, err = r.decoder.DecodeAll(m.Payload(), nil)
+		if err != nil {
+			logger.GetLogger().Warn(
+				"Could not decompress payload",
+				zap.String("Error", err.Error()),
+				zap.ByteString("Bytes", m.Payload()),
+			)
+			return
+		}
+		r.mqttMessagesDecompressed.Inc()
+	} else {
+		received = m.Payload()
 	}
-	r.mqttMessagesDecompressed.Inc()
 
 	messages := make([]*message.Mapped, 0)
 	if err := json.Unmarshal(received, &messages); err != nil {

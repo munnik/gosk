@@ -1,5 +1,5 @@
 { pkgs, ... }: {
-  packages = with pkgs; [ gnugrep prettierd shellcheck shfmt taplo ];
+  packages = with pkgs; [ gnugrep goreleaser prettierd shellcheck shfmt taplo ];
 
   languages.go = {
     enable = true;

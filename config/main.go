@@ -251,12 +251,14 @@ type MQTTConfig struct {
 	Password   string        `mapstructure:"password"`
 	Interval   time.Duration `mapstructure:"interval"`    // interval to flush the cache in seconds, ignored for reader
 	BufferSize int           `mapstructure:"buffer_size"` // maximum size of the cache in MBs, cache will be flushed when size is reached, ignored for reader
+	Compress   bool          `mapstructure:"compress"`    // compress the data before sending
 }
 
 func NewMQTTConfig(configFilePath string) *MQTTConfig {
 	result := MQTTConfig{
 		BufferSize: 100,
 		Interval:   30 * time.Second,
+		Compress:   true,
 	}
 	readConfigFile(&result, configFilePath)
 

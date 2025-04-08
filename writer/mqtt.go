@@ -56,8 +56,11 @@ func (w *MqttWriter) sendMQTT(deltas []message.Mapped) {
 		return
 	}
 	go func(context string, bytes []byte) {
-		compressed := w.encoder.EncodeAll(bytes, make([]byte, 0, len(bytes)))
-		w.mqttClient.Publish(context, 0, true, compressed)
+		if w.mqttConfig.Compress {
+			w.mqttClient.Publish(context, 0, true, w.encoder.EncodeAll(bytes, make([]byte, 0, len(bytes))))
+		} else {
+			w.mqttClient.Publish(context, 0, true, bytes)
+		}
 	}(fmt.Sprintf(writeTopic, w.mqttConfig.Username), bytes)
 }
 

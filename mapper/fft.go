@@ -2,6 +2,7 @@ package mapper
 
 import (
 	"math/cmplx"
+	"slices"
 	"sync"
 	"time"
 
@@ -20,8 +21,7 @@ type FftMapper struct {
 
 type singleFftMapper struct {
 	spectrumPath       string
-	firstSampleTime    time.Time
-	samplesBuffer      []float64
+	samplesBuffer      map[time.Time]float64
 	samplesBufferMutex *sync.Mutex
 	fft                *fourier.FFT
 }
@@ -30,8 +30,9 @@ func NewFftMapper(c config.MapperConfig, fftc []*config.FftConfig) (*FftMapper, 
 	mappings := make(map[string]*singleFftMapper)
 	for _, cfg := range fftc {
 		mappings[cfg.Path] = &singleFftMapper{
-			spectrumPath:       cfg.SpectrumPath,
-			samplesBuffer:      make([]float64, 0, 1<<cfg.SamplesChannelBitSize),
+			spectrumPath: cfg.SpectrumPath,
+			// allow double space for values comming in not in order
+			samplesBuffer:      make(map[time.Time]float64, 2<<cfg.SamplesChannelBitSize),
 			samplesBufferMutex: &sync.Mutex{},
 			fft:                fourier.NewFFT(1 << cfg.SamplesChannelBitSize),
 		}
@@ -55,10 +56,7 @@ func (m *FftMapper) DoMap(input *message.Mapped) (*message.Mapped, error) {
 	for _, svm := range input.ToSingleValueMapped() {
 		if _, ok := m.mappings[svm.Path]; ok {
 			if value, ok := svm.Value.(float64); ok {
-				if len(m.mappings[svm.Path].samplesBuffer) == 0 {
-					m.mappings[svm.Path].firstSampleTime = time.Now()
-				}
-				m.mappings[svm.Path].samplesBuffer = append(m.mappings[svm.Path].samplesBuffer, value)
+				m.mappings[svm.Path].samplesBuffer[svm.Timestamp] = value
 			}
 			m.doFft(u, svm.Path)
 		}
@@ -73,26 +71,43 @@ func (m *FftMapper) DoMap(input *message.Mapped) (*message.Mapped, error) {
 func (m *FftMapper) doFft(update *message.Update, path string) {
 	m.mappings[path].samplesBufferMutex.Lock()
 	defer m.mappings[path].samplesBufferMutex.Unlock()
-	if len(m.mappings[path].samplesBuffer) < cap(m.mappings[path].samplesBuffer) {
+	if len(m.mappings[path].samplesBuffer) < m.mappings[path].fft.Len()<<1 {
 		return
 	}
 	value := message.Spectrum{
-		NumberOfSamples: len(m.mappings[path].samplesBuffer),
-		Duration:        time.Since(m.mappings[path].firstSampleTime).Seconds(),
+		NumberOfSamples: m.mappings[path].fft.Len(),
 	}
-	coeff := m.mappings[path].fft.Coefficients(nil, m.mappings[path].samplesBuffer)
-	m.mappings[path].samplesBuffer = m.mappings[path].samplesBuffer[:0] // truncate the buffer
+	samples := make([]float64, 0, m.mappings[path].fft.Len())
+	timestamps := make([]time.Time, 0, m.mappings[path].fft.Len()<<1)
+	for k := range m.mappings[path].samplesBuffer {
+		timestamps = append(timestamps, k)
+	}
+	slices.SortFunc(timestamps, func(a, b time.Time) int {
+		if a.Before(b) {
+			return -1
+		}
+		if a.After(b) {
+			return 1
+		}
+		return 0
+	})
+	value.Duration = timestamps[m.mappings[path].fft.Len()].Sub(timestamps[0]).Seconds()
+	for i := 0; i < cap(samples); i++ {
+		samples = append(samples, m.mappings[path].samplesBuffer[timestamps[i]])
+		delete(m.mappings[path].samplesBuffer, timestamps[i])
+	}
+	coeff := m.mappings[path].fft.Coefficients(nil, samples)
 	value.Coefficients = make([]message.Coefficient, 0, len(coeff))
 
 	samplesPerSecond := float64(value.NumberOfSamples) / value.Duration
 	for i, c := range coeff {
 		value.MaxFrequency = m.mappings[path].fft.Freq(i) * samplesPerSecond
 		value.Coefficients = append(value.Coefficients, message.Coefficient{
-			Magnitude: 2 * cmplx.Abs(c) / float64(cap(m.mappings[path].samplesBuffer)),
+			Magnitude: 2 * cmplx.Abs(c) / float64(value.NumberOfSamples),
 			Phase:     cmplx.Phase(c),
 		})
 	}
-	update.WithTimestamp(m.mappings[path].firstSampleTime)
+	update.WithTimestamp(timestamps[0])
 	update.AddValue(
 		message.NewValue().WithPath(m.mappings[path].spectrumPath).WithValue(value),
 	)

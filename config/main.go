@@ -31,6 +31,8 @@ const (
 
 	BinaryType = "binary"
 
+	FftType = "fft"
+
 	ParityMap string = "NOE" // None, Odd, Even
 )
 
@@ -217,6 +219,22 @@ func NewExpressionMappingConfig(configFilePath string) []*ExpressionMappingConfi
 
 	for _, rmc := range result {
 		rmc.verify()
+	}
+	return result
+}
+
+type FftConfig struct {
+	MappingConfig         `mapstructure:",squash"`
+	Path                  string `mapstructure:"path"`
+	SpectrumPath          string `mapstructure:"spectrumPath"`
+	SamplesChannelBitSize int64  `mapstructure:"samplesChannelBitSize"`
+}
+
+func NewFftConfig(configFilePath string) []*FftConfig {
+	var result []*FftConfig
+	readConfigFile(&result, configFilePath, "mappings")
+	for _, fftc := range result {
+		fftc.verify()
 	}
 	return result
 }

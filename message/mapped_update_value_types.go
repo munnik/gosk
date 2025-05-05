@@ -143,6 +143,21 @@ func (left Draft) Merge(right Merger) (Merger, error) {
 	return left, err
 }
 
+type Coefficient struct {
+	Magnitude float64 `json:"magnitude"`
+	Phase     float64 `json:"phase"`
+}
+type Spectrum struct {
+	NumberOfSamples int           `json:"numberOfSamples"`
+	Duration        float64       `json:"duration"`
+	MaxFrequency    float64       `json:"maxFrequency"`
+	Coefficients    []Coefficient `json:"coefficients"`
+}
+
+func (left Spectrum) Merge(right Merger) (Merger, error) {
+	return left, nil
+}
+
 func Decode(input interface{}) (interface{}, error) {
 	if i, ok := input.(int64); ok {
 		return i, nil
@@ -195,6 +210,12 @@ func Decode(input interface{}) (interface{}, error) {
 	metadata = mapstructure.Metadata{}
 	if err := mapstructure.DecodeMetadata(input, &d, &metadata); err == nil && len(metadata.Unused) == 0 {
 		return d, nil
+	}
+
+	s := Spectrum{}
+	metadata = mapstructure.Metadata{}
+	if err := mapstructure.DecodeMetadata(input, &s, &metadata); err == nil && len(metadata.Unused) == 0 {
+		return s, nil
 	}
 
 	return input, fmt.Errorf("don't know how to decode %v", input)

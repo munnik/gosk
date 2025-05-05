@@ -1,9 +1,16 @@
-{ pkgs, ... }: {
+{ pkgs, inputs, ... }:
+let
+  pkgs-unstable =
+    import inputs.nixpkgs-unstable { inherit (pkgs.stdenv) system; };
+in {
   packages = with pkgs; [ gnugrep goreleaser prettierd shellcheck shfmt taplo ];
+
+  overlays = [ (_: _: { inherit (pkgs-unstable) delve; }) ];
 
   languages.go = {
     enable = true;
     enableHardeningWorkaround = true;
+    package = pkgs-unstable.go;
   };
 
   git-hooks.hooks = {

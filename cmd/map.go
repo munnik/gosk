@@ -161,7 +161,25 @@ func doMap(cmd *cobra.Command, args []string) {
 			)
 		}
 		m.Map(subscriber, publisher)
-
+	case config.FftType:
+		subscriber, err := nanomsg.NewSubscriber[message.Mapped](subscribeURL, []byte{})
+		if err != nil {
+			logger.GetLogger().Fatal(
+				"Could not subscribe",
+				zap.String("URL", subscribeURL),
+				zap.String("Error", err.Error()),
+			)
+		}
+		fftc := config.NewFftConfig(cfgFile)
+		m, err := mapper.NewFftMapper(c, fftc)
+		if err != nil {
+			logger.GetLogger().Fatal(
+				"Error while creating the mapper",
+				zap.String("Config file", cfgFile),
+				zap.String("Error", err.Error()),
+			)
+		}
+		m.Map(subscriber, publisher)
 	case config.BinaryType:
 		subscriber, err := nanomsg.NewSubscriber[message.Raw](subscribeURL, []byte{})
 		if err != nil {

@@ -225,9 +225,10 @@ func NewExpressionMappingConfig(configFilePath string) []*ExpressionMappingConfi
 
 type FftConfig struct {
 	MappingConfig         `mapstructure:",squash"`
-	Path                  string `mapstructure:"path"`
-	SpectrumPath          string `mapstructure:"spectrumPath"`
-	SamplesChannelBitSize int64  `mapstructure:"samplesChannelBitSize"`
+	Path                  string  `mapstructure:"path"`
+	SpectrumPath          string  `mapstructure:"spectrumPath"`
+	SamplesChannelBitSize int64   `mapstructure:"samplesChannelBitSize"`
+	FrequencyStepSize     float64 `mapstructure:"frequencyStepSize"`
 }
 
 func NewFftConfig(configFilePath string) []*FftConfig {

@@ -24,6 +24,7 @@ type singleFftMapper struct {
 	samplesBuffer      map[time.Time]float64
 	samplesBufferMutex *sync.Mutex
 	fft                *fourier.FFT
+	frequencyStepSize  float64
 }
 
 func NewFftMapper(c config.MapperConfig, fftc []*config.FftConfig) (*FftMapper, error) {
@@ -35,6 +36,7 @@ func NewFftMapper(c config.MapperConfig, fftc []*config.FftConfig) (*FftMapper, 
 			samplesBuffer:      make(map[time.Time]float64, 2<<cfg.SamplesChannelBitSize),
 			samplesBufferMutex: &sync.Mutex{},
 			fft:                fourier.NewFFT(1 << cfg.SamplesChannelBitSize),
+			frequencyStepSize:  cfg.FrequencyStepSize,
 		}
 	}
 	return &FftMapper{
@@ -85,17 +87,38 @@ func (m *FftMapper) doFft(update *message.Update, path string) {
 	samples := m.extractSamples(path, timestamps)
 	coeff := m.mappings[path].fft.Coefficients(nil, samples)
 
-	samplesPerSecond := float64(value.NumberOfSamples) / value.Duration
-	for i, c := range coeff {
-		value.Coefficients = append(value.Coefficients, message.Coefficient{
-			Frequency: m.mappings[path].fft.Freq(i) * samplesPerSecond,
-			Magnitude: 2 * cmplx.Abs(c) / float64(value.NumberOfSamples),
-			Phase:     cmplx.Phase(c),
-		})
-	}
+	m.buildSpectrum(&value, coeff, path)
+
 	update.AddValue(
 		message.NewValue().WithPath(m.mappings[path].spectrumPath).WithValue(value),
 	).WithTimestamp(timestamps[0])
+}
+
+func (m *FftMapper) buildSpectrum(value *message.Spectrum, coeff []complex128, path string) {
+	samplesPerSecond := float64(value.NumberOfSamples) / value.Duration
+	var spectrumFrequency, coefficientFrequency float64
+	var coefficientSum complex128
+	var n int
+
+	for i, c := range coeff {
+		coefficientFrequency = m.mappings[path].fft.Freq(i) * samplesPerSecond
+		coefficientSum += c
+		n += 1
+		if coefficientFrequency > spectrumFrequency+m.mappings[path].frequencyStepSize {
+			value.Coefficients = append(
+				value.Coefficients,
+				message.Coefficient{
+					Frequency: spectrumFrequency,
+					Magnitude: 2 * cmplx.Abs(coefficientSum) / float64(value.NumberOfSamples),
+					Phase:     cmplx.Phase(coefficientSum),
+				},
+			)
+			// reset values and increase spectrumFrequency
+			coefficientSum = 0
+			n = 0
+			spectrumFrequency += m.mappings[path].frequencyStepSize
+		}
+	}
 }
 
 func (m *FftMapper) extractSamples(path string, timestamps []time.Time) []float64 {

@@ -4,5 +4,5 @@ protocol: "fft"
 mappings:
   - path: "propulsion.mainEngine.drive.torque"
     spectrumPath: "propulsion.mainEngine.drive.torqueSpectrum"
-    # at 2000 samples per second this is aboa bit over half a minute
-    samplesChannelBitSize: 16
+    # at 2000 samples per second this is a bit over 8 seconds
+    samplesChannelBitSize: 14

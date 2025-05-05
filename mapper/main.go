@@ -7,7 +7,7 @@ import (
 	"go.uber.org/zap"
 )
 
-const bufferCapacity = 5000
+const bufferSize = 1 << 16
 
 // Mapper interface
 type Mapper[TS nanomsg.Message, TP nanomsg.Message] interface {
@@ -23,9 +23,9 @@ type RealRawMapper[T nanomsg.Message] interface {
 }
 
 func process[T nanomsg.Message](subscriber *nanomsg.Subscriber[T], publisher *nanomsg.Publisher[message.Mapped], mapper RealMapper[T], ignoreEmptyUpdates bool) {
-	receiveBuffer := make(chan *T, bufferCapacity)
+	receiveBuffer := make(chan *T, bufferSize)
 	defer close(receiveBuffer)
-	sendBuffer := make(chan *message.Mapped, bufferCapacity)
+	sendBuffer := make(chan *message.Mapped, bufferSize)
 	defer close(sendBuffer)
 
 	go subscriber.Receive(receiveBuffer)
@@ -58,9 +58,9 @@ func process[T nanomsg.Message](subscriber *nanomsg.Subscriber[T], publisher *na
 }
 
 func processRaw[T nanomsg.Message](subscriber *nanomsg.Subscriber[T], publisher *nanomsg.Publisher[message.Raw], mapper RealRawMapper[T]) {
-	receiveBuffer := make(chan *T, bufferCapacity)
+	receiveBuffer := make(chan *T, bufferSize)
 	defer close(receiveBuffer)
-	sendBuffer := make(chan *message.Raw, bufferCapacity)
+	sendBuffer := make(chan *message.Raw, bufferSize)
 	defer close(sendBuffer)
 
 	go subscriber.Receive(receiveBuffer)

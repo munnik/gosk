@@ -74,10 +74,40 @@ func (m *FftMapper) doFft(update *message.Update, path string) {
 	if len(m.mappings[path].samplesBuffer) < m.mappings[path].fft.Len()<<1 {
 		return
 	}
+
+	timestamps := m.sortTimestamps(path)
 	value := message.Spectrum{
 		NumberOfSamples: m.mappings[path].fft.Len(),
+		Duration:        timestamps[m.mappings[path].fft.Len()].Sub(timestamps[0]).Seconds(),
+		Coefficients:    make([]message.Coefficient, 0, m.mappings[path].fft.Len()),
 	}
+
+	samples := m.extractSamples(path, timestamps)
+	coeff := m.mappings[path].fft.Coefficients(nil, samples)
+
+	samplesPerSecond := float64(value.NumberOfSamples) / value.Duration
+	for i, c := range coeff {
+		value.Coefficients = append(value.Coefficients, message.Coefficient{
+			Frequency: m.mappings[path].fft.Freq(i) * samplesPerSecond,
+			Magnitude: 2 * cmplx.Abs(c) / float64(value.NumberOfSamples),
+			Phase:     cmplx.Phase(c),
+		})
+	}
+	update.AddValue(
+		message.NewValue().WithPath(m.mappings[path].spectrumPath).WithValue(value),
+	).WithTimestamp(timestamps[0])
+}
+
+func (m *FftMapper) extractSamples(path string, timestamps []time.Time) []float64 {
 	samples := make([]float64, 0, m.mappings[path].fft.Len())
+	for i := 0; i < cap(samples); i++ {
+		samples = append(samples, m.mappings[path].samplesBuffer[timestamps[i]])
+		delete(m.mappings[path].samplesBuffer, timestamps[i])
+	}
+	return samples
+}
+
+func (m *FftMapper) sortTimestamps(path string) []time.Time {
 	timestamps := make([]time.Time, 0, m.mappings[path].fft.Len()<<1)
 	for k := range m.mappings[path].samplesBuffer {
 		timestamps = append(timestamps, k)
@@ -91,24 +121,5 @@ func (m *FftMapper) doFft(update *message.Update, path string) {
 		}
 		return 0
 	})
-	value.Duration = timestamps[m.mappings[path].fft.Len()].Sub(timestamps[0]).Seconds()
-	for i := 0; i < cap(samples); i++ {
-		samples = append(samples, m.mappings[path].samplesBuffer[timestamps[i]])
-		delete(m.mappings[path].samplesBuffer, timestamps[i])
-	}
-	coeff := m.mappings[path].fft.Coefficients(nil, samples)
-	value.Coefficients = make([]message.Coefficient, 0, len(coeff))
-
-	samplesPerSecond := float64(value.NumberOfSamples) / value.Duration
-	for i, c := range coeff {
-		value.MaxFrequency = m.mappings[path].fft.Freq(i) * samplesPerSecond
-		value.Coefficients = append(value.Coefficients, message.Coefficient{
-			Magnitude: 2 * cmplx.Abs(c) / float64(value.NumberOfSamples),
-			Phase:     cmplx.Phase(c),
-		})
-	}
-	update.WithTimestamp(timestamps[0])
-	update.AddValue(
-		message.NewValue().WithPath(m.mappings[path].spectrumPath).WithValue(value),
-	)
+	return timestamps
 }

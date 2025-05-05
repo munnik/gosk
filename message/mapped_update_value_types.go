@@ -144,13 +144,13 @@ func (left Draft) Merge(right Merger) (Merger, error) {
 }
 
 type Coefficient struct {
+	Frequency float64 `json:"frequency"`
 	Magnitude float64 `json:"magnitude"`
 	Phase     float64 `json:"phase"`
 }
 type Spectrum struct {
 	NumberOfSamples int           `json:"numberOfSamples"`
 	Duration        float64       `json:"duration"`
-	MaxFrequency    float64       `json:"maxFrequency"`
 	Coefficients    []Coefficient `json:"coefficients"`
 }
 

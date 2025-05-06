@@ -104,7 +104,7 @@ func (m *FftMapper) buildSpectrum(value *message.Spectrum, coeff []complex128, p
 		coefficientFrequency = m.mappings[path].fft.Freq(i) * samplesPerSecond
 		coefficientSum += c
 		n += 1
-		if coefficientFrequency > spectrumFrequency+m.mappings[path].frequencyStepSize {
+		if coefficientFrequency > spectrumFrequency+m.mappings[path].frequencyStepSize/2 {
 			value.Coefficients = append(
 				value.Coefficients,
 				message.Coefficient{

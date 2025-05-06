@@ -79,9 +79,10 @@ func (m *FftMapper) doFft(update *message.Update, path string) {
 
 	timestamps := m.sortTimestamps(path)
 	value := message.Spectrum{
-		NumberOfSamples: m.mappings[path].fft.Len(),
-		Duration:        timestamps[m.mappings[path].fft.Len()].Sub(timestamps[0]).Seconds(),
-		Coefficients:    make([]message.Coefficient, 0, m.mappings[path].fft.Len()),
+		NumberOfSamples:   m.mappings[path].fft.Len(),
+		Duration:          timestamps[m.mappings[path].fft.Len()].Sub(timestamps[0]).Seconds(),
+		Coefficients:      make([]message.Coefficient, 0, m.mappings[path].fft.Len()),
+		FrequencyStepSize: m.mappings[path].frequencyStepSize,
 	}
 
 	samples := m.extractSamples(path, timestamps)
@@ -108,7 +109,6 @@ func (m *FftMapper) buildSpectrum(value *message.Spectrum, coeff []complex128, p
 			value.Coefficients = append(
 				value.Coefficients,
 				message.Coefficient{
-					Frequency: spectrumFrequency,
 					Magnitude: 2 * cmplx.Abs(coefficientSum) / float64(value.NumberOfSamples),
 					Phase:     cmplx.Phase(coefficientSum),
 				},

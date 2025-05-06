@@ -144,14 +144,14 @@ func (left Draft) Merge(right Merger) (Merger, error) {
 }
 
 type Coefficient struct {
-	Frequency float64 `json:"frequency"`
 	Magnitude float64 `json:"magnitude"`
 	Phase     float64 `json:"phase"`
 }
 type Spectrum struct {
-	NumberOfSamples int           `json:"numberOfSamples"`
-	Duration        float64       `json:"duration"`
-	Coefficients    []Coefficient `json:"coefficients"`
+	NumberOfSamples   int           `json:"numberOfSamples"`
+	FrequencyStepSize float64       `json:"frequencyStepSize"`
+	Duration          float64       `json:"duration"`
+	Coefficients      []Coefficient `json:"coefficients"`
 }
 
 func (left Spectrum) Merge(right Merger) (Merger, error) {

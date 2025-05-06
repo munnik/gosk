@@ -6,4 +6,4 @@ mappings:
     spectrumPath: "propulsion.mainEngine.drive.torqueSpectrum"
     # at 2000 samples per second this is a bit over 8 seconds
     samplesChannelBitSize: 14
-    frequencyStepSize: 1.0
+    frequencyStepSize: 0.5

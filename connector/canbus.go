@@ -2,6 +2,7 @@ package connector
 
 import (
 	"encoding/binary"
+	"time"
 
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
@@ -13,11 +14,13 @@ import (
 )
 
 type CanBusConnector struct {
-	config *config.ConnectorConfig
+	config  *config.ConnectorConfig
+	timeout *time.Timer
 }
 
 func NewCanBusConnector(c *config.ConnectorConfig) (*CanBusConnector, error) {
-	return &CanBusConnector{config: c}, nil
+	return &CanBusConnector{config: c,
+		timeout: time.AfterFunc(c.Timeout, exit)}, nil
 }
 
 func (r *CanBusConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
@@ -47,13 +50,14 @@ func (r *CanBusConnector) receive(stream chan<- []byte) error {
 		return err
 	}
 	defer bus.Disconnect()
-	bus.SubscribeFunc(handleCanFrameStream(stream))
+	bus.SubscribeFunc(r.handleCanFrameStream(stream))
 	bus.ConnectAndPublish()
 	return nil
 }
 
-func handleCanFrameStream(stream chan<- []byte) can.HandlerFunc {
+func (r *CanBusConnector) handleCanFrameStream(stream chan<- []byte) can.HandlerFunc {
 	return func(frm can.Frame) {
+		r.timeout.Reset(r.config.Timeout)
 		bytes := FrameToBytes(frm)
 		stream <- bytes
 

@@ -16,10 +16,11 @@ import (
 type HttpConnector struct {
 	config    *config.ConnectorConfig
 	urlGroups []config.UrlGroupConfig
+	timeout   *time.Timer
 }
 
 func NewHttpConnector(c *config.ConnectorConfig, ugc []config.UrlGroupConfig) (*HttpConnector, error) {
-	return &HttpConnector{config: c, urlGroups: ugc}, nil
+	return &HttpConnector{config: c, urlGroups: ugc, timeout: time.AfterFunc(c.Timeout, exit)}, nil
 }
 
 func (r *HttpConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
@@ -50,7 +51,7 @@ func (h *HttpConnector) receive(stream chan<- []byte) error {
 	wg.Add(len(h.urlGroups))
 	for _, url := range h.urlGroups {
 		go func(url config.UrlGroupConfig) {
-			poll(url, stream)
+			h.poll(url, stream)
 		}(url)
 	}
 	go func() {
@@ -69,7 +70,7 @@ func (h *HttpConnector) receive(stream chan<- []byte) error {
 	return nil
 }
 
-func poll(ugc config.UrlGroupConfig, stream chan<- []byte) {
+func (h *HttpConnector) poll(ugc config.UrlGroupConfig, stream chan<- []byte) {
 	ticker := time.NewTicker(ugc.PollingInterval)
 	done := make(chan struct{})
 Loop:
@@ -87,6 +88,7 @@ Loop:
 				logger.GetLogger().Error("Could not read response body", zap.Error(err))
 				continue
 			}
+			h.timeout.Reset(h.config.Timeout)
 			stream <- bytes
 			resp.Body.Close()
 		case <-done:

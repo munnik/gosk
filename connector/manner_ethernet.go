@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"time"
 
 	"github.com/munnik/gosk/config"
@@ -84,6 +85,9 @@ func (r MannerEthernetConnector) readToChannel(streamBuffer chan byte) {
 			n, err := r.connection.Read(buffer)
 			if err != nil {
 				logger.GetLogger().Error("Error reading from the network stream", zap.Error(err))
+			}
+			if err == io.ErrUnexpectedEOF {
+				os.Exit(0)
 			}
 			for i := 0; i < n; i++ {
 				streamBuffer <- buffer[i]

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"time"
 
 	"github.com/munnik/gosk/config"
@@ -18,11 +19,12 @@ import (
 type MannerEthernetConnector struct {
 	config     *config.ConnectorConfig
 	connection io.ReadWriter
+	timeout    *time.Timer
 }
 
 func NewMannerEthernetConnector(c *config.ConnectorConfig) (*MannerEthernetConnector, error) {
 	var err error
-	l := &MannerEthernetConnector{config: c}
+	l := &MannerEthernetConnector{config: c, timeout: time.AfterFunc(c.Timeout, exit)}
 	l.connection, err = l.createConnection()
 	if err != nil {
 		return nil, err
@@ -38,6 +40,7 @@ func (r *MannerEthernetConnector) Publish(publisher *nanomsg.Publisher[message.R
 	r.readToChannel(streamBuffer)
 	go func() {
 		for b := range streamBuffer {
+			r.timeout.Reset(r.config.Timeout)
 			if b&0b11000000 == 0b11000000 {
 				values := make([]byte, 0, 12)
 				values = binary.BigEndian.AppendUint16(values, uint16(extractFirstValue(b, streamBuffer)))
@@ -82,6 +85,9 @@ func (r MannerEthernetConnector) readToChannel(streamBuffer chan byte) {
 			n, err := r.connection.Read(buffer)
 			if err != nil {
 				logger.GetLogger().Error("Error reading from the network stream", zap.Error(err))
+			}
+			if err == io.ErrUnexpectedEOF {
+				os.Exit(0)
 			}
 			for i := 0; i < n; i++ {
 				streamBuffer <- buffer[i]

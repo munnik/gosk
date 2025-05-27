@@ -37,15 +37,16 @@ const (
 )
 
 type ConnectorConfig struct {
-	Name      string   `mapstructure:"name"`
-	URL       *url.URL `mapstructure:"_"`
-	URLString string   `mapstructure:"url"`
-	Listen    bool     `mapstructure:"listen"`
-	BaudRate  int      `mapstructure:"baudRate"`
-	DataBits  int      `mapstructure:"dataBits"`
-	StopBits  string   `mapstructure:"stopBits"`
-	Parity    string   `mapstructure:"parity"`
-	Protocol  string   `mapstructure:"protocol"`
+	Name      string        `mapstructure:"name"`
+	URL       *url.URL      `mapstructure:"_"`
+	URLString string        `mapstructure:"url"`
+	Listen    bool          `mapstructure:"listen"`
+	BaudRate  int           `mapstructure:"baudRate"`
+	DataBits  int           `mapstructure:"dataBits"`
+	StopBits  string        `mapstructure:"stopBits"`
+	Parity    string        `mapstructure:"parity"`
+	Protocol  string        `mapstructure:"protocol"`
+	Timeout   time.Duration `mapstructure:"timeout"`
 }
 
 func NewConnectorConfig(configFilePath string) *ConnectorConfig {
@@ -55,6 +56,7 @@ func NewConnectorConfig(configFilePath string) *ConnectorConfig {
 		DataBits: 8,
 		StopBits: "1",
 		Parity:   "N",
+		Timeout:  5 * time.Minute,
 	}
 	readConfigFile(result, configFilePath)
 

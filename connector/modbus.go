@@ -3,6 +3,7 @@ package connector
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
@@ -18,6 +19,7 @@ type ModbusConnector struct {
 	config               *config.ConnectorConfig
 	registerGroupsConfig []config.RegisterGroupConfig
 	realClient           *modbus.Client
+	timeout              *time.Timer
 }
 
 func NewModbusConnector(c *config.ConnectorConfig, rgcs []config.RegisterGroupConfig) (*ModbusConnector, error) {
@@ -63,7 +65,7 @@ func NewModbusConnector(c *config.ConnectorConfig, rgcs []config.RegisterGroupCo
 		return nil, fmt.Errorf("unable to create modbus client %v, the error that occurred was %v", c.URL.String(), err)
 	}
 
-	return &ModbusConnector{config: c, registerGroupsConfig: rgcs, realClient: realClient}, nil
+	return &ModbusConnector{config: c, registerGroupsConfig: rgcs, realClient: realClient, timeout: time.AfterFunc(c.Timeout, exit)}, nil
 }
 
 func (m *ModbusConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
@@ -133,6 +135,8 @@ func (m *ModbusConnector) receive(stream chan<- []byte) error {
 					zap.Error(err),
 				)
 				errors <- err
+			} else {
+				m.timeout.Reset(m.config.Timeout)
 			}
 			wg.Done()
 		}(rgc)

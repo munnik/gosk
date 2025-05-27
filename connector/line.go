@@ -20,11 +20,12 @@ import (
 type LineConnector struct {
 	config     *config.ConnectorConfig
 	connection io.ReadWriter
+	timeout    *time.Timer
 }
 
 func NewLineConnector(c *config.ConnectorConfig) (*LineConnector, error) {
 	var err error
-	l := &LineConnector{config: c}
+	l := &LineConnector{config: c, timeout: time.AfterFunc(c.Timeout, exit)}
 	l.connection, err = l.createConnection()
 	if err != nil {
 		return nil, err
@@ -179,6 +180,7 @@ func (l LineConnector) createFileConnection() (io.ReadWriter, error) {
 func (l LineConnector) scan(reader io.Reader, stream chan<- []byte) error {
 	scanner := bufio.NewScanner(reader)
 	for scanner.Scan() {
+		l.timeout.Reset(l.config.Timeout)
 		stream <- scanner.Bytes()
 	}
 	if err := scanner.Err(); err != nil {

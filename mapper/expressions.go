@@ -203,17 +203,17 @@ func runExpr(env ExpressionEnvironment, mappingConfig *config.MappingConfig) (in
 	for key, value := range mappingConfig.ExpressionEnvironment {
 		env[key] = value
 	}
-	fmt.Println(mappingConfig.CompiledExpression)
+
 	if mappingConfig.CompiledExpression == nil {
-		if compiledExpression, err := expr.Compile(mappingConfig.Expression); err != nil {
+
+		var err error
+		if mappingConfig.CompiledExpression, err = expr.Compile(mappingConfig.Expression); err != nil {
 			logger.GetLogger().Warn(
 				"Could not compile the mapping expression",
 				zap.String("Expression", mappingConfig.Expression),
 				zap.String("Error", err.Error()),
 			)
 			return nil, err
-		} else { // assignment needs to be in else clause, putting it directly in the if causes constant recompilation
-			mappingConfig.CompiledExpression = compiledExpression
 		}
 	}
 	// the compiled program exists, let's run it

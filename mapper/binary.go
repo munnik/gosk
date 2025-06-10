@@ -33,10 +33,11 @@ func (m *BinaryMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	s := message.NewSource().WithLabel(r.Connector).WithType(m.protocol).WithUuid(r.Uuid)
 	u := message.NewUpdate().WithSource(*s).WithTimestamp(r.Timestamp)
 	m.env["value"] = r.Value
-	for _, mc := range m.mappingsConfig {
+	for i, mc := range m.mappingsConfig {
 		output, err := runExpr(m.env, &mc)
 		if err == nil {
 			u.AddValue(message.NewValue().WithPath(mc.Path).WithValue(output))
+			m.mappingsConfig[i] = mc
 		}
 	}
 

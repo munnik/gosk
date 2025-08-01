@@ -1,6 +1,7 @@
 package writer
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -22,17 +23,32 @@ func (w *StdOutWriter) WriteMapped(subscriber *nanomsg.Subscriber[message.Mapped
 	go subscriber.Receive(receiveBuffer)
 
 	for mapped := range receiveBuffer {
-		fmt.Println(*mapped)
+		jsonData, _ := json.MarshalIndent(*mapped, "", "  ")
+		fmt.Println(string(jsonData))
 	}
 }
 
 func (w *StdOutWriter) WriteRaw(subscriber *nanomsg.Subscriber[message.Raw]) {
+	type rawBytes struct {
+		Connector string
+		Timestamp time.Time
+		Type      string
+		Uuid      uuid.UUID
+		Value     string
+	}
+	var rb = rawBytes{}
 	receiveBuffer := make(chan *message.Raw, bufferCapacity)
 	defer close(receiveBuffer)
 	go subscriber.Receive(receiveBuffer)
 
 	for raw := range receiveBuffer {
-		fmt.Println(*raw)
+		rb.Connector = raw.Connector
+		rb.Timestamp = raw.Timestamp
+		rb.Type = raw.Type
+		rb.Uuid = raw.Uuid
+		rb.Value = fmt.Sprintf("%v", raw.Value)
+		jsonData, _ := json.MarshalIndent(rb, "", "  ")
+		fmt.Println(string(jsonData))
 	}
 }
 
@@ -55,6 +71,7 @@ func (w *StdOutWriter) WriteRawString(subscriber *nanomsg.Subscriber[message.Raw
 		rs.Type = raw.Type
 		rs.Uuid = raw.Uuid
 		rs.Value = string(raw.Value)
-		fmt.Println(rs)
+		jsonData, _ := json.MarshalIndent(rs, "", "  ")
+		fmt.Println(string(jsonData))
 	}
 }

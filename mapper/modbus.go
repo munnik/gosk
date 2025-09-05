@@ -3,6 +3,7 @@ package mapper
 import (
 	"encoding/binary"
 	"fmt"
+	"maps"
 	"math"
 	"strconv"
 	"strings"
@@ -62,7 +63,7 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		for i, coil := range protocol.RegistersToCoils(registerData) {
 			coilsMap[int(address)+i] = coil
 		}
-		m.env["coils"] = coilsMap
+		maps.Copy(m.env["coils"].(map[int]bool), coilsMap)
 	} else if functionCode == protocol.ReadHoldingRegisters || functionCode == protocol.ReadInputRegisters {
 		skipFaultDetection := false
 		if _, ok := m.config.ProtocolOptions[config.ProtocolOptionModbusSkipFaultDetection]; ok {
@@ -85,36 +86,52 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 			}
 		}
 
-		deltaMap := make(map[int]int32, 0)
-		timestampMap := make(map[int]time.Time, 0)
-		timeDeltaMap := make(map[int]int64, 0)
-		if previousMap, ok := m.env["registers"].(map[int]uint16); ok {
-			oldTimestampMap := m.env["timestamps"].(map[int]time.Time)
+		registersMap := make(map[int]uint16, len(registerData))
+		deltaMap := make(map[int]int32, len(registerData))
+		timestampMap := make(map[int]time.Time, len(registerData))
+		timeDeltaMap := make(map[int]int64, len(registerData))
+
+		if previousRegisterMap, ok := m.env["registers"].(map[int]uint16); ok {
+			previousTimestampMap := m.env["timestamps"].(map[int]time.Time)
 			for i, register := range registerData {
-				delta := int32(register) - int32(previousMap[int(address)+i])
+				delta := int32(register) - int32(previousRegisterMap[int(address)+i])
 				if delta < -50000 { // overflow
 					delta = delta + math.MaxUint16
 				} else if delta > 50000 { // underflow
 					delta = delta - math.MaxUint16
 				}
 				deltaMap[int(address)+i] = delta
-
-				timeDeltaMap[int(address)+i] = time.Duration(r.Timestamp.Sub(oldTimestampMap[int(address)+i])).Milliseconds()
+				timeDeltaMap[int(address)+i] = time.Duration(r.Timestamp.Sub(previousTimestampMap[int(address)+i])).Milliseconds()
 			}
 		} else { // first time, no previous data available yet
 			for i, register := range registerData {
 				deltaMap[int(address)+i] = int32(register)
 			}
 		}
-		registersMap := make(map[int]uint16, 0)
 		for i, register := range registerData {
 			registersMap[int(address)+i] = register
 			timestampMap[int(address)+i] = r.Timestamp
 		}
-		m.env["deltas"] = deltaMap
-		m.env["registers"] = registersMap
-		m.env["timestamps"] = timestampMap
-		m.env["timedeltas"] = timeDeltaMap
+		if _, ok := m.env["deltas"].(map[int]int32); ok {
+			maps.Copy(m.env["deltas"].(map[int]int32), deltaMap)
+		} else {
+			m.env["deltas"] = deltaMap
+		}
+		if _, ok := m.env["registers"].(map[int]uint16); ok {
+			maps.Copy(m.env["registers"].(map[int]uint16), registersMap)
+		} else {
+			m.env["registers"] = registersMap
+		}
+		if _, ok := m.env["timestamps"].(map[int]time.Time); ok {
+			maps.Copy(m.env["timestamps"].(map[int]time.Time), timestampMap)
+		} else {
+			m.env["timestamps"] = timestampMap
+		}
+		if _, ok := m.env["timedeltas"].(map[int]int64); ok {
+			maps.Copy(m.env["timedeltas"].(map[int]int64), timeDeltaMap)
+		} else {
+			m.env["timedeltas"] = timeDeltaMap
+		}
 	}
 
 	for _, mmc := range m.modbusMappingsConfig {

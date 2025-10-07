@@ -6,7 +6,6 @@ import (
 	"maps"
 	"math"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/munnik/gosk/config"
@@ -15,15 +14,11 @@ import (
 	"github.com/munnik/gosk/protocol"
 )
 
-const (
-	slaveEnvPrefix = "slave_"
-)
-
 type ModbusMapper struct {
 	config               config.MapperConfig
 	protocol             string
 	modbusMappingsConfig []config.ModbusMappingsConfig
-	env                  ExpressionEnvironment
+	env                  map[uint8]ExpressionEnvironment
 }
 
 func NewModbusMapper(c config.MapperConfig, mmc []config.ModbusMappingsConfig) (*ModbusMapper, error) {
@@ -31,7 +26,7 @@ func NewModbusMapper(c config.MapperConfig, mmc []config.ModbusMappingsConfig) (
 		config:               c,
 		protocol:             config.ModbusType,
 		modbusMappingsConfig: mmc,
-		env:                  NewExpressionEnvironment(),
+		env:                  make(map[uint8]ExpressionEnvironment),
 	}, nil
 }
 
@@ -63,7 +58,7 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		for i, coil := range protocol.RegistersToCoils(registerData) {
 			coilsMap[int(address)+i] = coil
 		}
-		maps.Copy(m.env["coils"].(map[int]bool), coilsMap)
+		maps.Copy(m.env[slave]["coils"].(map[int]bool), coilsMap)
 	} else if functionCode == protocol.ReadHoldingRegisters || functionCode == protocol.ReadInputRegisters {
 		skipFaultDetection := false
 		if _, ok := m.config.ProtocolOptions[config.ProtocolOptionModbusSkipFaultDetection]; ok {
@@ -91,8 +86,8 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		timestampMap := make(map[int]time.Time, len(registerData))
 		timeDeltaMap := make(map[int]int64, len(registerData))
 
-		if previousRegisterMap, ok := m.env["registers"].(map[int]uint16); ok {
-			previousTimestampMap := m.env["timestamps"].(map[int]time.Time)
+		if previousRegisterMap, ok := m.env[slave]["registers"].(map[int]uint16); ok {
+			previousTimestampMap := m.env[slave]["timestamps"].(map[int]time.Time)
 			for i, register := range registerData {
 				delta := int32(register) - int32(previousRegisterMap[int(address)+i])
 				if delta < -50000 { // overflow
@@ -112,25 +107,25 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 			registersMap[int(address)+i] = register
 			timestampMap[int(address)+i] = r.Timestamp
 		}
-		if _, ok := m.env["deltas"].(map[int]int32); ok {
-			maps.Copy(m.env["deltas"].(map[int]int32), deltaMap)
+		if _, ok := m.env[slave]["deltas"].(map[int]int32); ok {
+			maps.Copy(m.env[slave]["deltas"].(map[int]int32), deltaMap)
 		} else {
-			m.env["deltas"] = deltaMap
+			m.env[slave]["deltas"] = deltaMap
 		}
-		if _, ok := m.env["registers"].(map[int]uint16); ok {
-			maps.Copy(m.env["registers"].(map[int]uint16), registersMap)
+		if _, ok := m.env[slave]["registers"].(map[int]uint16); ok {
+			maps.Copy(m.env[slave]["registers"].(map[int]uint16), registersMap)
 		} else {
-			m.env["registers"] = registersMap
+			m.env[slave]["registers"] = registersMap
 		}
-		if _, ok := m.env["timestamps"].(map[int]time.Time); ok {
-			maps.Copy(m.env["timestamps"].(map[int]time.Time), timestampMap)
+		if _, ok := m.env[slave]["timestamps"].(map[int]time.Time); ok {
+			maps.Copy(m.env[slave]["timestamps"].(map[int]time.Time), timestampMap)
 		} else {
-			m.env["timestamps"] = timestampMap
+			m.env[slave]["timestamps"] = timestampMap
 		}
-		if _, ok := m.env["timedeltas"].(map[int]int64); ok {
-			maps.Copy(m.env["timedeltas"].(map[int]int64), timeDeltaMap)
+		if _, ok := m.env[slave]["timedeltas"].(map[int]int64); ok {
+			maps.Copy(m.env[slave]["timedeltas"].(map[int]int64), timeDeltaMap)
 		} else {
-			m.env["timedeltas"] = timeDeltaMap
+			m.env[slave]["timedeltas"] = timeDeltaMap
 		}
 	}
 
@@ -141,13 +136,11 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		if mmc.Address < address || mmc.Address+mmc.NumberOfCoilsOrRegisters > address+numberOfCoilsOrRegisters {
 			continue
 		}
-		output, err := runExpr(m.env, &mmc.MappingConfig)
+		output, err := runExpr(m.env[slave], &mmc.MappingConfig)
 		if err == nil {
 			u.AddValue(message.NewValue().WithPath(mmc.Path).WithValue(output))
 		}
 	}
-
-	m.writeEnvironmentForSlave(slave)
 
 	if len(u.Values) == 0 {
 		return nil, fmt.Errorf("data cannot be mapped: %v", r.Value)
@@ -157,23 +150,7 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 }
 
 func (m *ModbusMapper) loadEnvironmentForSlave(slave uint8) {
-	slaveString := fmt.Sprintf("slaveEnvPrefix%d", slave)
-	if slaveEnvironment, ok := m.env[slaveString]; ok {
-		for k, v := range slaveEnvironment.(ExpressionEnvironment) {
-			m.env[k] = v
-		}
-	}
-}
-
-func (m *ModbusMapper) writeEnvironmentForSlave(slave uint8) {
-	slaveString := fmt.Sprintf("slaveEnvPrefix%d", slave)
-	for k, v := range m.env {
-		if strings.HasPrefix(k, slaveEnvPrefix) {
-			continue
-		}
-		if _, ok := m.env[slaveString]; !ok {
-			m.env[slaveString] = ExpressionEnvironment{}
-		}
-		m.env[slaveString].(ExpressionEnvironment)[k] = v
+	if _, ok := m.env[slave]; !ok {
+		m.env[slave] = NewExpressionEnvironment()
 	}
 }

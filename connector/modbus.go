@@ -82,7 +82,7 @@ func (m *ModbusConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
 			}
 		}
 	}()
-	process(stream, m.config.Name, m.config.Protocol, publisher)
+	process(stream, m.config.Name, m.config.Protocol, publisher, m.timeout, m.config.Timeout)
 }
 
 func (m *ModbusConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw]) {
@@ -135,8 +135,6 @@ func (m *ModbusConnector) receive(stream chan<- []byte) error {
 					zap.Error(err),
 				)
 				errors <- err
-			} else {
-				m.timeout.Reset(m.config.Timeout)
 			}
 			wg.Done()
 		}(rgc)

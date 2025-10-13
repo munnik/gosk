@@ -2,6 +2,7 @@ package connector
 
 import (
 	"os"
+	"time"
 
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
@@ -16,13 +17,14 @@ type Connector[T nanomsg.Message] interface {
 	Subscribe(subscriber *nanomsg.Subscriber[T])
 }
 
-func process(stream <-chan []byte, connector string, protocol string, publisher *nanomsg.Publisher[message.Raw]) {
+func process(stream <-chan []byte, connector string, protocol string, publisher *nanomsg.Publisher[message.Raw], timeout *time.Timer, timeoutDuration time.Duration) {
 	sendBuffer := make(chan *message.Raw, bufferCapacity)
 	defer close(sendBuffer)
 	go publisher.Send(sendBuffer)
 
 	var m *message.Raw
 	for value := range stream {
+		timeout.Reset(timeoutDuration)
 		m = message.NewRaw().WithConnector(connector).WithValue(value).WithType(protocol)
 		sendBuffer <- m
 	}

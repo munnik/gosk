@@ -37,7 +37,7 @@ func (r *HttpConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
 			}
 		}
 	}()
-	process(stream, r.config.Name, r.config.Protocol, publisher)
+	process(stream, r.config.Name, r.config.Protocol, publisher, r.timeout, r.config.Timeout)
 }
 
 func (*HttpConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw]) {
@@ -88,7 +88,6 @@ Loop:
 				logger.GetLogger().Error("Could not read response body", zap.Error(err))
 				continue
 			}
-			h.timeout.Reset(h.config.Timeout)
 			stream <- bytes
 			resp.Body.Close()
 		case <-done:

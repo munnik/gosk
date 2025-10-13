@@ -40,7 +40,6 @@ func (r *MannerEthernetConnector) Publish(publisher *nanomsg.Publisher[message.R
 	r.readToChannel(streamBuffer)
 	go func() {
 		for b := range streamBuffer {
-			r.timeout.Reset(r.config.Timeout)
 			if b&0b11000000 == 0b11000000 {
 				values := make([]byte, 0, 12)
 				values = binary.BigEndian.AppendUint16(values, uint16(extractFirstValue(b, streamBuffer)))
@@ -51,7 +50,7 @@ func (r *MannerEthernetConnector) Publish(publisher *nanomsg.Publisher[message.R
 			}
 		}
 	}()
-	process(stream, r.config.Name, r.config.Protocol, publisher)
+	process(stream, r.config.Name, r.config.Protocol, publisher, r.timeout, r.config.Timeout)
 }
 
 func extractValue(streamBuffer chan byte) int {

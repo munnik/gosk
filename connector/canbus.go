@@ -37,7 +37,7 @@ func (r *CanBusConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
 			}
 		}
 	}()
-	process(stream, r.config.Name, r.config.Protocol, publisher)
+	process(stream, r.config.Name, r.config.Protocol, publisher, r.timeout, r.config.Timeout)
 }
 
 func (*CanBusConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw]) {
@@ -57,7 +57,6 @@ func (r *CanBusConnector) receive(stream chan<- []byte) error {
 
 func (r *CanBusConnector) handleCanFrameStream(stream chan<- []byte) can.HandlerFunc {
 	return func(frm can.Frame) {
-		r.timeout.Reset(r.config.Timeout)
 		bytes := FrameToBytes(frm)
 		stream <- bytes
 

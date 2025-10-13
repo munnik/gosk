@@ -47,7 +47,7 @@ func (r *LineConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
 			}
 		}
 	}()
-	process(stream, r.config.Name, r.config.Protocol, publisher)
+	process(stream, r.config.Name, r.config.Protocol, publisher, r.timeout, r.config.Timeout)
 }
 
 func (r *LineConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw]) {
@@ -180,7 +180,6 @@ func (l LineConnector) createFileConnection() (io.ReadWriter, error) {
 func (l LineConnector) scan(reader io.Reader, stream chan<- []byte) error {
 	scanner := bufio.NewScanner(reader)
 	for scanner.Scan() {
-		l.timeout.Reset(l.config.Timeout)
 		stream <- scanner.Bytes()
 	}
 	if err := scanner.Err(); err != nil {

@@ -58,6 +58,9 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		for i, coil := range protocol.RegistersToCoils(registerData) {
 			coilsMap[int(address)+i] = coil
 		}
+		if m.env[slave]["coils"] == nil {
+			m.env[slave]["coils"] = make(map[int]bool, 0)
+		}
 		maps.Copy(m.env[slave]["coils"].(map[int]bool), coilsMap)
 	} else if functionCode == protocol.ReadHoldingRegisters || functionCode == protocol.ReadInputRegisters {
 		skipFaultDetection := false

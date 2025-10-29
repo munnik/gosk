@@ -27,6 +27,7 @@ func NewExpressionEnvironment() ExpressionEnvironment {
 		"powerW":           PowerW,
 		"toFloat":          ToFloat,
 		"toUInt":           ToUInt16,
+		"toInt":            ToInt16,
 		"bitwiseAnd":       BitwiseAnd,
 		"bitwiseOr":        BitwiseOr,
 		"bitwiseXor":       BitwiseXor,
@@ -163,12 +164,16 @@ func ToFloat(mostSignificant, leastSignificant uint16) float32 {
 	bits := binary.BigEndian.Uint32(data)
 	return math.Float32frombits(bits)
 }
+
 func ToUInt16(mostSignificant, leastSignificant uint8) uint16 {
 	data := make([]byte, 2)
 	data[0] = mostSignificant
 	data[1] = leastSignificant
 	return binary.BigEndian.Uint16(data)
+}
 
+func ToInt16(unsigned uint16) int16 {
+	return int16(unsigned)
 }
 
 func BitwiseAnd(left, right uint16) uint16 {

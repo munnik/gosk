@@ -3,6 +3,7 @@ package protocol
 import (
 	"encoding/binary"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/munnik/gosk/logger"
@@ -59,14 +60,20 @@ type ModbusHeader struct {
 }
 
 type ModbusClient struct {
-	realClient *modbus.Client
-	header     *ModbusHeader
+	realClient  *modbus.Client
+	header      *ModbusHeader
+	writeHeader *ModbusHeader
+	writeValues *[]byte
+	lock        *sync.Mutex
 }
 
-func NewModbusClient(realClient *modbus.Client, header *ModbusHeader) *ModbusClient {
+func NewModbusClient(realClient *modbus.Client, header *ModbusHeader, writeHeader *ModbusHeader, writeValues *[]byte, lock *sync.Mutex) *ModbusClient {
 	return &ModbusClient{
-		realClient: realClient,
-		header:     header,
+		realClient:  realClient,
+		header:      header,
+		writeHeader: writeHeader,
+		writeValues: writeValues,
+		lock:        lock,
 	}
 }
 
@@ -174,7 +181,20 @@ func (m *ModbusClient) Poll(stream chan<- []byte, pollingInterval time.Duration)
 	for {
 		select {
 		case <-ticker.C:
+			m.lock.Lock()
+			if m.writeHeader != nil {
+				_, err := m.execute(m.writeHeader, *m.writeValues)
+				if err != nil {
+					logger.GetLogger().Warn(
+						"Error while writing before read",
+						zap.Error(err),
+					)
+					m.lock.Unlock()
+					continue
+				}
+			}
 			n, err := m.Read(bytes)
+			m.lock.Unlock()
 			// TODO: how to handle failed reads, never attempt again or keep trying
 			if err != nil {
 				logger.GetLogger().Warn(

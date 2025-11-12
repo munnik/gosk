@@ -20,6 +20,7 @@ type ModbusConnector struct {
 	registerGroupsConfig []config.RegisterGroupConfig
 	realClient           *modbus.Client
 	timeout              *time.Timer
+	lock                 *sync.Mutex
 }
 
 func NewModbusConnector(c *config.ConnectorConfig, rgcs []config.RegisterGroupConfig) (*ModbusConnector, error) {
@@ -34,6 +35,9 @@ func NewModbusConnector(c *config.ConnectorConfig, rgcs []config.RegisterGroupCo
 				return nil, fmt.Errorf("maximum number %v of registers exceeded for register group %v", protocol.MODBUS_MAXIMUM_NUMBER_OF_REGISTERS, rgc)
 			}
 		}
+		//todo check write request has same slaveID
+		//todo check write request has correct function code
+		// same for read itself
 	}
 	cc := &modbus.Configuration{
 		URL:      c.URL.String(),
@@ -65,7 +69,13 @@ func NewModbusConnector(c *config.ConnectorConfig, rgcs []config.RegisterGroupCo
 		return nil, fmt.Errorf("unable to create modbus client %v, the error that occurred was %v", c.URL.String(), err)
 	}
 
-	return &ModbusConnector{config: c, registerGroupsConfig: rgcs, realClient: realClient, timeout: time.AfterFunc(c.Timeout, exit)}, nil
+	return &ModbusConnector{
+		config:               c,
+		registerGroupsConfig: rgcs,
+		realClient:           realClient,
+		timeout:              time.AfterFunc(c.Timeout, exit),
+		lock:                 &sync.Mutex{},
+	}, nil
 }
 
 func (m *ModbusConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
@@ -90,6 +100,9 @@ func (m *ModbusConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw])
 		client := protocol.NewModbusClient(
 			m.realClient,
 			nil, // no need to set this because it will not be used in the Write([]byte) function
+			nil,
+			nil,
+			m.lock,
 		)
 		receiveBuffer := make(chan *message.Raw, bufferCapacity)
 		defer close(receiveBuffer)
@@ -122,6 +135,9 @@ func (m *ModbusConnector) receive(stream chan<- []byte) error {
 			client := protocol.NewModbusClient(
 				m.realClient,
 				rgc.ExtractModbusHeader(),
+				rgc.ExtractWriteModbusHeader(), //TODO make sure this is nil when not configured
+				&rgc.WriteBeforeRead.Values,
+				m.lock,
 			)
 			logger.GetLogger().Info("Created a new modbus cient",
 				zap.Uint8("slave", rgc.Slave),

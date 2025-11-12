@@ -67,7 +67,8 @@ func NewConnectorConfig(configFilePath string) *ConnectorConfig {
 
 type RegisterGroupConfig struct {
 	protocol.ModbusHeader `mapstructure:",squash"`
-	PollingInterval       time.Duration `mapstructure:"pollingInterval"`
+	PollingInterval       time.Duration      `mapstructure:"pollingInterval"`
+	WriteBeforeRead       ModbusWriteRequest `mapstructure:"writeBeforeRead"`
 }
 
 func NewRegisterGroupsConfig(configFilePath string) []RegisterGroupConfig {
@@ -84,6 +85,19 @@ func (rgc *RegisterGroupConfig) ExtractModbusHeader() *protocol.ModbusHeader {
 		Address:                  rgc.Address,
 		NumberOfCoilsOrRegisters: rgc.NumberOfCoilsOrRegisters,
 	}
+}
+func (rgc *RegisterGroupConfig) ExtractWriteModbusHeader() *protocol.ModbusHeader {
+	return &protocol.ModbusHeader{
+		Slave:                    rgc.WriteBeforeRead.Slave,
+		FunctionCode:             rgc.WriteBeforeRead.FunctionCode,
+		Address:                  rgc.WriteBeforeRead.Address,
+		NumberOfCoilsOrRegisters: rgc.WriteBeforeRead.NumberOfCoilsOrRegisters,
+	}
+}
+
+type ModbusWriteRequest struct {
+	protocol.ModbusHeader `mapstructure:",squash"`
+	Values                []byte `mapstructure:"values"`
 }
 
 type UrlGroupConfig struct {

@@ -140,7 +140,7 @@ func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 			continue
 		}
 		output, err := runExpr(m.env[slave], &mmc.MappingConfig)
-		if err == nil {
+		if err == nil && output != nil {
 			u.AddValue(message.NewValue().WithPath(mmc.Path).WithValue(output))
 		}
 	}

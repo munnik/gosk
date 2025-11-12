@@ -35,9 +35,17 @@ func NewModbusConnector(c *config.ConnectorConfig, rgcs []config.RegisterGroupCo
 				return nil, fmt.Errorf("maximum number %v of registers exceeded for register group %v", protocol.MODBUS_MAXIMUM_NUMBER_OF_REGISTERS, rgc)
 			}
 		}
-		//todo check write request has same slaveID
-		//todo check write request has correct function code
-		// same for read itself
+		if !rgc.WriteBeforeRead.IsEmpty() {
+			if rgc.Slave != rgc.WriteBeforeRead.Slave {
+				return nil, fmt.Errorf("slave IDs for read and write should match, got %v and %v", rgc.Slave, rgc.WriteBeforeRead.Slave)
+			}
+			if rgc.WriteBeforeRead.FunctionCode < protocol.WriteSingleCoil {
+				return nil, fmt.Errorf("function code should be a write, got %v", rgc.WriteBeforeRead.FunctionCode)
+			}
+		}
+		if rgc.FunctionCode >= protocol.WriteSingleCoil {
+			return nil, fmt.Errorf("function code should be a read, got %v", rgc.FunctionCode)
+		}
 	}
 	cc := &modbus.Configuration{
 		URL:      c.URL.String(),

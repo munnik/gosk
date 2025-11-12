@@ -87,6 +87,9 @@ func (rgc *RegisterGroupConfig) ExtractModbusHeader() *protocol.ModbusHeader {
 	}
 }
 func (rgc *RegisterGroupConfig) ExtractWriteModbusHeader() *protocol.ModbusHeader {
+	if rgc.WriteBeforeRead.IsEmpty() {
+		return nil
+	}
 	return &protocol.ModbusHeader{
 		Slave:                    rgc.WriteBeforeRead.Slave,
 		FunctionCode:             rgc.WriteBeforeRead.FunctionCode,
@@ -98,6 +101,10 @@ func (rgc *RegisterGroupConfig) ExtractWriteModbusHeader() *protocol.ModbusHeade
 type ModbusWriteRequest struct {
 	protocol.ModbusHeader `mapstructure:",squash"`
 	Values                []byte `mapstructure:"values"`
+}
+
+func (mwr *ModbusWriteRequest) IsEmpty() bool {
+	return mwr.Slave == 0 && mwr.FunctionCode == 0 && mwr.Address == 0 && mwr.NumberOfCoilsOrRegisters == 0 && len(mwr.Values) == 0
 }
 
 type UrlGroupConfig struct {

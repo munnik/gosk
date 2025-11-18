@@ -14,3 +14,9 @@ registerGroups: # groups of registers that should be read in one request
     address: 51440 # address of the first register to read, zero based
     numberOfCoilsOrRegisters: 4 # number of registers to read from address [optional default is 1]
     pollingInterval: 500000000 # interval between consecutive reads in ns [optional default is 1000000000 (1s)]
+    writeBeforeRead:
+      slave: 1 # slave id
+      functionCode: 6 # function code of the registers, 5 = write single coil, 6 = write single holding register, 15 = multiple coils, 16 = multiple holding registers
+      address: 101 # address of the first register to read, zero based
+      numberOfCoilsOrRegisters: 1 # number of registers to read from address [optional default is 1]
+      values: [0,128] # array of bytes containing the value to write

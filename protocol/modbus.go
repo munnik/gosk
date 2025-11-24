@@ -174,7 +174,7 @@ func (m *ModbusClient) execute(header *ModbusHeader, bytes []byte) (int, error) 
 	return len(bytes), nil
 }
 
-func (m *ModbusClient) Poll(stream chan<- []byte, pollingInterval time.Duration) error {
+func (m *ModbusClient) Poll(stream chan<- []byte, pollingInterval time.Duration, writeDelay time.Duration) error {
 	ticker := time.NewTicker(pollingInterval)
 	done := make(chan struct{})
 	bytes := make([]byte, 0, m.header.NumberOfCoilsOrRegisters*2+MODBUS_HEADER_LENGTH)
@@ -192,6 +192,7 @@ func (m *ModbusClient) Poll(stream chan<- []byte, pollingInterval time.Duration)
 					m.lock.Unlock()
 					continue
 				}
+				time.Sleep(writeDelay)
 			}
 			n, err := m.Read(bytes)
 			m.lock.Unlock()

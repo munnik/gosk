@@ -20,3 +20,4 @@ registerGroups: # groups of registers that should be read in one request
       address: 101 # address of the first register to read, zero based
       numberOfCoilsOrRegisters: 1 # number of registers to read from address [optional default is 1]
       values: [0,128] # array of bytes containing the value to write
+      delay: "10000ms"

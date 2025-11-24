@@ -100,7 +100,8 @@ func (rgc *RegisterGroupConfig) ExtractWriteModbusHeader() *protocol.ModbusHeade
 
 type ModbusWriteRequest struct {
 	protocol.ModbusHeader `mapstructure:",squash"`
-	Values                []byte `mapstructure:"values"`
+	Values                []byte        `mapstructure:"values"`
+	Delay                 time.Duration `mapstructure:"delay"`
 }
 
 func (mwr *ModbusWriteRequest) IsEmpty() bool {

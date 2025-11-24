@@ -42,6 +42,9 @@ func NewModbusConnector(c *config.ConnectorConfig, rgcs []config.RegisterGroupCo
 			if rgc.WriteBeforeRead.FunctionCode < protocol.WriteSingleCoil {
 				return nil, fmt.Errorf("function code should be a write, got %v", rgc.WriteBeforeRead.FunctionCode)
 			}
+			if rgc.WriteBeforeRead.Delay > rgc.PollingInterval {
+				return nil, fmt.Errorf("write delay larger than polling interval, got %v and %v", rgc.WriteBeforeRead.Delay, rgc.PollingInterval)
+			}
 		}
 		if rgc.FunctionCode >= protocol.WriteSingleCoil {
 			return nil, fmt.Errorf("function code should be a read, got %v", rgc.FunctionCode)
@@ -153,7 +156,7 @@ func (m *ModbusConnector) receive(stream chan<- []byte) error {
 				zap.Uint16("address", rgc.Address),
 				zap.Uint16("number of coils or registers", rgc.NumberOfCoilsOrRegisters),
 			)
-			if err := client.Poll(stream, rgc.PollingInterval); err != nil {
+			if err := client.Poll(stream, rgc.PollingInterval, rgc.WriteBeforeRead.Delay); err != nil {
 				logger.GetLogger().Error(
 					"An error occurred while polling the client",
 					zap.Error(err),

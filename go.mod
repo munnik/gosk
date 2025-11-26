@@ -30,7 +30,7 @@ require (
 	go.einride.tech/can v0.16.1
 	go.nanomsg.org/mangos/v3 v3.4.2
 	go.uber.org/zap v1.27.1
-	golang.org/x/exp v0.0.0-20251113190631-e25ba8c21ef6
+	golang.org/x/exp v0.0.0-20251125195548-87e1e737ad39
 	gonum.org/v1/gonum v0.16.0
 )
 

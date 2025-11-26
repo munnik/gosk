@@ -27,10 +27,11 @@ import (
 )
 
 var mapCmd = &cobra.Command{
-	Use:   "map",
-	Short: "Map raw data to meaningful data",
-	Long:  `Map raw data to meaningful data based on the SignalK specification`,
-	Run:   doMap,
+	Use:     "map",
+	Aliases: []string{"aggregate"},
+	Short:   "Map raw data to meaningful data",
+	Long:    `Map raw data to meaningful data based on the SignalK specification`,
+	Run:     doMap,
 }
 
 func init() {

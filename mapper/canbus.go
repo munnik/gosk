@@ -2,7 +2,8 @@ package mapper
 
 import (
 	"encoding/binary"
-	"io/ioutil"
+	"fmt"
+	"io"
 	"os"
 
 	"github.com/munnik/gosk/config"
@@ -22,9 +23,17 @@ type CanBusMapper struct {
 	canbusMappings map[string]map[string]config.CanBusMappingConfig
 }
 
+type Signal struct {
+	origin string
+	name   string
+	value  float64
+}
+
+type DBC map[uint32]*dbc.MessageDef
+
 func NewCanBusMapper(c config.CanBusMapperConfig, cmc []config.CanBusMappingConfig) (*CanBusMapper, error) {
 	// parse DBC file and store mappings
-	dbc := readDBC(c.DbcFile)
+	dbc := readDBC(c.DbcFile, c.IsJ1939)
 	mappings := make(map[string]map[string]config.CanBusMappingConfig)
 	for _, m := range cmc {
 		_, present := mappings[m.Origin]
@@ -47,9 +56,14 @@ func (m *CanBusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 
 	frm := createFrame(r)
 	// lookup mappings for frame
-	mappings, present := m.dbc[frm.ID]
+	id := frm.ID
+	if m.config.IsJ1939 {
+		id = (id >> 8) & 0x3FFFF
+	}
+	mappings, present := m.dbc[id]
 	if present {
 		// apply all mappings
+		fmt.Printf("Found %s with id %d\n", mappings.Name, mappings.MessageID)
 		env := NewExpressionEnvironment()
 		for _, mapping := range mappings.Signals {
 			val := extractSignal(mapping, string(mappings.Name), frm)
@@ -120,31 +134,27 @@ func extractSignal(mapping dbc.SignalDef, origin string, frm can.Frame) Signal {
 	return Signal{origin: origin, name: string(name), value: res}
 }
 
-type Signal struct {
-	origin string
-	name   string
-	value  float64
-}
-type DBC map[uint32]*dbc.MessageDef
-
-func readDBC(filename string) DBC {
+func readDBC(filename string, isJ1939 bool) DBC {
 	file, err := os.Open(filename)
 	if err != nil {
 		logger.GetLogger().Error(err.Error())
 	}
 	defer file.Close()
-	source, err := ioutil.ReadAll(file)
+	source, err := io.ReadAll(file)
 	if err != nil {
 		logger.GetLogger().Error(err.Error())
 	}
 	parser := dbc.NewParser(file.Name(), source)
 	parser.Parse()
-	messages := make(map[uint32]*dbc.MessageDef)
+	messages := make(DBC)
 	for _, def := range parser.Defs() {
 		switch def := def.(type) {
 		case *dbc.MessageDef:
-			id := def.MessageID
-			messages[uint32(id)] = def
+			id := uint32(def.MessageID)
+			if isJ1939 {
+				id = (id >> 8) & 0x3FFFF
+			}
+			messages[id] = def
 		}
 	}
 	return messages

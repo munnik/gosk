@@ -141,6 +141,7 @@ func NewMapperConfig(configFilePath string) MapperConfig {
 type CanBusMapperConfig struct {
 	MapperConfig `mapstructure:",squash"`
 	DbcFile      string `mapstructure:"dbcFile"`
+	IsJ1939      bool   `mapstructure:"isJ1939"`
 }
 
 func NewCanBusMapperConfig(configFilePath string) CanBusMapperConfig {

@@ -10,13 +10,13 @@ require (
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/expr-lang/expr v1.17.6
 	github.com/fgrosse/zaptest v1.2.1
-	github.com/golang-migrate/migrate/v4 v4.19.0
+	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgtype v1.14.4
 	github.com/jackc/pgx-zap v0.0.0-20221202020421-94b1cb2f889f
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/jpillora/backoff v1.0.0
-	github.com/klauspost/compress v1.18.1
+	github.com/klauspost/compress v1.18.2
 	github.com/lxzan/gws v1.8.9
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/munnik/go-signalk v0.0.3
@@ -24,13 +24,13 @@ require (
 	github.com/onsi/ginkgo/v2 v2.22.0
 	github.com/onsi/gomega v1.36.0
 	github.com/prometheus/client_golang v1.23.2
-	github.com/spf13/cobra v1.10.1
+	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	go.bug.st/serial v1.6.4
 	go.einride.tech/can v0.16.1
 	go.nanomsg.org/mangos/v3 v3.4.2
 	go.uber.org/zap v1.27.1
-	golang.org/x/exp v0.0.0-20251125195548-87e1e737ad39
+	golang.org/x/exp v0.0.0-20251209150349-8475f28825e9
 	gonum.org/v1/gonum v0.16.0
 )
 
@@ -48,8 +48,6 @@ require (
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/pprof v0.0.0-20241206021119-61a79c692802 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
-	github.com/hashicorp/errwrap v1.1.0 // indirect
-	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackc/pgio v1.0.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
@@ -71,12 +69,12 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/crypto v0.45.0 // indirect
-	golang.org/x/net v0.47.0 // indirect
-	golang.org/x/sync v0.18.0 // indirect
-	golang.org/x/sys v0.38.0 // indirect
-	golang.org/x/text v0.31.0 // indirect
-	golang.org/x/tools v0.39.0 // indirect
+	golang.org/x/crypto v0.46.0 // indirect
+	golang.org/x/net v0.48.0 // indirect
+	golang.org/x/sync v0.19.0 // indirect
+	golang.org/x/sys v0.39.0 // indirect
+	golang.org/x/text v0.32.0 // indirect
+	golang.org/x/tools v0.40.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

@@ -2,7 +2,6 @@ package mapper
 
 import (
 	"encoding/binary"
-	"fmt"
 	"io"
 	"os"
 
@@ -63,7 +62,6 @@ func (m *CanBusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	mappings, present := m.dbc[id]
 	if present {
 		// apply all mappings
-		fmt.Printf("Found %s with id %d\n", mappings.Name, mappings.MessageID)
 		env := NewExpressionEnvironment()
 		for _, mapping := range mappings.Signals {
 			val := extractSignal(mapping, string(mappings.Name), frm)

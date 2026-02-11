@@ -28,6 +28,7 @@ func NewExpressionEnvironment() ExpressionEnvironment {
 		"toFloat":          ToFloat,
 		"toUInt":           ToUInt16,
 		"toInt":            ToInt16,
+		"toUInt32":         ToUInt32,
 		"toInt32":          ToInt32,
 		"bitwiseAnd":       BitwiseAnd,
 		"bitwiseOr":        BitwiseOr,
@@ -175,6 +176,10 @@ func ToUInt16(mostSignificant, leastSignificant uint8) uint16 {
 
 func ToInt16(unsigned uint16) int16 {
 	return int16(unsigned)
+}
+
+func ToUInt32(mostSignificant, leastSignificant uint16) uint32 {
+	return uint32(mostSignificant)*65536 + uint32(leastSignificant)
 }
 
 func ToInt32(mostSignificant, leastSignificant uint16) int32 {

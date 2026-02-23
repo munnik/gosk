@@ -28,7 +28,6 @@ import (
 
 const (
 	rawInsertQuery                 = `INSERT INTO "raw_data" ("time", "connector", "value", "uuid", "type") VALUES ($1, $2, $3, $4, $5)`
-	selectRawQuery                 = `SELECT "time", "connector", "value", "uuid", "type" FROM "raw_data"`
 	mappedInsertQuery              = `INSERT INTO "%s" ("time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT ("time", "origin", "context", "connector", "path") DO UPDATE SET value = EXCLUDED.value`
 	selectMappedQuery              = `SELECT "time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid" FROM "mapped_data"`
 	selectMostRecentMappedQuery    = `SELECT DISTINCT ON ("context", "path") "time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid" FROM "mapped_data" WHERE "time" > $1 ORDER BY "context", "path", "time" DESC`
@@ -279,7 +278,7 @@ func (db *PostgresqlDatabase) updateStaticData(context, path string, value any) 
 		return
 	}
 
-	query := fmt.Sprintf(`INSERT INTO "gosk"."static_data" ("context", "%s") VALUES ($1, $2) ON CONFLICT("context") DO UPDATE SET "%s" = EXCLUDED."%s";`, column, column, column)
+	query := fmt.Sprintf(`INSERT INTO "static_data" ("context", "%s") VALUES ($1, $2) ON CONFLICT("context") DO UPDATE SET "%s" = EXCLUDED."%s";`, column, column, column)
 	db.batchMutex.Lock()
 	db.batch.Queue(query, context, v).Exec(func(ct pgconn.CommandTag) error {
 		if ct.RowsAffected() == 0 {

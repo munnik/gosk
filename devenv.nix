@@ -1,9 +1,24 @@
 { pkgs, inputs, ... }:
 let
-  pkgs-unstable =
-    import inputs.nixpkgs-unstable { inherit (pkgs.stdenv) system; };
-in {
-  packages = with pkgs; [ gnugrep goreleaser prettierd shellcheck shfmt taplo ];
+  pkgs-unstable = import inputs.nixpkgs-unstable { inherit (pkgs.stdenv) system; };
+in
+{
+  packages = with pkgs; [
+    gdlv
+    gnugrep
+    gofumpt
+    golangci-lint
+    golangci-lint-langserver
+    goreleaser
+    pre-commit
+    prettier
+    prettierd
+    rr
+    shellcheck
+    shfmt
+    taplo
+    vscode-json-languageserver
+  ];
 
   overlays = [ (_: _: { inherit (pkgs-unstable) delve; }) ];
 
@@ -18,7 +33,7 @@ in {
     mdsh.enable = true;
 
     # nix
-    nixfmt-classic.enable = true;
+    nixfmt.enable = true;
     deadnix.enable = true;
     # flake-checker.enable = true;
     nil.enable = true;

@@ -1,0 +1,104 @@
+{
+  "context": "vessels.urn:mrn:imo:mmsi:269057727",
+  "dbcFile": "/nix/store/r7wl49n9vw5i0rmfh1g7gf331a98f45z-j1939.dbc",
+  "isJ1939": true,
+  "mappings": [
+    {
+      "expression": "value + 273.15",
+      "name": "AmbientAirTemperature",
+      "origin": "AMB",
+      "path": "environment.inside.auxiliaries.generatorPortAft.temperature"
+    },
+    {
+      "expression": "value * 1000",
+      "name": "BarometricPressure",
+      "origin": "AMB",
+      "path": "environment.inside.auxiliaries.generatorPortAft.pressure"
+    },
+    {
+      "expression": "value / 100",
+      "name": "ActualEnginePercentTorque",
+      "origin": "EEC1",
+      "path": "auxiliaries.generatorPortAft.engineTorque"
+    },
+    {
+      "expression": "value / 60",
+      "name": "EngineSpeed",
+      "origin": "EEC1",
+      "path": "auxiliaries.generatorPortAft.revolutions"
+    },
+    {
+      "expression": "value / 100",
+      "name": "EnginePercentLoadAtCurrentSpeed",
+      "origin": "EEC2",
+      "path": "auxiliaries.generatorPortAft.engineLoad"
+    },
+    {
+      "expression": "value * 1000",
+      "name": "EngineCoolantPressure1",
+      "origin": "EFLP1",
+      "path": "auxiliaries.generatorPortAft.coolantPressure"
+    },
+    {
+      "expression": "value * 1000",
+      "name": "EngineOilPressure1",
+      "origin": "EFLP1",
+      "path": "auxiliaries.generatorPortAft.oilPressure"
+    },
+    {
+      "expression": "value / 100",
+      "name": "EngineCoolantLevel1",
+      "origin": "EFLP1",
+      "path": "auxiliaries.generatorPortAft.coolantLevel"
+    },
+    {
+      "expression": "value / 100",
+      "name": "EngineOilLevel1",
+      "origin": "EFLP1",
+      "path": "auxiliaries.generatorPortAft.oilLevel"
+    },
+    {
+      "expression": "value + 273.15",
+      "name": "EngineCoolantTemperature",
+      "origin": "ET1",
+      "path": "auxiliaries.generatorPortAft.coolantTemperature"
+    },
+    {
+      "expression": "value + 273.15",
+      "name": "EngineOilTemperature1",
+      "origin": "ET1",
+      "path": "auxiliaries.generatorPortAft.oilTemperature"
+    },
+    {
+      "expression": "value + 273.15",
+      "name": "EngineExhaustTemperature",
+      "origin": "IC1",
+      "path": "auxiliaries.generatorPortAft.exhaustTemperature"
+    },
+    {
+      "expression": "value * 1000",
+      "name": "EngineIntakeManifold1Pressure ",
+      "origin": "IC1",
+      "path": "auxiliaries.generatorPortAft.intakeManifoldPressure"
+    },
+    {
+      "expression": "value + 273.15",
+      "name": "EngnIntkMnfld1Tmprtr",
+      "origin": "IC1",
+      "path": "auxiliaries.generatorPortAft.intakeManifoldTemperature"
+    },
+    {
+      "expression": "value / 1000",
+      "name": "EngineTotalFuelUsed",
+      "origin": "LFC1",
+      "path": "auxiliaries.generatorPortAft.fuel.used"
+    },
+    {
+      "expression": "value / 3600000",
+      "name": "EngineFuelRate",
+      "origin": "LFE1",
+      "path": "auxiliaries.generatorPortAft.fuel.rate"
+    }
+  ],
+  "protocol": "canbus"
+}

@@ -1,6 +1,12 @@
-{ pkgs, inputs, ... }:
+{
+  pkgs,
+  inputs,
+  lib,
+  ...
+}:
 let
   pkgs-unstable = import inputs.nixpkgs-unstable { inherit (pkgs.stdenv) system; };
+  zellij-layout-kld = ".config/zellij/layout.kdl";
 in
 {
   packages = with pkgs; [
@@ -27,6 +33,46 @@ in
     enableHardeningWorkaround = true;
     package = pkgs-unstable.go;
   };
+
+  files."${zellij-layout-kld}".text = ''
+    layout {
+      tab name="Helix" {
+        pane size=1 borderless=true {
+          plugin location="tab-bar"
+        }
+        pane split_direction="vertical" {
+          pane command="hx"
+          pane
+        }
+        pane size=1 borderless=true {
+          plugin location="status-bar"
+        }
+      }
+      tab name="Lazygit" {
+        pane size=1 borderless=true {
+          plugin location="tab-bar"
+        }
+        pane command="lazygit"
+        pane size=1 borderless=true {
+          plugin location="status-bar"
+        }
+      }
+      tab name="Vessel" {
+        pane size=1 borderless=true {
+          plugin location="tab-bar"
+        }
+        pane
+        pane size=1 borderless=true {
+          plugin location="status-bar"
+        }
+      }
+    }
+  '';
+  enterShell = ''
+    if [ -z $ZELLIJ ]; then
+      ${lib.getExe pkgs.zellij} --layout ${zellij-layout-kld}
+    fi
+  '';
 
   git-hooks.hooks = {
     # markdown

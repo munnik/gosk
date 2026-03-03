@@ -36,35 +36,26 @@ in
 
   files."${zellij-layout-kld}".text = ''
     layout {
-      tab name="Helix" {
+      default_tab_template {
         pane size=1 borderless=true {
-          plugin location="tab-bar"
+          plugin location="zellij:tab-bar"
         }
+        children
+        pane size=2 borderless=true {
+          plugin location="zellij:status-bar"
+        }
+      }
+      tab name="Helix" {
         pane split_direction="vertical" {
           pane command="hx"
           pane
         }
-        pane size=1 borderless=true {
-          plugin location="status-bar"
-        }
       }
       tab name="Lazygit" {
-        pane size=1 borderless=true {
-          plugin location="tab-bar"
-        }
         pane command="lazygit"
-        pane size=1 borderless=true {
-          plugin location="status-bar"
-        }
       }
       tab name="Vessel" {
-        pane size=1 borderless=true {
-          plugin location="tab-bar"
-        }
         pane
-        pane size=1 borderless=true {
-          plugin location="status-bar"
-        }
       }
     }
   '';

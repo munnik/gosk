@@ -1,7 +1,6 @@
 package mapper
 
 import (
-	"encoding/binary"
 	"io"
 	"os"
 
@@ -11,8 +10,9 @@ import (
 	"github.com/munnik/gosk/nanomsg"
 	"go.uber.org/zap"
 
-	"github.com/brutella/can"
+	"go.einride.tech/can"
 	"go.einride.tech/can/pkg/dbc"
+	"go.einride.tech/can/pkg/descriptor"
 )
 
 type CanBusMapper struct {
@@ -22,10 +22,11 @@ type CanBusMapper struct {
 	canbusMappings map[string]map[string]config.CanBusMappingConfig
 }
 
-type Signal struct {
+type signal struct {
 	origin string
 	name   string
 	value  float64
+	valid  bool
 }
 
 type DBC map[uint32]*dbc.MessageDef
@@ -53,22 +54,27 @@ func (m *CanBusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	s := message.NewSource().WithLabel(r.Connector).WithType(m.protocol).WithUuid(r.Uuid)
 	u := message.NewUpdate().WithSource(*s).WithTimestamp(r.Timestamp)
 
-	frm := createFrame(r)
-	// lookup mappings for frame
-	id := frm.ID
+	frame := can.Frame{}
+	if err := frame.UnmarshalJSON(r.Value); err != nil {
+		return nil, err
+	}
+
+	id := dbc.MessageID(frame.ID).ToCAN()
 	if m.config.IsJ1939 {
-		id = (id >> 8) & 0x3FFFF
+		id = getPGN(id)
 	}
 	mappings, present := m.dbc[id]
 	if present {
-		// apply all mappings
 		env := NewExpressionEnvironment()
-		for _, mapping := range mappings.Signals {
-			val := extractSignal(mapping, string(mappings.Name), frm)
-			mapping, present := m.canbusMappings[val.origin][val.name]
+		for _, signalDef := range mappings.Signals {
+			signal := extractSignal(signalDef, string(mappings.Name), frame)
+			if !signal.valid {
+				continue
+			}
+			mapping, present := m.canbusMappings[signal.origin][signal.name]
 
 			if present {
-				env["value"] = val.value
+				env["value"] = signal.value
 				output, err := runExpr(env, &mapping.MappingConfig)
 				if err == nil {
 					u.AddValue(message.NewValue().WithPath(mapping.Path).WithValue(output))
@@ -86,50 +92,26 @@ func (m *CanBusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	return result.AddUpdate(u), nil
 }
 
-func createFrame(r *message.Raw) can.Frame {
-	data := [8]uint8{}
-	copy(data[:], r.Value[8:16])
-	frm := can.Frame{
-		ID:     binary.BigEndian.Uint32(r.Value[0:4]),
-		Length: r.Value[4],
-		Flags:  r.Value[5],
-		Res0:   r.Value[6],
-		Res1:   r.Value[7],
-		Data:   data,
-	}
-	return frm
-}
-
-func extractSignal(mapping dbc.SignalDef, origin string, frm can.Frame) Signal {
-	// get name
-	name := mapping.Name
-	start := mapping.StartBit
-	length := mapping.Size
-	data := make([]uint8, 8)
-	copy(data, frm.Data[:])
-	if mapping.IsBigEndian {
-		start = start - 7
-		// reverse the bits in each byte
-		// for i, b := range data {
-		// 	data[i] = bits.Reverse8(b)
-		// }
-	}
-	// extract the correct bits
-	temp := binary.BigEndian.Uint64(data[:])
-	temp = temp << start
-	temp = temp >> (64 - (length))
-
-	// get value
-	var val float64
-	if mapping.IsSigned {
-		val = float64(int64(temp))
-	} else {
-		val = float64(temp)
+func extractSignal(signalDef dbc.SignalDef, origin string, frame can.Frame) signal {
+	s := descriptor.Signal{
+		Start:       uint8(signalDef.StartBit),
+		Length:      uint8(signalDef.Size),
+		IsBigEndian: signalDef.IsBigEndian,
+		IsSigned:    signalDef.IsSigned,
+		IsFloat:     true,
+		Scale:       signalDef.Factor,
+		Offset:      signalDef.Offset,
+		Min:         signalDef.Minimum,
+		Max:         signalDef.Maximum,
 	}
 
-	// get conversion
-	res := val*mapping.Factor + mapping.Offset
-	return Signal{origin: origin, name: string(name), value: res}
+	value := s.UnmarshalPhysical(frame.Data)
+	return signal{
+		origin: origin,
+		name:   string(signalDef.Name),
+		value:  value,
+		valid:  value >= s.Min && value <= s.Max,
+	}
 }
 
 func readDBC(filename string, isJ1939 bool) DBC {
@@ -148,12 +130,16 @@ func readDBC(filename string, isJ1939 bool) DBC {
 	for _, def := range parser.Defs() {
 		switch def := def.(type) {
 		case *dbc.MessageDef:
-			id := uint32(def.MessageID)
+			id := def.MessageID.ToCAN()
 			if isJ1939 {
-				id = (id >> 8) & 0x3FFFF
+				id = getPGN(id)
 			}
 			messages[id] = def
 		}
 	}
 	return messages
+}
+
+func getPGN(messageId uint32) uint32 {
+	return messageId & 0x3FFFF00
 }

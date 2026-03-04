@@ -3,6 +3,7 @@ package mapper
 import (
 	"io"
 	"os"
+	"slices"
 
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
@@ -63,17 +64,18 @@ func (m *CanBusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	if m.config.IsJ1939 {
 		id = getPGN(id)
 	}
-	mappings, present := m.dbc[id]
-	if present {
+	if mappings, ok := m.dbc[id]; ok {
 		env := NewExpressionEnvironment()
 		for _, signalDef := range mappings.Signals {
 			signal := extractSignal(signalDef, string(mappings.Name), frame)
 			if !signal.valid {
 				continue
 			}
-			mapping, present := m.canbusMappings[signal.origin][signal.name]
 
-			if present {
+			if mapping, ok := m.canbusMappings[signal.origin][signal.name]; ok {
+				if slices.Contains(mapping.ExcludeValues, signal.value) {
+					continue
+				}
 				env["value"] = signal.value
 				output, err := runExpr(env, &mapping.MappingConfig)
 				if err == nil {

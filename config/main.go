@@ -86,6 +86,7 @@ func (rgc *RegisterGroupConfig) ExtractModbusHeader() *protocol.ModbusHeader {
 		NumberOfCoilsOrRegisters: rgc.NumberOfCoilsOrRegisters,
 	}
 }
+
 func (rgc *RegisterGroupConfig) ExtractWriteModbusHeader() *protocol.ModbusHeader {
 	if rgc.WriteBeforeRead.IsEmpty() {
 		return nil
@@ -267,8 +268,9 @@ func NewFftConfig(configFilePath string) []*FftConfig {
 
 type CanBusMappingConfig struct {
 	MappingConfig `mapstructure:",squash"`
-	Name          string `mapstructure:"name"`
-	Origin        string `mapstructure:"origin"`
+	Name          string    `mapstructure:"name"`
+	Origin        string    `mapstructure:"origin"`
+	ExcludeValues []float64 `mapstructure:"excludeValues"`
 }
 
 func NewCanBusMappingConfig(configFilePath string) []CanBusMappingConfig {

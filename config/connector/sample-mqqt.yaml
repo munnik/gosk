@@ -1,0 +1,9 @@
+---
+name: "mqtt" # name is used in the key of the collected data
+protocol: "mqtt"
+url: "mqtt://127.0.0.1:1883" # url of the connection, tcp:// and udp:// are supported for network connections, use file:///dev/ttyUSB0 for a serial device connection
+username: "unknown"
+password: "unknown"
+interval: '10s'
+buffer_size: 100
+topic: "#"

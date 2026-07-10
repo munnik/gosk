@@ -67,6 +67,9 @@ func doConnect(cmd *cobra.Command, args []string) {
 		conn, err = connector.NewHttpConnector(c, ugc)
 	case config.MannerEthernetType:
 		conn, err = connector.NewMannerEthernetConnector(c)
+	case config.MQTTType:
+		mqttc := config.NewMQTTConfig(cfgFile)
+		conn, err = connector.NewMQTTConnector(c, mqttc)
 	default:
 		logger.GetLogger().Fatal(
 			"Not a supported protocol",

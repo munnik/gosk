@@ -31,6 +31,8 @@ const (
 
 	BinaryType = "binary"
 
+	MQTTType = "mqtt"
+
 	FftType = "fft"
 
 	ParityMap string = "NOE" // None, Odd, Even
@@ -296,6 +298,7 @@ type MQTTConfig struct {
 	Interval   time.Duration `mapstructure:"interval"`    // interval to flush the cache in seconds, ignored for reader
 	BufferSize int           `mapstructure:"buffer_size"` // maximum size of the cache in MBs, cache will be flushed when size is reached, ignored for reader
 	Compress   bool          `mapstructure:"compress"`    // compress the data before sending
+	Topic      string        `mapstructure:"topic"`       // topic to subscribe to
 }
 
 func NewMQTTConfig(configFilePath string) *MQTTConfig {

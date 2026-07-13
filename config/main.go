@@ -168,10 +168,12 @@ func NewCSVMapperConfig(configFilePath string) CSVMapperConfig {
 }
 
 type MappingConfig struct {
-	Expression            string                 `mapstructure:"expression"`
-	ExpressionEnvironment map[string]interface{} `mapstructure:"expressionEnvironment"`
-	CompiledExpression    *vm.Program
-	Path                  string `mapstructure:"path"`
+	Expression                  string                 `mapstructure:"expression"`
+	TimestampExpression         string                 `mapstructure:"timestampExpression"`
+	ExpressionEnvironment       map[string]interface{} `mapstructure:"expressionEnvironment"`
+	CompiledExpression          *vm.Program
+	CompiledTimestampExpression *vm.Program
+	Path                        string `mapstructure:"path"`
 }
 
 func (m *MappingConfig) verify() {

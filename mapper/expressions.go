@@ -252,6 +252,44 @@ func runExpr(env ExpressionEnvironment, mappingConfig *config.MappingConfig) (in
 
 	return output, nil
 }
+func runTimestampExpr(env ExpressionEnvironment, mappingConfig *config.MappingConfig) (interface{}, error) {
+	for key, value := range mappingConfig.ExpressionEnvironment {
+		env[key] = value
+	}
+
+	if mappingConfig.CompiledTimestampExpression == nil {
+
+		var err error
+		if mappingConfig.CompiledTimestampExpression, err = expr.Compile(mappingConfig.TimestampExpression); err != nil {
+			logger.GetLogger().Warn(
+				"Could not compile the timestamp expression",
+				zap.String("Expression", mappingConfig.TimestampExpression),
+				zap.String("Error", err.Error()),
+			)
+			return nil, err
+		}
+	}
+	// the compiled program exists, let's run it
+	output, err := virtualMachine.Run(mappingConfig.CompiledTimestampExpression, env)
+	if err != nil {
+		logger.GetLogger().Warn(
+			"Could not run the timestamp expression",
+			zap.String("Expression", mappingConfig.TimestampExpression),
+			zap.String("Environment", fmt.Sprintf("%+v", env)),
+			zap.String("Error", err.Error()),
+		)
+		return nil, err
+	}
+
+	// the value is a map so we could try to decode it
+	if m, ok := output.(map[string]interface{}); ok {
+		if decoded, err := message.Decode(m); err == nil {
+			output = decoded
+		}
+	}
+
+	return output, nil
+}
 
 func swapPointAndComma(input string) string {
 	result := []rune(input)

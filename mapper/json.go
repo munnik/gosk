@@ -3,6 +3,7 @@ package mapper
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
@@ -31,7 +32,6 @@ func (m *JSONMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	u := message.NewUpdate().WithSource(*s).WithTimestamp(r.Timestamp)
 
 	env := NewExpressionEnvironment()
-
 	for _, jmc := range m.jsonMappingConfig {
 		var j map[string]interface{}
 		if err := json.Unmarshal(r.Value, &j); err != nil {
@@ -44,6 +44,13 @@ func (m *JSONMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		}
 
 		env["json"] = j
+		if jmc.TimestampExpression != "" {
+			output, err := runTimestampExpr(env, &jmc.MappingConfig)
+			if err == nil {
+				time, _ := time.Parse(time.RFC3339, output.(string))
+				u.WithTimestamp(time)
+			}
+		}
 		output, err := runExpr(env, &jmc.MappingConfig)
 		if err == nil {
 			u.AddValue(message.NewValue().WithPath(jmc.Path).WithValue(output))

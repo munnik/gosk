@@ -47,8 +47,18 @@ func (m *JSONMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		if jmc.TimestampExpression != "" {
 			output, err := runTimestampExpr(env, &jmc.MappingConfig)
 			if err == nil {
-				time, _ := time.Parse(time.RFC3339, output.(string))
-				u.WithTimestamp(time)
+				newTime, err := time.Parse(time.RFC3339, output.(string))
+				if err != nil {
+					logger.GetLogger().Warn(
+						"Could not parse the returned time, please use RFC3339",
+						zap.String("Error", err.Error()),
+					)
+				} else {
+					if u.Timestamp.Sub(newTime) < time.Duration(365*24*time.Hour) {
+
+						u.WithTimestamp(newTime)
+					}
+				}
 			}
 		}
 		output, err := runExpr(env, &jmc.MappingConfig)

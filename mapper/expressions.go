@@ -19,24 +19,25 @@ var virtualMachine = vm.VM{}
 
 func NewExpressionEnvironment() ExpressionEnvironment {
 	return ExpressionEnvironment{
-		"currentToRatio":   CurrentToRatio,
-		"pressureToHeight": PressureToHeight,
-		"heightToVolume":   HeightToVolume,
-		"movingAverage":    MovingAverage,
-		"copySign":         CopySign,
-		"powerW":           PowerW,
-		"toFloat":          ToFloat,
-		"toUInt":           ToUInt16,
-		"toInt":            ToInt16,
-		"toUInt32":         ToUInt32,
-		"toInt32":          ToInt32,
-		"bitwiseAnd":       BitwiseAnd,
-		"bitwiseOr":        BitwiseOr,
-		"bitwiseXor":       BitwiseXor,
-		"bitwiseNot":       BitwiseNot,
-		"bitwiseContains":  BitwiseContains,
-		"isBitSet":         IsBitSet,
-		"notify":           Notify,
+		"currentToRatio":     CurrentToRatio,
+		"pressureToHeight":   PressureToHeight,
+		"heightToVolume":     HeightToVolume,
+		"movingAverage":      MovingAverage,
+		"copySign":           CopySign,
+		"powerW":             PowerW,
+		"toFloat":            ToFloat,
+		"toUInt":             ToUInt16,
+		"toInt":              ToInt16,
+		"toUInt32":           ToUInt32,
+		"toInt32":            ToInt32,
+		"bitwiseAnd":         BitwiseAnd,
+		"bitwiseOr":          BitwiseOr,
+		"bitwiseXor":         BitwiseXor,
+		"bitwiseNot":         BitwiseNot,
+		"bitwiseContains":    BitwiseContains,
+		"isBitSet":           IsBitSet,
+		"notify":             Notify,
+		"float64ToRegisters": Float64ToRegisters,
 	}
 }
 
@@ -184,6 +185,15 @@ func ToUInt32(mostSignificant, leastSignificant uint16) uint32 {
 
 func ToInt32(mostSignificant, leastSignificant uint16) int32 {
 	return int32(uint32(mostSignificant)*65536 + uint32(leastSignificant))
+}
+func Float64ToRegisters(value float64) []interface{} {
+	res := make([]interface{}, 4)
+	n := math.Float64bits(value)
+	res[0] = int(uint16(n >> 48))
+	res[1] = int(uint16(n >> 32))
+	res[2] = int(uint16(n >> 16))
+	res[3] = int(uint16(n))
+	return res
 }
 
 func BitwiseAnd(left, right uint16) uint16 {

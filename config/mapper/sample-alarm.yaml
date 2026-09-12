@@ -1,0 +1,34 @@
+---
+checks:
+  - path: "notifications.propulsion.mainEngine.drive.power"
+    sourcePaths:
+      - "propulsion.mainEngine.fuel.rate"
+      - "propulsion.mainEngine.drive.power"
+    # only check when fuel is actually being consumed
+    when: "propulsion_mainEngine_fuel_rate.Value > 0"
+    # true (insane) when the power does not match the fuel rate
+    expression: >-
+      not between(
+        propulsion_mainEngine_drive_power.Value,
+        propulsion_mainEngine_fuel_rate.Value / 0.25,
+        propulsion_mainEngine_fuel_rate.Value / 0.19
+      )
+    # only notify becoming insane once it persisted for a full minute,
+    # defaults to 0 (instant) when omitted
+    setDelay: 1m
+    # only notify recovering back to sane once it persisted for 10s,
+    # defaults to 0 (instant) when omitted
+    resetDelay: 10s
+    message: "the power of the main engine does not match the fuel rate"
+  - path: "notifications.propulsion.mainEngine.fuel.supplyReturn"
+    sourcePaths:
+      - "propulsion.mainEngine.fuel.rate.supply"
+      - "propulsion.mainEngine.fuel.rate.return"
+    # true (insane) when the supply fuel rate is not higher than the
+    # return fuel rate
+    expression: >-
+      propulsion_mainEngine_fuel_rate_supply.Value <
+      propulsion_mainEngine_fuel_rate_return.Value
+    message: >-
+      supply fuel rate of the main engine is not higher than the return
+      fuel rate

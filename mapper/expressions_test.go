@@ -132,6 +132,50 @@ func TestPressureToHeight(t *testing.T) {
 	}
 }
 
+func TestBetween(t *testing.T) {
+	between := func(value, min, max interface{}) bool {
+		result, err := Between(value, min, max)
+		if err != nil {
+			t.Logf("Unexpected error %v", err)
+			t.Fail()
+		}
+		return result
+	}
+
+	if !between(5, 0, 10) {
+		t.Log("Expected 5 to be between 0 and 10")
+		t.Fail()
+	}
+	if !between(0, 0, 10) {
+		t.Log("Expected the lower bound to be inclusive")
+		t.Fail()
+	}
+	if !between(10, 0, 10) {
+		t.Log("Expected the upper bound to be inclusive")
+		t.Fail()
+	}
+	if between(-1, 0, 10) {
+		t.Log("Expected -1 to not be between 0 and 10")
+		t.Fail()
+	}
+	if between(11, 0, 10) {
+		t.Log("Expected 11 to not be between 0 and 10")
+		t.Fail()
+	}
+	if !between(5.5, 0, 10) {
+		t.Log("Expected a float64 value to work")
+		t.Fail()
+	}
+	if !between(uint16(5), int64(0), float32(10)) {
+		t.Log("Expected mixed numeric types to work")
+		t.Fail()
+	}
+	if _, err := Between("not a number", 0, 10); err == nil {
+		t.Log("Expected an error for a non-numeric value")
+		t.Fail()
+	}
+}
+
 func TestMilliAmpereToVolume(t *testing.T) {
 	ratio := CurrentToRatio(6408 * 1.0)
 	pressure := ratio * 30000.0

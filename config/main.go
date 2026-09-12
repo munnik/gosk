@@ -249,6 +249,45 @@ func NewExpressionMappingConfig(configFilePath string) []*ExpressionMappingConfi
 	return result
 }
 
+// AlarmMappingConfig describes a single alarm check on mapped data.
+// Expression is a boolean expression, e.g. comparing a ratio or a difference
+// between two paths against expected bounds. It evaluates to true when the
+// value is insane and false when it is sane. When is an optional boolean
+// expression, the check is only performed when it evaluates to true, it
+// defaults to always performing the check.
+//
+// To avoid flapping notifications, becoming insane is only notified once the
+// insane value has been observed continuously for SetDelay, and recovering
+// back to sane is only notified once the sane value has been observed
+// continuously for ResetDelay. Both default to zero, i.e. notified
+// immediately, when omitted.
+type AlarmMappingConfig struct {
+	MappingConfig `mapstructure:",squash"`
+	SourcePaths   []string `mapstructure:"sourcePaths"`
+	When          string   `mapstructure:"when"`
+	CompiledWhen  *vm.Program
+	Message       string        `mapstructure:"message"`
+	SetDelay      time.Duration `mapstructure:"setDelay"`
+	ResetDelay    time.Duration `mapstructure:"resetDelay"`
+
+	// Notified, ConfirmedInsane, PendingInsane and PendingSince are runtime
+	// state kept by the mapper to debounce state changes, they are not read
+	// from configuration.
+	Notified        bool
+	ConfirmedInsane bool
+	PendingInsane   bool
+	PendingSince    time.Time
+}
+
+func NewAlarmMappingConfig(configFilePath string) []*AlarmMappingConfig {
+	var result []*AlarmMappingConfig
+	readConfigFile(&result, configFilePath, "checks")
+	for _, scc := range result {
+		scc.verify()
+	}
+	return result
+}
+
 type FftConfig struct {
 	MappingConfig         `mapstructure:",squash"`
 	Path                  string  `mapstructure:"path"`

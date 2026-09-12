@@ -90,7 +90,7 @@ var _ = Describe("DoMap nmea0183", func() {
 					).AddValue(
 						message.NewValue().WithPath("navigation.position").WithValue(message.Position{Latitude: &lat, Longitude: &lon}),
 					).AddValue(
-						message.NewValue().WithPath("navigation.speedOverGround").WithValue(4.475662799999999),
+						message.NewValue().WithPath("navigation.speedOverGround").WithValue(4.475666666666666),
 					),
 				)
 				return m

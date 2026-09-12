@@ -37,6 +37,7 @@ func NewExpressionEnvironment() ExpressionEnvironment {
 		"bitwiseContains":  BitwiseContains,
 		"isBitSet":         IsBitSet,
 		"notify":           Notify,
+		"between":          Between,
 	}
 }
 
@@ -155,7 +156,16 @@ func PowerW(rotations float64, torque float64) float64 {
 
 func CopySign(f float64, sign float64) float64 {
 	return math.Copysign(f, sign)
+}
 
+// Returns true if value is between min and max, both bounds are inclusive.
+// value, min and max can be any numeric type, they do not need to be float64.
+func Between(value, min, max any) (bool, error) {
+	floats, err := ListToFloats([]any{value, min, max})
+	if err != nil {
+		return false, err
+	}
+	return floats[0] >= floats[1] && floats[0] <= floats[2], nil
 }
 
 func ToFloat(mostSignificant, leastSignificant uint16) float32 {

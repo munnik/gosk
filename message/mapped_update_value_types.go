@@ -158,6 +158,12 @@ func (left Spectrum) Merge(right Merger) (Merger, error) {
 	return left, nil
 }
 
+type Vector3D struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+	Z float64 `json:"z"`
+}
+
 func Decode(input interface{}) (interface{}, error) {
 	if i, ok := input.(int64); ok {
 		return i, nil
@@ -216,6 +222,12 @@ func Decode(input interface{}) (interface{}, error) {
 	metadata = mapstructure.Metadata{}
 	if err := mapstructure.DecodeMetadata(input, &s, &metadata); err == nil && len(metadata.Unused) == 0 {
 		return s, nil
+	}
+
+	v := Vector3D{}
+	metadata = mapstructure.Metadata{}
+	if err := mapstructure.DecodeMetadata(input, &v, &metadata); err == nil && len(metadata.Unused) == 0 {
+		return v, nil
 	}
 
 	return input, fmt.Errorf("don't know how to decode %v", input)

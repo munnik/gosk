@@ -31,6 +31,8 @@ const (
 
 	BinaryType = "binary"
 
+	MQTTType = "mqtt"
+
 	FftType = "fft"
 
 	ParityMap string = "NOE" // None, Odd, Even
@@ -166,10 +168,12 @@ func NewCSVMapperConfig(configFilePath string) CSVMapperConfig {
 }
 
 type MappingConfig struct {
-	Expression            string                 `mapstructure:"expression"`
-	ExpressionEnvironment map[string]interface{} `mapstructure:"expressionEnvironment"`
-	CompiledExpression    *vm.Program
-	Path                  string `mapstructure:"path"`
+	Expression                  string                 `mapstructure:"expression"`
+	TimestampExpression         string                 `mapstructure:"timestampExpression"`
+	ExpressionEnvironment       map[string]interface{} `mapstructure:"expressionEnvironment"`
+	CompiledExpression          *vm.Program
+	CompiledTimestampExpression *vm.Program
+	Path                        string `mapstructure:"path"`
 }
 
 func (m *MappingConfig) verify() {
@@ -337,6 +341,7 @@ type MQTTConfig struct {
 	Interval   time.Duration `mapstructure:"interval"`    // interval to flush the cache in seconds, ignored for reader
 	BufferSize int           `mapstructure:"buffer_size"` // maximum size of the cache in MBs, cache will be flushed when size is reached, ignored for reader
 	Compress   bool          `mapstructure:"compress"`    // compress the data before sending
+	Topic      string        `mapstructure:"topic"`       // topic to subscribe to
 }
 
 func NewMQTTConfig(configFilePath string) *MQTTConfig {

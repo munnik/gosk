@@ -81,6 +81,20 @@ func (s *NotificationMapper) Map(subscriber *nanomsg.Subscriber[message.Mapped],
 	process(subscriber, publisher, s, true)
 }
 
+// selfContext is the Signal K well-known alias for the local vessel's own
+// context, see https://signalk.org/specification/1.8.2/doc/context.html.
+// Not every mapper resolves its context to the vessel's actual identity, so
+// isSelfContext treats it as matching regardless of what the other side is.
+const selfContext = "vessels.self"
+
+// isSelfContext reports whether a and b refer to the same vessel context.
+// They match if they are equal, or if either one is the Signal K alias
+// selfContext, since that is always a synonym for whatever the local
+// vessel's context actually is.
+func isSelfContext(a, b string) bool {
+	return a == b || a == selfContext || b == selfContext
+}
+
 // DoMap passes every incoming value through unchanged, in addition to
 // publishing any notification a check produces, so the notification mapper
 // can sit anywhere in the pipeline without dropping the data it inspects.
@@ -89,7 +103,7 @@ func (s *NotificationMapper) Map(subscriber *nanomsg.Subscriber[message.Mapped],
 // hysteresis state only make sense for the single vessel this mapper is
 // configured for.
 func (s *NotificationMapper) DoMap(input *message.Mapped) (*message.Mapped, error) {
-	if input.Context != s.config.Context {
+	if !isSelfContext(input.Context, s.config.Context) {
 		return input, nil
 	}
 

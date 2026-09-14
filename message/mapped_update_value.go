@@ -3,6 +3,7 @@ package message
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 )
 
 type Value struct {
@@ -51,5 +52,5 @@ func (v *Value) UnmarshalJSON(data []byte) error {
 }
 
 func (v Value) Equals(other Value) bool {
-	return v.Path == other.Path && v.Value == other.Value
+	return v.Path == other.Path && reflect.DeepEqual(v.Value, other.Value)
 }

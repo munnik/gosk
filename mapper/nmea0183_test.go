@@ -17,7 +17,7 @@ var _ = Describe("DoMap nmea0183", func() {
 	)
 	now := time.Now()
 	m := "AIS: Antenna VSWR exceeds limit"
-	f := false
+	f := "normal"
 
 	DescribeTable("Messages",
 		func(m *Nmea0183Mapper, input *message.Raw, expected *message.Mapped, expectError bool) {

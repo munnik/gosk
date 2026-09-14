@@ -3,6 +3,7 @@ package mapper
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/message"
@@ -25,6 +26,12 @@ func NewExpressionFilter(emc []*config.ExpressionMappingConfig) (*ExpressionFilt
 	}
 
 	return &ExpressionFilter{env: env, filterMappings: mappings}, nil
+}
+
+// GetTickerInterval always returns 0, ExpressionFilter does not support
+// periodic re-evaluation.
+func (f *ExpressionFilter) GetTickerInterval() time.Duration {
+	return 0
 }
 
 func (f *ExpressionFilter) Map(subscriber *nanomsg.Subscriber[message.Mapped], publisher *nanomsg.Publisher[message.Mapped]) {

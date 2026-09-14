@@ -3,6 +3,7 @@ package mapper
 import (
 	"fmt"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/adrianmo/go-nmea"
@@ -55,6 +56,13 @@ func NewNmea0183Mapper(c config.MapperConfig) (*Nmea0183Mapper, error) {
 	}
 
 	return &Nmea0183Mapper{config: c, protocol: config.NMEA0183Type, parser: nmea.SentenceParser{CheckCRC: ccc.CheckCRC}}, nil
+}
+
+// GetTickerInterval returns the interval on which the mapper should
+// additionally be re-evaluated regardless of incoming data, see
+// periodicMapper in main.go. Zero disables this.
+func (m *Nmea0183Mapper) GetTickerInterval() time.Duration {
+	return m.config.Interval
 }
 
 func (m *Nmea0183Mapper) Map(subscriber *nanomsg.Subscriber[message.Raw], publisher *nanomsg.Publisher[message.Mapped]) {
@@ -262,7 +270,11 @@ func (m *Nmea0183Mapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		if err != nil {
 			active = true
 		}
-		u.AddValue(message.NewValue().WithPath("notifications.ais").WithValue(message.Notification{State: &active, Message: &description}))
+		state := "normal"
+		if active {
+			state = "alarm"
+		}
+		u.AddValue(message.NewValue().WithPath("notifications.ais").WithValue(message.Notification{State: &state, Message: &description}))
 	}
 
 	if len(u.Values) == 0 {

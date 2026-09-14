@@ -7,8 +7,8 @@ import (
 )
 
 var _ = Describe("Value", func() {
-	f := false
-	t := true
+	f := "normal"
+	t := "alarm"
 	DescribeTable(
 		"Equals",
 		func(left *Value, right *Value, expected bool) {

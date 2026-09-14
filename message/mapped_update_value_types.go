@@ -100,8 +100,9 @@ func (left Length) Merge(right Merger) (Merger, error) {
 }
 
 type Notification struct {
-	State   *bool   `json:"state,omitempty"`
-	Message *string `json:"message,omitempty"`
+	State   *string  `json:"state,omitempty"`
+	Method  []string `json:"method,omitempty"`
+	Message *string  `json:"message,omitempty"`
 }
 
 func (left Notification) Merge(right Merger) (Merger, error) {
@@ -111,6 +112,9 @@ func (left Notification) Merge(right Merger) (Merger, error) {
 	} else {
 		if right.State != nil {
 			left.State = right.State
+		}
+		if len(right.Method) != 0 {
+			left.Method = right.Method
 		}
 		if right.Message != nil {
 			left.Message = right.Message

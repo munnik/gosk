@@ -219,7 +219,7 @@ var _ = Describe("Mapped", func() {
 				alt := 0.0
 				lat := 37.81479
 				lon := -122.44880152
-				t := true
+				t := "alarm"
 				m := "AIS: Antenna VSWR exceeds limit"
 				s := NewSource().WithLabel("AIS").WithType(config.NMEA0183Type).WithUuid(uuid.MustParse("84679362-f963-405f-aa37-a6a8ed961417"))
 				v1 := NewValue().WithPath("navigation.position").WithValue(Position{Altitude: &alt, Latitude: &lat, Longitude: &lon})
@@ -256,7 +256,7 @@ var _ = Describe("Mapped", func() {
         						{
           							"path": "notifications.ais",
           							"value": {
-										  "state": true,
+										  "state": "alarm",
 										  "message": "AIS: Antenna VSWR exceeds limit"
 									}
         						}
@@ -277,14 +277,14 @@ var _ = Describe("Mapped", func() {
 				lat := 51.89874666666666
 				lon := 4.487056666666667
 				s := NewSource().WithLabel("AIS").WithType(config.NMEA0183Type).WithUuid(uuid.UUID{104, 113, 49, 233, 41, 50, 66, 74, 170, 51, 99, 11, 36, 116, 203, 160})
-				v1 := NewValue().WithPath("mmsi").WithValue("244700143")
+				v1 := NewValue().WithPath("mmsi").WithValue("111111111")
 				v2 := NewValue().WithPath("navigation.state").WithValue("motoring")
 				v3 := NewValue().WithPath("navigation.position").WithValue(Position{Latitude: &lat, Longitude: &lon})
 				v4 := NewValue().WithPath("navigation.speedOverGround").WithValue(0.0)
 				u := NewUpdate().WithSource(*s).AddValue(v1).AddValue(v2).AddValue(v3).AddValue(v4)
 				u.Timestamp = time.Date(2022, time.Month(2), 21, 23, 9, 33, 756165025, time.UTC)
-				expected = NewMapped().WithContext("vessels.urn:mrn:imo:mmsi:244700143").WithOrigin("vessels.urn:mrn:imo:mmsi:244620991").AddUpdate(u)
-				marshaled = []byte(`{"context":"vessels.urn:mrn:imo:mmsi:244700143","origin":"vessels.urn:mrn:imo:mmsi:244620991","updates":[{"source":{"label":"AIS","uuid":"687131e9-2932-424a-aa33-630b2474cba0","type":"nmea0183"},"timestamp":"2022-02-21T23:09:33.756165025Z","values":[{"path":"mmsi","value":"244700143"},{"path":"navigation.state","value":"motoring"},{"path":"navigation.position","value":{"latitude":51.89874666666666,"longitude":4.487056666666667}},{"path":"navigation.speedOverGround","value":0}]}]}`)
+				expected = NewMapped().WithContext("vessels.urn:mrn:imo:mmsi:111111111").WithOrigin("vessels.urn:mrn:imo:mmsi:222222222").AddUpdate(u)
+				marshaled = []byte(`{"context":"vessels.urn:mrn:imo:mmsi:111111111","origin":"vessels.urn:mrn:imo:mmsi:222222222","updates":[{"source":{"label":"AIS","uuid":"687131e9-2932-424a-aa33-630b2474cba0","type":"nmea0183"},"timestamp":"2022-02-21T23:09:33.756165025Z","values":[{"path":"mmsi","value":"111111111"},{"path":"navigation.state","value":"motoring"},{"path":"navigation.position","value":{"latitude":51.89874666666666,"longitude":4.487056666666667}},{"path":"navigation.speedOverGround","value":0}]}]}`)
 			})
 			It("returns no errors", func() {
 				Expect(err).NotTo(HaveOccurred())

@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
@@ -22,6 +23,13 @@ type CSVMapper struct {
 
 func NewCSVMapper(c config.CSVMapperConfig, cmc []config.CSVMappingConfig) (*CSVMapper, error) {
 	return &CSVMapper{config: c, protocol: config.CSVType, csvMappingConfig: cmc}, nil
+}
+
+// GetTickerInterval returns the interval on which the mapper should
+// additionally be re-evaluated regardless of incoming data, see
+// periodicMapper in main.go. Zero disables this.
+func (m *CSVMapper) GetTickerInterval() time.Duration {
+	return m.config.Interval
 }
 
 func (m *CSVMapper) Map(subscriber *nanomsg.Subscriber[message.Raw], publisher *nanomsg.Publisher[message.Mapped]) {

@@ -22,6 +22,13 @@ func NewJSONMapper(c config.MapperConfig, jmc []config.JSONMappingConfig) (*JSON
 	return &JSONMapper{config: c, protocol: config.JSONType, jsonMappingConfig: jmc}, nil
 }
 
+// GetTickerInterval returns the interval on which the mapper should
+// additionally be re-evaluated regardless of incoming data, see
+// periodicMapper in main.go. Zero disables this.
+func (m *JSONMapper) GetTickerInterval() time.Duration {
+	return m.config.Interval
+}
+
 func (m *JSONMapper) Map(subscriber *nanomsg.Subscriber[message.Raw], publisher *nanomsg.Publisher[message.Mapped]) {
 	process(subscriber, publisher, m, false)
 }

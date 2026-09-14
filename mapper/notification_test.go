@@ -507,6 +507,16 @@ var _ = Describe("DoMap notification", func() {
 			),
 			false,
 		),
+		Entry("data using the vessels.self alias is still evaluated and its context normalized to the configured one",
+			mapper,
+			message.NewMapped().WithContext("vessels.self").WithOrigin("vessels.self").AddUpdate(
+				passThroughUpdate("test.threshold", 500.0, timeoutBase.Add(100*time.Second)),
+			),
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				passThroughUpdate("test.threshold", 500.0, timeoutBase.Add(100*time.Second)),
+			),
+			false,
+		),
 	)
 })
 

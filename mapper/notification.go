@@ -81,10 +81,17 @@ func (s *NotificationMapper) Map(subscriber *nanomsg.Subscriber[message.Mapped],
 	process(subscriber, publisher, s, true)
 }
 
+// DoMap passes every incoming value through unchanged, in addition to
+// publishing any notification a check produces, so the notification mapper
+// can sit anywhere in the pipeline without dropping the data it inspects.
 func (s *NotificationMapper) DoMap(input *message.Mapped) (*message.Mapped, error) {
 	result := message.NewMapped().WithContext(s.config.Context).WithOrigin(s.config.Context)
 
 	for _, svm := range input.ToSingleValueMapped() {
+		for _, u := range svm.ToMapped().Updates {
+			result.AddUpdate(&u)
+		}
+
 		nmcs, ok := s.notificationMappings[svm.Path]
 		if !ok {
 			continue

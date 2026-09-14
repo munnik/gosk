@@ -10,22 +10,22 @@ import (
 	"go.uber.org/zap"
 )
 
-var notificationCmd = &cobra.Command{
-	Use:   "notification",
+var notifyCmd = &cobra.Command{
+	Use:   "notify",
 	Short: "Check incoming mapped data and raise Signal K notifications",
 	Long:  `Check incoming mapped data using expressions specified in configuration and publish the results as Signal K notifications`,
-	Run:   doNotification,
+	Run:   doNotify,
 }
 
 func init() {
-	rootCmd.AddCommand(notificationCmd)
-	notificationCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
-	notificationCmd.MarkFlagRequired("subscribeURL")
-	notificationCmd.Flags().StringVarP(&publishURL, "publishURL", "p", "", "Nanomsg URL, the URL is used to publish the data on. It listens for connections.")
-	notificationCmd.MarkFlagRequired("publishURL")
+	rootCmd.AddCommand(notifyCmd)
+	notifyCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
+	notifyCmd.MarkFlagRequired("subscribeURL")
+	notifyCmd.Flags().StringVarP(&publishURL, "publishURL", "p", "", "Nanomsg URL, the URL is used to publish the data on. It listens for connections.")
+	notifyCmd.MarkFlagRequired("publishURL")
 }
 
-func doNotification(cmd *cobra.Command, args []string) {
+func doNotify(cmd *cobra.Command, args []string) {
 	subscriber, err := nanomsg.NewSubscriber[message.Mapped](subscribeURL, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(

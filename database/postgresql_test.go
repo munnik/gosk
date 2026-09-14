@@ -19,7 +19,7 @@ var _ = Describe("Test database", Ordered, func() {
 
 	now := time.Now()
 
-	f := false
+	f := "normal"
 	m := "testingNotification"
 
 	mappedStringValue := func() message.Mapped {
@@ -93,7 +93,7 @@ var _ = Describe("Test database", Ordered, func() {
 			Expect(writtenJSON).To(Equal(expectedJSON))
 		},
 		Entry(
-			"Mapped with alarm value",
+			"Mapped with notification value",
 			mappedNotificationValue,
 			mappedNotificationValue,
 		),

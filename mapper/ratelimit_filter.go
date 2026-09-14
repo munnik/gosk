@@ -62,6 +62,12 @@ func NewRateLimitFilter(c *config.RateLimitFilterConfig) (*RateLimitFilter, erro
 	return &RateLimitFilter{config: c, lastSeen: make(lastSeen, 0), rateLimit: rateLimit}, nil
 }
 
+// GetTickerInterval always returns 0, RateLimitFilter does not support
+// periodic re-evaluation.
+func (r *RateLimitFilter) GetTickerInterval() time.Duration {
+	return 0
+}
+
 func (r *RateLimitFilter) Map(subscriber *nanomsg.Subscriber[message.Mapped], publisher *nanomsg.Publisher[message.Mapped]) {
 	process(subscriber, publisher, r, true)
 }

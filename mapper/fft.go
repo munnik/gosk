@@ -46,6 +46,13 @@ func NewFftMapper(c config.MapperConfig, fftc []*config.FftConfig) (*FftMapper, 
 	}, nil
 }
 
+// GetTickerInterval returns the interval on which the mapper should
+// additionally be re-evaluated regardless of incoming data, see
+// periodicMapper in main.go. Zero disables this.
+func (m *FftMapper) GetTickerInterval() time.Duration {
+	return m.config.Interval
+}
+
 func (m *FftMapper) Map(subscriber *nanomsg.Subscriber[message.Mapped], publisher *nanomsg.Publisher[message.Mapped]) {
 	process(subscriber, publisher, m, true)
 }

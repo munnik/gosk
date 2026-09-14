@@ -30,6 +30,13 @@ func NewModbusMapper(c config.MapperConfig, mmc []config.ModbusMappingsConfig) (
 	}, nil
 }
 
+// GetTickerInterval returns the interval on which the mapper should
+// additionally be re-evaluated regardless of incoming data, see
+// periodicMapper in main.go. Zero disables this.
+func (m *ModbusMapper) GetTickerInterval() time.Duration {
+	return m.config.Interval
+}
+
 func (m *ModbusMapper) Map(subscriber *nanomsg.Subscriber[message.Raw], publisher *nanomsg.Publisher[message.Mapped]) {
 	process(subscriber, publisher, m, false)
 }

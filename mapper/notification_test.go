@@ -10,21 +10,26 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("DoMap alarm", func() {
-	mapper, _ := NewAlarmMapper(
-		config.NewAlarmMappingConfig("alarm_test.yaml"),
+var _ = Describe("DoMap notification", func() {
+	mapper, _ := NewNotificationMapper(
+		config.MapperConfig{Context: "testingContext"},
+		config.NewNotificationMappingConfig("notification_test.yaml"),
 	)
 	now := time.Now()
-	insane := true
-	sane := false
-	powerCheckExpr := "propulsion_mainEngine_drive_power.Value < propulsion_mainEngine_fuel_rate.Value / 0.25 or propulsion_mainEngine_drive_power.Value > propulsion_mainEngine_fuel_rate.Value / 0.2"
-	supplyReturnCheckExpr := "propulsion_mainEngine_fuel_rate_supply.Value < propulsion_mainEngine_fuel_rate_return.Value"
-	thresholdCheckExpr := "test_threshold.Value > 100"
-	whenMissingCheckExpr := "test_whenMissingValue.Value > 100"
+	state := "alarm"
+	defaultMethod := []string{"sound", "visual"}
+	powerMessage := "drive power does not match the expected fuel rate ratio"
+	supplyReturnMessage := "fuel supply rate is lower than the return rate"
+	thresholdMessage := "test threshold exceeded"
+	whenMissingMessage := "test whenMissing value exceeded"
+	whenResetMessage := "test whenReset value exceeded"
+	castFailsMessage := "test castFails expression did not evaluate to bool"
+	timeoutMessage := "test timeout companion source path went stale"
 	base := now.Add(1000 * time.Second)
+	timeoutBase := base.Add(2000 * time.Second)
 
 	DescribeTable("Messages",
-		func(m *AlarmMapper, input *message.Mapped, expected *message.Mapped, expectError bool) {
+		func(m *NotificationMapper, input *message.Mapped, expected *message.Mapped, expectError bool) {
 			result, err := m.DoMap(input)
 			if expectError {
 				Expect(err).To(HaveOccurred())
@@ -34,7 +39,7 @@ var _ = Describe("DoMap alarm", func() {
 				Expect(result).To(Equal(expected))
 			}
 		},
-		Entry("fuel rate arrives, power is not known yet, check is skipped, nothing is output",
+		Entry("fuel rate arrives, power is not known yet, the expression cannot be evaluated, the check fails safe and raises the notification",
 			mapper,
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
@@ -43,10 +48,18 @@ var _ = Describe("DoMap alarm", func() {
 					message.NewValue().WithPath("propulsion.mainEngine.fuel.rate").WithValue(20000.0),
 				),
 			),
-			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext"),
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				message.NewUpdate().WithSource(
+					*message.NewSource().WithLabel("notification").WithType(config.SignalKType),
+				).WithTimestamp(now).AddValue(
+					message.NewValue().WithPath("notifications.propulsion.mainEngine.drive.power").WithValue(
+						message.Notification{State: &state, Method: defaultMethod, Message: &powerMessage},
+					),
+				),
+			),
 			false,
 		),
-		Entry("power matches the fuel rate, first observation is reported immediately as sane",
+		Entry("power matches the fuel rate, the notification is cleared immediately",
 			mapper,
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
@@ -57,11 +70,9 @@ var _ = Describe("DoMap alarm", func() {
 			),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("alarm").WithType(config.SignalKType),
+					*message.NewSource().WithLabel("notification").WithType(config.SignalKType),
 				).WithTimestamp(now).AddValue(
-					message.NewValue().WithPath("notifications.propulsion.mainEngine.drive.power").WithValue(
-						message.Notification{State: &sane, Message: strPtr("check passed for notifications.propulsion.mainEngine.drive.power: " + powerCheckExpr)},
-					),
+					message.NewValue().WithPath("notifications.propulsion.mainEngine.drive.power").WithValue(nil),
 				),
 			),
 			false,
@@ -90,7 +101,7 @@ var _ = Describe("DoMap alarm", func() {
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext"),
 			false,
 		),
-		Entry("power has been too low for over a minute, hysteresis passed, now reported as insane",
+		Entry("power has been too low for over a minute, hysteresis passed, the notification is now raised",
 			mapper,
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
@@ -101,16 +112,16 @@ var _ = Describe("DoMap alarm", func() {
 			),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("alarm").WithType(config.SignalKType),
+					*message.NewSource().WithLabel("notification").WithType(config.SignalKType),
 				).WithTimestamp(now.Add(61*time.Second)).AddValue(
 					message.NewValue().WithPath("notifications.propulsion.mainEngine.drive.power").WithValue(
-						message.Notification{State: &insane, Message: strPtr("check failed for notifications.propulsion.mainEngine.drive.power: " + powerCheckExpr)},
+						message.Notification{State: &state, Method: defaultMethod, Message: &powerMessage},
 					),
 				),
 			),
 			false,
 		),
-		Entry("power is too high while already confirmed insane, state has not changed, nothing is output",
+		Entry("power is too high while the notification is already confirmed raised, state has not changed, nothing is output",
 			mapper,
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
@@ -122,7 +133,7 @@ var _ = Describe("DoMap alarm", func() {
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext"),
 			false,
 		),
-		Entry("power recovers, reported as sane immediately without waiting for hysteresis",
+		Entry("power recovers, the notification is cleared immediately without waiting for hysteresis",
 			mapper,
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
@@ -133,11 +144,9 @@ var _ = Describe("DoMap alarm", func() {
 			),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("alarm").WithType(config.SignalKType),
+					*message.NewSource().WithLabel("notification").WithType(config.SignalKType),
 				).WithTimestamp(now.Add(61*time.Second)).AddValue(
-					message.NewValue().WithPath("notifications.propulsion.mainEngine.drive.power").WithValue(
-						message.Notification{State: &sane, Message: strPtr("check passed for notifications.propulsion.mainEngine.drive.power: " + powerCheckExpr)},
-					),
+					message.NewValue().WithPath("notifications.propulsion.mainEngine.drive.power").WithValue(nil),
 				),
 			),
 			false,
@@ -154,7 +163,7 @@ var _ = Describe("DoMap alarm", func() {
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext"),
 			false,
 		),
-		Entry("supply fuel rate arrives, return fuel rate is not known yet, check is skipped, nothing is output",
+		Entry("supply fuel rate arrives, return fuel rate is not known yet, the expression cannot be evaluated, the check fails safe and raises the notification",
 			mapper,
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
@@ -163,10 +172,18 @@ var _ = Describe("DoMap alarm", func() {
 					message.NewValue().WithPath("propulsion.mainEngine.fuel.rate.supply").WithValue(20.0),
 				),
 			),
-			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext"),
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				message.NewUpdate().WithSource(
+					*message.NewSource().WithLabel("notification").WithType(config.SignalKType),
+				).WithTimestamp(now.Add(61*time.Second)).AddValue(
+					message.NewValue().WithPath("notifications.propulsion.mainEngine.fuel.supplyReturn").WithValue(
+						message.Notification{State: &state, Method: defaultMethod, Message: &supplyReturnMessage},
+					),
+				),
+			),
 			false,
 		),
-		Entry("return fuel rate is lower than the supply fuel rate, first observation is reported immediately as sane",
+		Entry("return fuel rate is lower than the supply fuel rate, the notification is cleared immediately",
 			mapper,
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
@@ -177,11 +194,9 @@ var _ = Describe("DoMap alarm", func() {
 			),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("alarm").WithType(config.SignalKType),
+					*message.NewSource().WithLabel("notification").WithType(config.SignalKType),
 				).WithTimestamp(now.Add(61*time.Second)).AddValue(
-					message.NewValue().WithPath("notifications.propulsion.mainEngine.fuel.supplyReturn").WithValue(
-						message.Notification{State: &sane, Message: strPtr("check passed for notifications.propulsion.mainEngine.fuel.supplyReturn: " + supplyReturnCheckExpr)},
-					),
+					message.NewValue().WithPath("notifications.propulsion.mainEngine.fuel.supplyReturn").WithValue(nil),
 				),
 			),
 			false,
@@ -198,7 +213,7 @@ var _ = Describe("DoMap alarm", func() {
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext"),
 			false,
 		),
-		Entry("supply fuel rate has stayed below the return fuel rate for over a minute, hysteresis passed, now reported as insane",
+		Entry("supply fuel rate has stayed below the return fuel rate for over a minute, hysteresis passed, the notification is now raised",
 			mapper,
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
@@ -209,10 +224,10 @@ var _ = Describe("DoMap alarm", func() {
 			),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("alarm").WithType(config.SignalKType),
+					*message.NewSource().WithLabel("notification").WithType(config.SignalKType),
 				).WithTimestamp(now.Add(122*time.Second)).AddValue(
 					message.NewValue().WithPath("notifications.propulsion.mainEngine.fuel.supplyReturn").WithValue(
-						message.Notification{State: &insane, Message: strPtr("check failed for notifications.propulsion.mainEngine.fuel.supplyReturn: " + supplyReturnCheckExpr)},
+						message.Notification{State: &state, Method: defaultMethod, Message: &supplyReturnMessage},
 					),
 				),
 			),
@@ -230,7 +245,7 @@ var _ = Describe("DoMap alarm", func() {
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext"),
 			false,
 		),
-		Entry("return fuel rate drops, supply is higher again, reported as sane immediately without waiting for hysteresis",
+		Entry("return fuel rate drops, supply is higher again, the notification is cleared immediately without waiting for hysteresis",
 			mapper,
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
@@ -241,16 +256,14 @@ var _ = Describe("DoMap alarm", func() {
 			),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("alarm").WithType(config.SignalKType),
+					*message.NewSource().WithLabel("notification").WithType(config.SignalKType),
 				).WithTimestamp(now.Add(122*time.Second)).AddValue(
-					message.NewValue().WithPath("notifications.propulsion.mainEngine.fuel.supplyReturn").WithValue(
-						message.Notification{State: &sane, Message: strPtr("check passed for notifications.propulsion.mainEngine.fuel.supplyReturn: " + supplyReturnCheckExpr)},
-					),
+					message.NewValue().WithPath("notifications.propulsion.mainEngine.fuel.supplyReturn").WithValue(nil),
 				),
 			),
 			false,
 		),
-		Entry("threshold check, first observation is reported immediately as sane",
+		Entry("threshold check, first observation is confirmed cleared immediately",
 			mapper,
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
@@ -261,11 +274,9 @@ var _ = Describe("DoMap alarm", func() {
 			),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("alarm").WithType(config.SignalKType),
+					*message.NewSource().WithLabel("notification").WithType(config.SignalKType),
 				).WithTimestamp(base).AddValue(
-					message.NewValue().WithPath("notifications.test.threshold").WithValue(
-						message.Notification{State: &sane, Message: strPtr("check passed for notifications.test.threshold: " + thresholdCheckExpr)},
-					),
+					message.NewValue().WithPath("notifications.test.threshold").WithValue(nil),
 				),
 			),
 			false,
@@ -294,7 +305,7 @@ var _ = Describe("DoMap alarm", func() {
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext"),
 			false,
 		),
-		Entry("threshold has been over for 31s, setHysteresis passed, now reported as insane",
+		Entry("threshold has been over for 31s, setHysteresis passed, the notification is now raised",
 			mapper,
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
@@ -305,10 +316,10 @@ var _ = Describe("DoMap alarm", func() {
 			),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("alarm").WithType(config.SignalKType),
+					*message.NewSource().WithLabel("notification").WithType(config.SignalKType),
 				).WithTimestamp(base.Add(31*time.Second)).AddValue(
 					message.NewValue().WithPath("notifications.test.threshold").WithValue(
-						message.Notification{State: &insane, Message: strPtr("check failed for notifications.test.threshold: " + thresholdCheckExpr)},
+						message.Notification{State: &state, Method: defaultMethod, Message: &thresholdMessage},
 					),
 				),
 			),
@@ -326,7 +337,7 @@ var _ = Describe("DoMap alarm", func() {
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext"),
 			false,
 		),
-		Entry("threshold is still sane 19s later, resetHysteresis still has not passed, state has not changed, nothing is output",
+		Entry("threshold is still cleared 19s later, resetHysteresis still has not passed, state has not changed, nothing is output",
 			mapper,
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
@@ -338,7 +349,7 @@ var _ = Describe("DoMap alarm", func() {
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext"),
 			false,
 		),
-		Entry("threshold has stayed sane for 21s, resetHysteresis passed, now reported as sane",
+		Entry("threshold has stayed cleared for 21s, resetHysteresis passed, the notification is confirmed cleared",
 			mapper,
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
@@ -349,10 +360,32 @@ var _ = Describe("DoMap alarm", func() {
 			),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("alarm").WithType(config.SignalKType),
+					*message.NewSource().WithLabel("notification").WithType(config.SignalKType),
 				).WithTimestamp(base.Add(53*time.Second)).AddValue(
-					message.NewValue().WithPath("notifications.test.threshold").WithValue(
-						message.Notification{State: &sane, Message: strPtr("check passed for notifications.test.threshold: " + thresholdCheckExpr)},
+					message.NewValue().WithPath("notifications.test.threshold").WithValue(nil),
+				),
+			),
+			false,
+		),
+		Entry("configured state and method are used instead of the defaults",
+			mapper,
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				message.NewUpdate().WithSource(
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
+				).WithTimestamp(base).AddValue(
+					message.NewValue().WithPath("test.stateAndMethod").WithValue(150.0),
+				),
+			),
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				message.NewUpdate().WithSource(
+					*message.NewSource().WithLabel("notification").WithType(config.SignalKType),
+				).WithTimestamp(base).AddValue(
+					message.NewValue().WithPath("notifications.test.stateAndMethod").WithValue(
+						message.Notification{
+							State:   strPtr("emergency"),
+							Method:  []string{"sound", "visual"},
+							Message: strPtr("test stateAndMethod value exceeded"),
+						},
 					),
 				),
 			),
@@ -369,11 +402,161 @@ var _ = Describe("DoMap alarm", func() {
 			),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("alarm").WithType(config.SignalKType),
+					*message.NewSource().WithLabel("notification").WithType(config.SignalKType),
 				).WithTimestamp(base).AddValue(
 					message.NewValue().WithPath("notifications.test.whenMissing").WithValue(
-						message.Notification{State: &insane, Message: strPtr("check failed for notifications.test.whenMissing: " + whenMissingCheckExpr)},
+						message.Notification{State: &state, Method: defaultMethod, Message: &whenMissingMessage},
 					),
+				),
+			),
+			false,
+		),
+		Entry("when gate opens, value is not known yet, the expression cannot be evaluated, the check fails safe and raises the notification",
+			mapper,
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				message.NewUpdate().WithSource(
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
+				).WithTimestamp(base).AddValue(
+					message.NewValue().WithPath("test.whenResetGate").WithValue(1.0),
+				),
+			),
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				message.NewUpdate().WithSource(
+					*message.NewSource().WithLabel("notification").WithType(config.SignalKType),
+				).WithTimestamp(base).AddValue(
+					message.NewValue().WithPath("notifications.test.whenReset").WithValue(
+						message.Notification{State: &state, Method: defaultMethod, Message: &whenResetMessage},
+					),
+				),
+			),
+			false,
+		),
+		Entry("value exceeds the threshold while the gate is open, the notification was already raised by the earlier fail-safe, state has not changed, nothing is output",
+			mapper,
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				message.NewUpdate().WithSource(
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
+				).WithTimestamp(base).AddValue(
+					message.NewValue().WithPath("test.whenReset").WithValue(150.0),
+				),
+			),
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext"),
+			false,
+		),
+		Entry("gate closes while the notification is confirmed raised, the check is reset and the notification is cleared",
+			mapper,
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				message.NewUpdate().WithSource(
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
+				).WithTimestamp(base).AddValue(
+					message.NewValue().WithPath("test.whenResetGate").WithValue(0.0),
+				),
+			),
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				message.NewUpdate().WithSource(
+					*message.NewSource().WithLabel("notification").WithType(config.SignalKType),
+				).WithTimestamp(base).AddValue(
+					message.NewValue().WithPath("notifications.test.whenReset").WithValue(nil),
+				),
+			),
+			false,
+		),
+		Entry("gate stays closed, already reset, nothing is output",
+			mapper,
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				message.NewUpdate().WithSource(
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
+				).WithTimestamp(base).AddValue(
+					message.NewValue().WithPath("test.whenResetGate").WithValue(0.0),
+				),
+			),
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext"),
+			false,
+		),
+		Entry("the expression does not evaluate to a bool, the check fails safe and raises the notification",
+			mapper,
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				message.NewUpdate().WithSource(
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
+				).WithTimestamp(base).AddValue(
+					message.NewValue().WithPath("test.castFails").WithValue(42.0),
+				),
+			),
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				message.NewUpdate().WithSource(
+					*message.NewSource().WithLabel("notification").WithType(config.SignalKType),
+				).WithTimestamp(base).AddValue(
+					message.NewValue().WithPath("notifications.test.castFails").WithValue(
+						message.Notification{State: &state, Method: defaultMethod, Message: &castFailsMessage},
+					),
+				),
+			),
+			false,
+		),
+		Entry("timeout: primary arrives, companion has never been seen, first observation is confirmed cleared immediately",
+			mapper,
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				message.NewUpdate().WithSource(
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
+				).WithTimestamp(timeoutBase).AddValue(
+					message.NewValue().WithPath("test.timeoutPrimary").WithValue(50.0),
+				),
+			),
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				message.NewUpdate().WithSource(
+					*message.NewSource().WithLabel("notification").WithType(config.SignalKType),
+				).WithTimestamp(timeoutBase).AddValue(
+					message.NewValue().WithPath("notifications.test.timeout").WithValue(nil),
+				),
+			),
+			false,
+		),
+		Entry("timeout: companion arrives too, still fresh, state has not changed, nothing is output",
+			mapper,
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				message.NewUpdate().WithSource(
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
+				).WithTimestamp(timeoutBase).AddValue(
+					message.NewValue().WithPath("test.timeoutSecondary").WithValue(1.0),
+				),
+			),
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext"),
+			false,
+		),
+		Entry("timeout: companion has not updated within its timeout, the check fails safe and raises the notification",
+			mapper,
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				message.NewUpdate().WithSource(
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
+				).WithTimestamp(timeoutBase.Add(40*time.Second)).AddValue(
+					message.NewValue().WithPath("test.timeoutPrimary").WithValue(50.0),
+				),
+			),
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				message.NewUpdate().WithSource(
+					*message.NewSource().WithLabel("notification").WithType(config.SignalKType),
+				).WithTimestamp(timeoutBase.Add(40*time.Second)).AddValue(
+					message.NewValue().WithPath("notifications.test.timeout").WithValue(
+						message.Notification{State: &state, Method: defaultMethod, Message: &timeoutMessage},
+					),
+				),
+			),
+			false,
+		),
+		Entry("timeout: companion updates again, the notification is cleared",
+			mapper,
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				message.NewUpdate().WithSource(
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
+				).WithTimestamp(timeoutBase.Add(40*time.Second)).AddValue(
+					message.NewValue().WithPath("test.timeoutSecondary").WithValue(1.0),
+				),
+			),
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				message.NewUpdate().WithSource(
+					*message.NewSource().WithLabel("notification").WithType(config.SignalKType),
+				).WithTimestamp(timeoutBase.Add(40*time.Second)).AddValue(
+					message.NewValue().WithPath("notifications.test.timeout").WithValue(nil),
 				),
 			),
 			false,

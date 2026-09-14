@@ -1,0 +1,71 @@
+---
+mappings:
+  - path: "notifications.propulsion.mainEngine.drive.power"
+    sourcePaths:
+      - "propulsion.mainEngine.fuel.rate"
+      - "propulsion.mainEngine.drive.power"
+    when: "propulsion_mainEngine_fuel_rate.Value > 0"
+    expression: >-
+      propulsion_mainEngine_drive_power.Value <
+      propulsion_mainEngine_fuel_rate.Value / 0.25 or
+      propulsion_mainEngine_drive_power.Value >
+      propulsion_mainEngine_fuel_rate.Value / 0.2
+    message: "drive power does not match the expected fuel rate ratio"
+    state: "alarm"
+    setDelay: 1m
+  - path: "notifications.propulsion.mainEngine.fuel.supplyReturn"
+    sourcePaths:
+      - "propulsion.mainEngine.fuel.rate.supply"
+      - "propulsion.mainEngine.fuel.rate.return"
+    expression: >-
+      propulsion_mainEngine_fuel_rate_supply.Value <
+      propulsion_mainEngine_fuel_rate_return.Value
+    message: "fuel supply rate is lower than the return rate"
+    state: "alarm"
+    setDelay: 1m
+  - path: "notifications.test.threshold"
+    sourcePaths:
+      - "test.threshold"
+    expression: "test_threshold.Value > 100"
+    message: "test threshold exceeded"
+    state: "alarm"
+    setDelay: 30s
+    resetDelay: 20s
+  - path: "notifications.test.whenMissing"
+    sourcePaths:
+      - "test.whenMissingValue"
+    when: "test_whenMissingGate.Value > 0"
+    expression: "test_whenMissingValue.Value > 100"
+    message: "test whenMissing value exceeded"
+    state: "alarm"
+  - path: "notifications.test.stateAndMethod"
+    sourcePaths:
+      - "test.stateAndMethod"
+    expression: "test_stateAndMethod.Value > 100"
+    message: "test stateAndMethod value exceeded"
+    state: "emergency"
+    method:
+      - "sound"
+      - "visual"
+  - path: "notifications.test.whenReset"
+    sourcePaths:
+      - "test.whenReset"
+      - "test.whenResetGate"
+    when: "test_whenResetGate.Value > 0"
+    expression: "test_whenReset.Value > 100"
+    message: "test whenReset value exceeded"
+    state: "alarm"
+  - path: "notifications.test.castFails"
+    sourcePaths:
+      - "test.castFails"
+    expression: "test_castFails.Value"
+    message: "test castFails expression did not evaluate to bool"
+    state: "alarm"
+  - path: "notifications.test.timeout"
+    sourcePaths:
+      - "test.timeoutPrimary"
+      - "test.timeoutSecondary"
+    expression: "test_timeoutPrimary.Value > 100"
+    message: "test timeout companion source path went stale"
+    state: "alarm"
+    timeout: 30s

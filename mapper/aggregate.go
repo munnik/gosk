@@ -34,6 +34,13 @@ func NewAggregateMapper(c config.MapperConfig, emc []*config.ExpressionMappingCo
 	return &AggregateMapper{config: c, protocol: config.SignalKType, retentionTime: retentionTime, aggregateMappings: mappings, env: env}, nil
 }
 
+// GetTickerInterval returns the interval on which the mapper should
+// additionally be re-evaluated regardless of incoming data, see
+// periodicMapper in main.go. Zero disables this.
+func (m *AggregateMapper) GetTickerInterval() time.Duration {
+	return m.config.Interval
+}
+
 func (m *AggregateMapper) Map(subscriber *nanomsg.Subscriber[message.Mapped], publisher *nanomsg.Publisher[message.Mapped]) {
 	process(subscriber, publisher, m, false)
 }

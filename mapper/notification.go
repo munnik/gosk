@@ -84,7 +84,15 @@ func (s *NotificationMapper) Map(subscriber *nanomsg.Subscriber[message.Mapped],
 // DoMap passes every incoming value through unchanged, in addition to
 // publishing any notification a check produces, so the notification mapper
 // can sit anywhere in the pipeline without dropping the data it inspects.
+// Data for a context other than config.Context is passed through as-is
+// without being evaluated by any check, since a check's expression and
+// hysteresis state only make sense for the single vessel this mapper is
+// configured for.
 func (s *NotificationMapper) DoMap(input *message.Mapped) (*message.Mapped, error) {
+	if input.Context != s.config.Context {
+		return input, nil
+	}
+
 	result := message.NewMapped().WithContext(s.config.Context).WithOrigin(s.config.Context)
 
 	for _, svm := range input.ToSingleValueMapped() {

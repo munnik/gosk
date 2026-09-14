@@ -497,6 +497,16 @@ var _ = Describe("DoMap notification", func() {
 				),
 			false,
 		),
+		Entry("data for another context is passed through as-is, no check is evaluated for it",
+			mapper,
+			message.NewMapped().WithContext("someOtherContext").WithOrigin("someOtherContext").AddUpdate(
+				passThroughUpdate("test.threshold", 300.0, base),
+			),
+			message.NewMapped().WithContext("someOtherContext").WithOrigin("someOtherContext").AddUpdate(
+				passThroughUpdate("test.threshold", 300.0, base),
+			),
+			false,
+		),
 	)
 })
 

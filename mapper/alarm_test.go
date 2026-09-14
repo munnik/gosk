@@ -110,7 +110,7 @@ var _ = Describe("DoMap alarm", func() {
 			),
 			false,
 		),
-		Entry("power is too high while already confirmed insane, insane notifications keep repeating",
+		Entry("power is too high while already confirmed insane, state has not changed, nothing is output",
 			mapper,
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
@@ -119,15 +119,7 @@ var _ = Describe("DoMap alarm", func() {
 					message.NewValue().WithPath("propulsion.mainEngine.drive.power").WithValue(110000.0),
 				),
 			),
-			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
-				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("alarm").WithType(config.SignalKType),
-				).WithTimestamp(now.Add(61*time.Second)).AddValue(
-					message.NewValue().WithPath("notifications.propulsion.mainEngine.drive.power").WithValue(
-						message.Notification{State: &insane, Message: strPtr("check failed for notifications.propulsion.mainEngine.drive.power: " + powerCheckExpr)},
-					),
-				),
-			),
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext"),
 			false,
 		),
 		Entry("power recovers, reported as sane immediately without waiting for hysteresis",
@@ -226,7 +218,7 @@ var _ = Describe("DoMap alarm", func() {
 			),
 			false,
 		),
-		Entry("supply fuel rate is still below the return fuel rate, insane notifications keep repeating",
+		Entry("supply fuel rate is still below the return fuel rate, state has not changed, nothing is output",
 			mapper,
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
@@ -235,15 +227,7 @@ var _ = Describe("DoMap alarm", func() {
 					message.NewValue().WithPath("propulsion.mainEngine.fuel.rate.supply").WithValue(2.0),
 				),
 			),
-			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
-				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("alarm").WithType(config.SignalKType),
-				).WithTimestamp(now.Add(122*time.Second)).AddValue(
-					message.NewValue().WithPath("notifications.propulsion.mainEngine.fuel.supplyReturn").WithValue(
-						message.Notification{State: &insane, Message: strPtr("check failed for notifications.propulsion.mainEngine.fuel.supplyReturn: " + supplyReturnCheckExpr)},
-					),
-				),
-			),
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext"),
 			false,
 		),
 		Entry("return fuel rate drops, supply is higher again, reported as sane immediately without waiting for hysteresis",
@@ -330,7 +314,7 @@ var _ = Describe("DoMap alarm", func() {
 			),
 			false,
 		),
-		Entry("threshold recovers, resetHysteresis has not passed yet, insane notification keeps repeating",
+		Entry("threshold recovers, resetHysteresis has not passed yet, state has not changed, nothing is output",
 			mapper,
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
@@ -339,18 +323,10 @@ var _ = Describe("DoMap alarm", func() {
 					message.NewValue().WithPath("test.threshold").WithValue(50.0),
 				),
 			),
-			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
-				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("alarm").WithType(config.SignalKType),
-				).WithTimestamp(base.Add(32*time.Second)).AddValue(
-					message.NewValue().WithPath("notifications.test.threshold").WithValue(
-						message.Notification{State: &insane, Message: strPtr("check failed for notifications.test.threshold: " + thresholdCheckExpr)},
-					),
-				),
-			),
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext"),
 			false,
 		),
-		Entry("threshold is still sane 19s later, resetHysteresis still has not passed, insane notification keeps repeating",
+		Entry("threshold is still sane 19s later, resetHysteresis still has not passed, state has not changed, nothing is output",
 			mapper,
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
@@ -359,15 +335,7 @@ var _ = Describe("DoMap alarm", func() {
 					message.NewValue().WithPath("test.threshold").WithValue(50.0),
 				),
 			),
-			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
-				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("alarm").WithType(config.SignalKType),
-				).WithTimestamp(base.Add(51*time.Second)).AddValue(
-					message.NewValue().WithPath("notifications.test.threshold").WithValue(
-						message.Notification{State: &insane, Message: strPtr("check failed for notifications.test.threshold: " + thresholdCheckExpr)},
-					),
-				),
-			),
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext"),
 			false,
 		),
 		Entry("threshold has stayed sane for 21s, resetHysteresis passed, now reported as sane",

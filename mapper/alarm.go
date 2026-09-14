@@ -23,13 +23,11 @@ import (
 // check's configured SetDelay, and recovering back to sane is only notified
 // once the sane value has been observed continuously for the check's
 // configured ResetDelay, this avoids flapping notifications for values close
-// to the boundary. While confirmed insane, every evaluation is
-// notified again, so downstream consumers keep seeing the alarm; a rate
-// limiter can be put in front of this mapper if that volume needs to be
-// reduced. Recovering back to sane is only notified once, a single
-// notification announces the check has become sane again, it is not
-// repeated while the value stays sane. The result of a check is published as
-// a notification, the original data is not passed through. If no check
+// to the boundary. A notification is only published when the confirmed state
+// changes, plus once for the very first observation (the state is not known
+// yet, e.g. right after the mapper starts) - it is never repeated while the
+// confirmed state stays the same. The result of a check is published as a
+// notification, the original data is not passed through. If no check
 // produced a notification nothing is output.
 type AlarmMapper struct {
 	checkMappings map[string][]*config.AlarmMappingConfig
@@ -98,8 +96,8 @@ func (s *AlarmMapper) DoMap(input *message.Mapped) (*message.Mapped, error) {
 			}
 
 			insane, changed := applyHysteresis(check, rawInsane, svm.Timestamp)
-			if !insane && !changed {
-				// sane, and it was already sane, do not repeat the notification
+			if !changed {
+				// confirmed state has not changed, do not repeat the notification
 				continue
 			}
 
@@ -125,11 +123,10 @@ func (s *AlarmMapper) DoMap(input *message.Mapped) (*message.Mapped, error) {
 // sane rawInsane must be observed continuously for check.ResetDelay before
 // recovering back to sane is confirmed, this avoids flapping notifications
 // when the value is close to the boundary. It returns the confirmed state
-// and whether that state just changed. Callers
-// should notify whenever insane is true (repeating for as long as it stays
-// insane) or changed is true (the single notification for a recovery to
-// sane), and otherwise skip notifying so a confirmed sane state is not
-// repeated on every update.
+// and whether that state just changed (this is also true for the very first
+// observation, since the state was not known before that). Callers should
+// notify only when changed is true, and otherwise skip notifying so a
+// confirmed state is not repeated on every update.
 func applyHysteresis(check *config.AlarmMappingConfig, rawInsane bool, at time.Time) (insane bool, changed bool) {
 	if !check.Notified {
 		check.Notified = true

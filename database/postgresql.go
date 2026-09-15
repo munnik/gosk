@@ -624,8 +624,13 @@ func (db *PostgresqlDatabase) DowngradeDatabase() error {
 }
 
 func (db *PostgresqlDatabase) flushBatch() {
-	// db.flushMutex.Lock() // make sure only one flush runs at the same time, to prevent deadlocks
-	// defer db.flushMutex.Unlock()
+	// Serialize flushes (the ticker in NewPostgresqlDatabase and the
+	// batch.Len() > batchSize check in Write*/updateStaticData can both
+	// trigger one concurrently). Overlapping SendBatch calls sharing the
+	// same pool were the likely cause of "prepared statement does not
+	// exist" errors that then looped forever below (see invalidateConnection).
+	db.flushMutex.Lock()
+	defer db.flushMutex.Unlock()
 
 	batchToFlush := db.copyBatch()
 	// prevent flushing when queue is empty
@@ -652,6 +657,13 @@ func (db *PostgresqlDatabase) flushBatch() {
 			"Unable to flush batch, reinserting queries to the queue",
 			zap.String("Error", err.Error()),
 		)
+		// The failure could be caused by connection/session state (e.g. a
+		// prepared statement cached against a connection that's since been
+		// replaced or reset server-side). Retrying against that same
+		// connection would just fail identically forever, silently, since
+		// nothing downstream of Write*'s queue-then-return observes these
+		// retries. Drop it so the next flush gets a fresh one.
+		db.invalidateConnection()
 		for _, query := range batchToFlush.QueuedQueries {
 			db.batchMutex.Lock()
 			db.batch.QueuedQueries = append(db.batch.QueuedQueries, query)
@@ -667,6 +679,18 @@ func (db *PostgresqlDatabase) flushBatch() {
 	)
 	db.lastFlush = time.Now()
 	db.lastFlushGauge.SetToCurrentTime()
+}
+
+// invalidateConnection closes and discards the current connection pool, so
+// the next GetConnection call establishes a fresh one instead of reusing a
+// connection that may be left in a bad session state.
+func (db *PostgresqlDatabase) invalidateConnection() {
+	db.connectionMutex.Lock()
+	defer db.connectionMutex.Unlock()
+	if db.connection != nil {
+		db.connection.Close()
+		db.connection = nil
+	}
 }
 
 func (db *PostgresqlDatabase) copyBatch() *pgx.Batch {

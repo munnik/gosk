@@ -133,21 +133,23 @@ func (s *NotificationMapper) refreshMap(timeStamp time.Time) *message.Mapped {
 // triggered by the periodic sweep. It returns the update to publish, or nil
 // when nothing needs to be published.
 //
-// A confirmed notifying check is otherwise only published once, at the
-// moment it gets confirmed: DoMap only calls evaluateCheck when one of the
-// check's source paths actually changes, so a check that stays confirmed
-// notifying can go a long time, potentially forever, without evaluateCheck
-// being called again for it at all. That single publish is therefore load
+// A confirmed state is otherwise only published once, at the moment it gets
+// confirmed: DoMap only calls evaluateCheck when one of the check's source
+// paths actually changes, so a check whose confirmed state stays the same
+// can go a long time, potentially forever, without evaluateCheck being
+// called again for it at all. That single publish is therefore load
 // bearing: if it is ever lost downstream (e.g. a subscriber that has not
 // finished connecting yet when a freshly started notify confirms a check
-// from its very first, fail-safe evaluation), nothing will tell the rest of
-// the pipeline the check is notifying, even though it stays correctly
-// confirmed in this process's memory the whole time. republish, set by the
-// periodic sweep (see refreshMap and periodicMapper in main.go), re-sends
-// the currently confirmed notifying state on every sweep regardless of
-// whether it changed, so a lost or stale announcement self-heals within one
-// tick interval. A confirmed cleared state is not re-sent this way: its
-// absence is already the correct default, so there is nothing to self-heal.
+// from its very first, fail-safe evaluation, or when a check clears right as
+// the process restarts), nothing will tell the rest of the pipeline the
+// check's real state, even though it stays correctly confirmed in this
+// process's memory the whole time - and unlike an in-memory default, a
+// downstream sink that persists the latest value per path (e.g. the
+// database writer) keeps serving that stale state forever. republish, set
+// by the periodic sweep (see refreshMap and periodicMapper in main.go),
+// re-sends the currently confirmed state - notifying or cleared - on every
+// sweep regardless of whether it changed, so a lost or stale announcement
+// self-heals within one tick interval either way.
 func (s *NotificationMapper) evaluateCheck(nmc *config.NotificationMappingConfig, now time.Time, republish bool) *message.Update {
 	applies, err := s.applies(nmc)
 	if err != nil {
@@ -159,7 +161,7 @@ func (s *NotificationMapper) evaluateCheck(nmc *config.NotificationMappingConfig
 	}
 	u := message.NewUpdate().WithSource(*message.NewSource().WithLabel("notification").WithType(config.SignalKType)).WithTimestamp(now)
 	if !applies {
-		if !s.states[nmc].reset() {
+		if changed := s.states[nmc].reset(); !changed && !republish {
 			return nil
 		}
 		u.AddValue(message.NewValue().WithPath(nmc.Path).WithValue(nil))
@@ -192,7 +194,7 @@ func (s *NotificationMapper) evaluateCheck(nmc *config.NotificationMappingConfig
 	}
 
 	notifying, changed := applyHysteresis(nmc, s.states[nmc], rawNotifying, now)
-	if !changed && !(republish && notifying) {
+	if !changed && !republish {
 		return nil
 	}
 

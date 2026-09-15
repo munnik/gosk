@@ -94,12 +94,12 @@ var _ = Describe("Test database", Ordered, func() {
 		},
 		Entry(
 			"Mapped with notification value",
-			mappedNotificationValue,
+			&mappedNotificationValue,
 			mappedNotificationValue,
 		),
 		Entry(
 			"Mapped with string value",
-			mappedStringValue,
+			&mappedStringValue,
 			mappedStringValue,
 		),
 	)

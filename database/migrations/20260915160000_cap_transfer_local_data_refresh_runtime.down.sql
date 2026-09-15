@@ -8,6 +8,6 @@ BEGIN
         WHERE j.proc_name = 'policy_refresh_continuous_aggregate'
             AND j.hypertable_name IN ('transfer_local_data_mathing_context', 'transfer_local_data_other_context')
     LOOP
-        PERFORM alter_job(job_id, max_runtime => INTERVAL '0');
+        PERFORM public.alter_job(job_id, max_runtime => INTERVAL '0');
     END LOOP;
 END $$;

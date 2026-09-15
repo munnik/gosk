@@ -3,9 +3,11 @@ package database
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -198,7 +200,15 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 	// run this before quoting the string
 	db.updateStaticData(svm.Context, path, svm.Value)
 
-	if str, ok := svm.Value.(string); ok {
+	if svm.Value == nil {
+		// A bare nil is sent to postgres as SQL NULL, which violates the
+		// "value" column's NOT NULL constraint (e.g. a cleared
+		// notification, see mapper/notification.go). What's actually
+		// wanted is the *JSON* null literal, a valid jsonb value - encode
+		// it explicitly instead of letting pgx's default nil handling turn
+		// it into a SQL NULL.
+		svm.Value = json.RawMessage("null")
+	} else if str, ok := svm.Value.(string); ok {
 		svm.Value = strconv.Quote(str)
 	}
 	table := "mapped_data_matching_context"
@@ -654,7 +664,7 @@ func (db *PostgresqlDatabase) flushBatch() {
 			return
 		}
 		logger.GetLogger().Error(
-			"Unable to flush batch, reinserting queries to the queue",
+			"Unable to flush batch as a whole, retrying its queries individually",
 			zap.String("Error", err.Error()),
 		)
 		// The failure could be caused by connection/session state (e.g. a
@@ -662,14 +672,10 @@ func (db *PostgresqlDatabase) flushBatch() {
 		// replaced or reset server-side). Retrying against that same
 		// connection would just fail identically forever, silently, since
 		// nothing downstream of Write*'s queue-then-return observes these
-		// retries. Drop it so the next flush gets a fresh one.
+		// retries. Drop it so the retries below (and the next flush) get a
+		// fresh one.
 		db.invalidateConnection()
-		for _, query := range batchToFlush.QueuedQueries {
-			db.batchMutex.Lock()
-			db.batch.QueuedQueries = append(db.batch.QueuedQueries, query)
-			db.batchMutex.Unlock()
-			time.Sleep(10 * time.Second / time.Duration(batchToFlush.Len())) // spread out the queries over 10 seconds
-		}
+		db.retryIndividually(batchToFlush)
 		return
 	}
 	logger.GetLogger().Info(
@@ -690,6 +696,48 @@ func (db *PostgresqlDatabase) invalidateConnection() {
 	if db.connection != nil {
 		db.connection.Close()
 		db.connection = nil
+	}
+}
+
+// retryIndividually re-sends each query from a batch that failed as a
+// whole, one at a time. A single permanently failing query (e.g. a NOT
+// NULL or other constraint violation) would otherwise keep the *entire*
+// batch requeued and retried forever, blocking every other query queued
+// alongside it - including brand new, unrelated ones, since they all share
+// the same underlying queue. Queries whose failure is classified as a
+// Postgres data or integrity error (SQLSTATE class 22 or 23 - the kind
+// that will never succeed no matter how many times it's retried) are
+// logged and dropped. Anything else (connectivity issues, a still-stale
+// prepared statement, timeouts, ...) is requeued for the next flush, same
+// as the whole-batch retry used to do.
+func (db *PostgresqlDatabase) retryIndividually(batch *pgx.Batch) {
+	conn := db.GetConnection()
+	for _, query := range batch.QueuedQueries {
+		ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
+		_, err := conn.Exec(ctx, query.SQL, query.Arguments...)
+		cancel()
+		if err == nil {
+			continue
+		}
+
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && (strings.HasPrefix(pgErr.Code, "22") || strings.HasPrefix(pgErr.Code, "23")) {
+			logger.GetLogger().Error(
+				"Dropping a query that permanently fails with a data/integrity error, it would otherwise block every other queued query forever",
+				zap.String("sql", query.SQL),
+				zap.String("sqlstate", pgErr.Code),
+				zap.Error(err),
+			)
+			continue
+		}
+
+		logger.GetLogger().Error(
+			"Query failed even individually, reinserting it into the queue",
+			zap.Error(err),
+		)
+		db.batchMutex.Lock()
+		db.batch.QueuedQueries = append(db.batch.QueuedQueries, query)
+		db.batchMutex.Unlock()
 	}
 }
 

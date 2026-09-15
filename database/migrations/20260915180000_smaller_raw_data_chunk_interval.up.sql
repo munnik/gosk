@@ -1,0 +1,12 @@
+-- raw_data was created (20220214102543_raw_data.up.sql) without an
+-- explicit chunk_time_interval, so it fell back to TimescaleDB's 7-day
+-- default. 20221009091710_add_retention_policy_raw_data.up.sql then set
+-- the retention policy to also drop data after 7 days - an exact match
+-- with the chunk width. drop_chunks only removes a chunk once its entire
+-- range has expired, so a 7-day-wide chunk holding day-0 data isn't
+-- droppable until day 14, silently doubling the effective retention
+-- (and raw_data's steady-state size) ever since. Only affects chunks
+-- created from now on - existing wide chunks still age out under the old
+-- rule, but every new chunk is narrow enough that at most ~1 day of
+-- "slop" is added on top of the 7-day retention instead of another 7.
+SELECT public.set_chunk_time_interval('raw_data', INTERVAL '1 day');

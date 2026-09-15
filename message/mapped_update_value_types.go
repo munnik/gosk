@@ -169,6 +169,14 @@ type Vector3D struct {
 }
 
 func Decode(input interface{}) (interface{}, error) {
+	if input == nil {
+		// a JSON null, e.g. a cleared Signal K notification, must stay nil:
+		// mapstructure.DecodeMetadata trivially "succeeds" decoding a nil
+		// input into any all-optional struct (leaving it at its zero value,
+		// with no Unused fields to report), so without this check a null
+		// would silently be mistaken for the first candidate type below.
+		return nil, nil
+	}
 	if i, ok := input.(int64); ok {
 		return i, nil
 	}

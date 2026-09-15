@@ -109,7 +109,7 @@ func (s *NotificationMapper) DoMap(input *message.Mapped) (*message.Mapped, erro
 		s.lastSeen[svm.Path] = svm.Timestamp
 
 		for _, nmc := range nmcs {
-			if u := s.evaluateCheck(nmc, svm.Timestamp); u != nil {
+			if u := s.evaluateCheck(nmc, svm.Timestamp, false); u != nil {
 				result.AddUpdate(u)
 			}
 		}
@@ -121,7 +121,7 @@ func (s *NotificationMapper) DoMap(input *message.Mapped) (*message.Mapped, erro
 func (s *NotificationMapper) refreshMap(timeStamp time.Time) *message.Mapped {
 	result := message.NewMapped().WithContext(s.config.Context).WithOrigin(s.config.Context)
 	for nmc := range s.states {
-		if u := s.evaluateCheck(nmc, timeStamp); u != nil {
+		if u := s.evaluateCheck(nmc, timeStamp, true); u != nil {
 			result.AddUpdate(u)
 		}
 	}
@@ -131,8 +131,24 @@ func (s *NotificationMapper) refreshMap(timeStamp time.Time) *message.Mapped {
 // evaluateCheck evaluates check as of now, now is either the timestamp of
 // the value that triggered the evaluation, or the current time when
 // triggered by the periodic sweep. It returns the update to publish, or nil
-// when the confirmed state did not change.
-func (s *NotificationMapper) evaluateCheck(nmc *config.NotificationMappingConfig, now time.Time) *message.Update {
+// when nothing needs to be published.
+//
+// A confirmed notifying check is otherwise only published once, at the
+// moment it gets confirmed: DoMap only calls evaluateCheck when one of the
+// check's source paths actually changes, so a check that stays confirmed
+// notifying can go a long time, potentially forever, without evaluateCheck
+// being called again for it at all. That single publish is therefore load
+// bearing: if it is ever lost downstream (e.g. a subscriber that has not
+// finished connecting yet when a freshly started notify confirms a check
+// from its very first, fail-safe evaluation), nothing will tell the rest of
+// the pipeline the check is notifying, even though it stays correctly
+// confirmed in this process's memory the whole time. republish, set by the
+// periodic sweep (see refreshMap and periodicMapper in main.go), re-sends
+// the currently confirmed notifying state on every sweep regardless of
+// whether it changed, so a lost or stale announcement self-heals within one
+// tick interval. A confirmed cleared state is not re-sent this way: its
+// absence is already the correct default, so there is nothing to self-heal.
+func (s *NotificationMapper) evaluateCheck(nmc *config.NotificationMappingConfig, now time.Time, republish bool) *message.Update {
 	applies, err := s.applies(nmc)
 	if err != nil {
 		logger.GetLogger().Warn(
@@ -176,7 +192,7 @@ func (s *NotificationMapper) evaluateCheck(nmc *config.NotificationMappingConfig
 	}
 
 	notifying, changed := applyHysteresis(nmc, s.states[nmc], rawNotifying, now)
-	if !changed {
+	if !changed && !(republish && notifying) {
 		return nil
 	}
 

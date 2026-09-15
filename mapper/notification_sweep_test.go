@@ -69,9 +69,17 @@ func TestNotificationMapperSweep(t *testing.T) {
 		t.Fatalf("expected the configured message, got %+v", notification.Message)
 	}
 
-	// once confirmed raised, sweeping again at the same stale state should
-	// not repeat the notification
-	if out := m.refreshMap(now.Add(41 * time.Second)); len(out.Updates) != 0 {
-		t.Fatalf("expected no repeated update for an unchanged confirmed state, got %+v", out.Updates)
+	// once confirmed raised, sweeping again at the same stale state
+	// re-publishes it: this is what lets a lost or missed announcement (e.g.
+	// a subscriber that has not finished connecting yet when the check was
+	// first confirmed) self-heal within one tick interval, instead of the
+	// notifying state staying silently correct in memory forever
+	out = m.refreshMap(now.Add(41 * time.Second))
+	if len(out.Updates) != 1 {
+		t.Fatalf("expected the still-notifying confirmed state to be republished, got %d: %+v", len(out.Updates), out.Updates)
+	}
+	notification, ok = out.Updates[0].Values[0].Value.(message.Notification)
+	if !ok || notification.State == nil || *notification.State != "alarm" {
+		t.Fatalf("expected the republished value to still be the alarm notification, got %+v", out.Updates[0].Values[0].Value)
 	}
 }

@@ -199,4 +199,38 @@ var _ = Describe("DoMap canbus", func() {
 		Expect(values[0].Path).To(Equal("notifications.propulsion.mainEngine.drive.revolutions.crossCheck"))
 		Expect(*values[0].Value.(message.Notification).State).To(Equal("alarm"))
 	})
+
+	It("lets a mapping expression reference another signal's persistent value, decoded from the same frame", func() {
+		// mirrors mappingsForMannerCanbusBendingMoment in ../nix: it
+		// triggers on Torque_Rotor_Module_1_Raw_Data (using "value") and
+		// reaches across to Torque_Rotor_Module_2_Raw_Data's persistent
+		// env value, relying on Module_2 being decoded first within the
+		// same Raw_Data_0 frame (see dbc.nix's field order).
+		bendingMoment := []config.CanBusMappingConfig{
+			{
+				Name:   "Torque_Rotor_Module_1_Raw_Data",
+				Origin: "Raw_Data_0",
+				MappingConfig: config.MappingConfig{
+					Path:       "propulsion.mainEngine.drive.bendingMomentRaw",
+					Expression: "value - Raw_Data_0_Torque_Rotor_Module_2_Raw_Data",
+				},
+			},
+		}
+		m, err := NewCanBusMapper(
+			config.CanBusMapperConfig{
+				MapperConfig: config.MapperConfig{Context: "testingContext"},
+				DbcFile:      writeCanbusTestDBC(),
+			},
+			bendingMoment,
+			nil,
+		)
+		Expect(err).ToNot(HaveOccurred())
+
+		out, err := m.DoMap(rawDataFrame(600, 100, 700, time.Now()))
+		Expect(err).ToNot(HaveOccurred())
+		values := out.ToSingleValueMapped()
+		Expect(values).To(HaveLen(1))
+		Expect(values[0].Path).To(Equal("propulsion.mainEngine.drive.bendingMomentRaw"))
+		Expect(values[0].Value).To(Equal(500.0))
+	})
 })

@@ -145,6 +145,84 @@ var _ = Describe("DoMap fft", func() {
 		Expect(spectra).To(BeEmpty())
 	})
 
+	It("runs two independent spectra off a single mapper instance, each from its own path", func() {
+		// mirrors node-hbr-rpa10's mapShaftPowerMeterPortFft/StarboardFft in
+		// ../nix: one FftMapper, fed drive.torque and drive.bendingMoment
+		// together (they come from the same upstream BinaryMapper), so a
+		// torsional vibration (which shows up in torque, the sensor sum)
+		// and a bending vibration (which shows up in bendingMoment, the
+		// sensor difference - see mappingsForMannerTcpBendingMoment's doc
+		// comment in ../nix) can be told apart by which spectrum peaks,
+		// without any phase computation.
+		const (
+			bendingPath         = "propulsion.mainEngine.drive.bendingMoment"
+			bendingSpectrumPath = "propulsion.mainEngine.drive.bendingMomentSpectrum"
+			torsionalFrequency  = 10.0
+			bendingFrequency    = 40.0
+		)
+		m, err := NewFftMapper(
+			config.MapperConfig{Context: "testingContext"},
+			[]*config.FftConfig{
+				{
+					Path:                  fftTestPath,
+					SpectrumPath:          fftTestSpectrumPath,
+					SamplesChannelBitSize: windowBits,
+					FrequencyStepSize:     1.0,
+				},
+				{
+					Path:                  bendingPath,
+					SpectrumPath:          bendingSpectrumPath,
+					SamplesChannelBitSize: windowBits,
+					FrequencyStepSize:     1.0,
+				},
+			},
+		)
+		Expect(err).ToNot(HaveOccurred())
+
+		torque := sineWave(windowLen+hopSize, torsionalFrequency)
+		bending := sineWave(windowLen+hopSize, bendingFrequency)
+		start := time.Now()
+		var torqueSpectra, bendingSpectra []message.Spectrum
+		for i := range torque {
+			input := message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				message.NewUpdate().WithSource(
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
+				).WithTimestamp(
+					start.Add(time.Duration(i) * period),
+				).AddValue(
+					message.NewValue().WithPath(fftTestPath).WithValue(torque[i]),
+				).AddValue(
+					message.NewValue().WithPath(bendingPath).WithValue(bending[i]),
+				),
+			)
+			out, err := m.DoMap(input)
+			Expect(err).ToNot(HaveOccurred())
+			for _, svm := range out.ToSingleValueMapped() {
+				switch svm.Path {
+				case fftTestSpectrumPath:
+					torqueSpectra = append(torqueSpectra, svm.Value.(message.Spectrum))
+				case bendingSpectrumPath:
+					bendingSpectra = append(bendingSpectra, svm.Value.(message.Spectrum))
+				}
+			}
+		}
+
+		Expect(torqueSpectra).To(HaveLen(1))
+		Expect(bendingSpectra).To(HaveLen(1))
+
+		peakFrequency := func(s message.Spectrum) int {
+			peakIndex, peakMagnitude := 0, 0.0
+			for i, c := range s.Coefficients {
+				if c.Magnitude > peakMagnitude {
+					peakIndex, peakMagnitude = i, c.Magnitude
+				}
+			}
+			return peakIndex
+		}
+		Expect(float64(peakFrequency(torqueSpectra[0]))).To(BeNumerically("~", torsionalFrequency, 1))
+		Expect(float64(peakFrequency(bendingSpectra[0]))).To(BeNumerically("~", bendingFrequency, 1))
+	})
+
 	It("discards a non-numeric value instead of panicking", func() {
 		m := newMapper()
 		input := message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(

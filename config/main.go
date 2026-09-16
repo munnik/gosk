@@ -138,6 +138,13 @@ func NewUrlGroupsConfig(configFilePath string) []UrlGroupConfig {
 const (
 	ProtocolOptionNmeaParse                = "nmeaparse"
 	ProtocolOptionModbusSkipFaultDetection = "skipfaultdetection"
+	// ProtocolOptionBinarySingleTorqueSensor, when "true", tells a
+	// BinaryMapper decoding a Manner shaft power meter frame that only one
+	// torque sensor is physically installed (rather than the usual pair,
+	// mounted 180 degrees apart), so its peak-to-peak speed estimate must
+	// fall back to the frame's single combined torque reading instead of
+	// the two sensors' difference. See mapper.BinaryMapper.
+	ProtocolOptionBinarySingleTorqueSensor = "singletorquesensor"
 )
 
 type MapperConfig struct {
@@ -293,6 +300,12 @@ func NewExpressionMappingConfig(configFilePath string) []*ExpressionMappingConfi
 // does. It only applies to a source path that has been seen at least once,
 // a source path that never reported a value is left to Expression to fail
 // on. Timeout is disabled (the default) when omitted.
+//
+// A BinaryMapper (see mapper) additionally publishes a peak-to-peak speed
+// estimate into its own expression environment under "estimatedRevolutions"
+// before evaluating any check's When/Expression, so a check can reference
+// it directly without it ever being published as a SignalK value - see
+// mapper.mannerSensorDiffExpression for what that estimate is derived from.
 type NotificationMappingConfig struct {
 	MappingConfig `mapstructure:",squash"`
 	SourcePaths   []string `mapstructure:"sourcePaths"`
@@ -309,6 +322,20 @@ type NotificationMappingConfig struct {
 func NewNotificationMappingConfig(configFilePath string) []*NotificationMappingConfig {
 	var result []*NotificationMappingConfig
 	readConfigFile(&result, configFilePath, "mappings")
+	for _, nmc := range result {
+		nmc.verify()
+	}
+	return result
+}
+
+// NewMappingNotificationsConfig reads the optional "notifications" list a
+// mapper's own config file (e.g. a "map" processor's) can carry alongside
+// its "mappings" list, letting a mapper emit a notification derived from
+// the same raw data it maps, without that data ever having to be published
+// as a SignalK value in its own right.
+func NewMappingNotificationsConfig(configFilePath string) []*NotificationMappingConfig {
+	var result []*NotificationMappingConfig
+	readConfigFile(&result, configFilePath, "notifications")
 	for _, nmc := range result {
 		nmc.verify()
 	}

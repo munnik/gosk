@@ -13,4 +13,3 @@ SET DATA TYPE CHARACTER VARYING USING CASE
         )
         ELSE "value"::CHARACTER VARYING
     END;
-        

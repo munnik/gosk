@@ -95,4 +95,3 @@ CREATE TRIGGER "update_vesseltype_trigger"
 AFTER
 INSERT ON "mapped_data" FOR EACH ROW
     WHEN (NEW."path" = 'design.aisShipType' AND NEW."value" ? 'name') EXECUTE PROCEDURE "update_vesseltype"();
-    

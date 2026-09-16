@@ -22,6 +22,17 @@ type CanBusMapper struct {
 	protocol       string
 	dbc            DBC
 	canbusMappings map[string]map[string]config.CanBusMappingConfig
+	notifications  notificationEvaluator
+	// peakToPeaks is keyed by signal origin (e.g. "Raw_Data_0"), one per
+	// engine: a dual-engine vessel (two Manner units on one CAN bus) gets
+	// two independent estimates rather than one contaminated by both.
+	peakToPeaks map[string]*peakToPeakRpm
+	// env persists across frames, unlike "value" below, which is only ever
+	// the single signal currently being run through canbusMappings - so a
+	// notification can reference a signal decoded from an earlier,
+	// different CAN message (e.g. this engine's last known RPM, which
+	// arrives on a different message than torque).
+	env ExpressionEnvironment
 }
 
 type signal struct {
@@ -33,7 +44,11 @@ type signal struct {
 
 type DBC map[uint32]*dbc.MessageDef
 
-func NewCanBusMapper(c config.CanBusMapperConfig, cmc []config.CanBusMappingConfig) (*CanBusMapper, error) {
+func NewCanBusMapper(
+	c config.CanBusMapperConfig,
+	cmc []config.CanBusMappingConfig,
+	nc []*config.NotificationMappingConfig,
+) (*CanBusMapper, error) {
 	// parse DBC file and store mappings
 	dbc := readDBC(c.DbcFile, c.IsJ1939)
 	// Before the loop below copies them into the map - a struct stored
@@ -50,7 +65,15 @@ func NewCanBusMapper(c config.CanBusMapperConfig, cmc []config.CanBusMappingConf
 		}
 		mappings[m.Origin][m.Name] = m
 	}
-	return &CanBusMapper{config: c, protocol: config.CanBusType, dbc: dbc, canbusMappings: mappings}, nil
+	return &CanBusMapper{
+		config:         c,
+		protocol:       config.CanBusType,
+		dbc:            dbc,
+		canbusMappings: mappings,
+		notifications:  newNotificationEvaluator(nc),
+		peakToPeaks:    make(map[string]*peakToPeakRpm),
+		env:            NewExpressionEnvironment(),
+	}, nil
 }
 
 // MapConnectorStatus implements ConnectorStatusMapper - see its doc
@@ -70,6 +93,24 @@ func (m *CanBusMapper) Map(subscriber *nanomsg.Subscriber[message.Raw], publishe
 	process(subscriber, publisher, m, false)
 }
 
+// mannerTorqueSumSignalName is hardcoded, not configurable: it's the name
+// dbc.nix's generated DBC always gives the Manner shaft power meter's
+// combined torque signal, on whichever origin carries it (one per engine -
+// "Raw_Data_0", "Raw_Data_1", ...). That combined signal completes one
+// sinusoidal cycle per shaft revolution the same way it does for the TCP
+// variant (see notificationsForMannerTcpSensorHealth's doc comment in
+// ../nix), and unlike the two individual sensor signals it's always
+// present regardless of whether one or two torque sensors are physically
+// installed (see notificationsForMannerCanbusSensorHealth in ../nix), so
+// it's what feeds peakToPeakRpm here.
+const mannerTorqueSumSignalName = "Torque_Sum_Raw_Data"
+
+// mannerRpmEstimateEnvVarSuffix: a peak-to-peak estimate is published into
+// env under mannerSignalEnvVar(origin, mannerRpmEstimateEnvVarSuffix), e.g.
+// "Raw_Data_0_estimatedRevolutions", so a notification's Expression can
+// reference the right engine's estimate by name.
+const mannerRpmEstimateEnvVarSuffix = "estimatedRevolutions"
+
 func (m *CanBusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	result := message.NewMapped().WithContext(m.config.Context).WithOrigin(m.config.Context)
 	s := message.NewSource().WithLabel(r.Connector).WithType(m.protocol).WithUuid(r.Uuid)
@@ -85,19 +126,23 @@ func (m *CanBusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 		id = getPGN(id)
 	}
 	if mappings, ok := m.dbc[id]; ok {
-		env := NewExpressionEnvironment()
 		for _, signalDef := range mappings.Signals {
 			signal := extractSignal(signalDef, string(mappings.Name), frame)
 			if !signal.valid {
 				continue
 			}
 
+			m.env[mannerSignalEnvVar(signal.origin, signal.name)] = signal.value
+			if signal.name == mannerTorqueSumSignalName {
+				m.updatePeakToPeak(signal.origin, signal.value, r.Timestamp)
+			}
+
 			if mapping, ok := m.canbusMappings[signal.origin][signal.name]; ok {
 				if slices.Contains(mapping.ExcludeValues, signal.value) {
 					continue
 				}
-				env["value"] = signal.value
-				output, err := runExpr(env, &mapping.MappingConfig)
+				m.env["value"] = signal.value
+				output, err := runExpr(m.env, &mapping.MappingConfig)
 				if err == nil {
 					u.AddValue(message.NewValue().WithPath(mapping.Path).WithValue(output))
 				} else {
@@ -110,8 +155,31 @@ func (m *CanBusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 			}
 		}
 	}
+	if len(u.Values) > 0 {
+		result.AddUpdate(u)
+	}
 
-	return result.AddUpdate(u), nil
+	m.notifications.evaluate(m.env, r.Timestamp, result)
+
+	return result, nil
+}
+
+// mannerSignalEnvVar names the persistent env var a decoded signal is kept
+// under.
+func mannerSignalEnvVar(origin, name string) string {
+	return origin + "_" + name
+}
+
+// updatePeakToPeak feeds value into origin's own peakToPeakRpm (creating it
+// on first use) and publishes the resulting estimate into env under
+// mannerSignalEnvVar(origin, mannerRpmEstimateEnvVarSuffix).
+func (m *CanBusMapper) updatePeakToPeak(origin string, value float64, now time.Time) {
+	pp, ok := m.peakToPeaks[origin]
+	if !ok {
+		pp = &peakToPeakRpm{}
+		m.peakToPeaks[origin] = pp
+	}
+	m.env[mannerSignalEnvVar(origin, mannerRpmEstimateEnvVarSuffix)] = pp.update(value, now)
 }
 
 func extractSignal(signalDef dbc.SignalDef, origin string, frame can.Frame) signal {

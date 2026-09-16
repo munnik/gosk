@@ -220,7 +220,22 @@ func (s *NotificationMapper) refreshMap(timeStamp time.Time) *message.Mapped {
 // sweep regardless of whether it changed, so a lost or stale announcement
 // self-heals within one tick interval either way.
 func (s *NotificationMapper) evaluateCheck(nmc *config.NotificationMappingConfig, now time.Time, republish bool) *message.Update {
-	applies, err := s.applies(nmc)
+	stalePath, stale := s.staleSourcePath(nmc, now)
+	return evaluateNotificationCheck(s.env, nmc, s.states[nmc], now, republish, stale, stalePath)
+}
+
+// evaluateNotificationCheck evaluates nmc against env as of now, applies
+// hysteresis via state, and returns the update to publish, or nil when
+// nothing needs to be published. It has no notion of a check's source paths
+// going stale on its own - stale/stalePath let a caller that tracks that
+// (NotificationMapper does, via staleSourcePath) fold it in; a caller with
+// no such notion (e.g. a mapper embedding a check directly, evaluated fresh
+// on every raw message it processes) passes stale as false.
+//
+// See NotificationMapper.evaluateCheck for the republish semantics this
+// shares with the dedicated notify stage.
+func evaluateNotificationCheck(env ExpressionEnvironment, nmc *config.NotificationMappingConfig, state *notificationState, now time.Time, republish bool, stale bool, stalePath string) *message.Update {
+	applies, err := checkApplies(env, nmc)
 	if err != nil {
 		logger.GetLogger().Warn(
 			"Could not evaluate the when expression of a notification, applying the notifcation to be safe",
@@ -230,7 +245,7 @@ func (s *NotificationMapper) evaluateCheck(nmc *config.NotificationMappingConfig
 	}
 	u := message.NewUpdate().WithSource(*message.NewSource().WithLabel("notification").WithType(config.SignalKType)).WithTimestamp(now)
 	if !applies {
-		if changed := s.states[nmc].reset(); !changed && !republish {
+		if changed := state.reset(); !changed && !republish {
 			return nil
 		}
 		u.AddValue(message.NewValue().WithPath(nmc.Path).WithValue(nil))
@@ -241,13 +256,13 @@ func (s *NotificationMapper) evaluateCheck(nmc *config.NotificationMappingConfig
 	// a bool, or one of the source paths went stale, assume a notification
 	// is needed instead of silently skipping it
 	rawNotifying := true
-	if stalePath, stale := s.staleSourcePath(nmc, now); stale {
+	if stale {
 		logger.GetLogger().Warn(
 			"A source path of a notification has not updated within its timeout, assuming a notification is needed",
 			zap.String("Path", nmc.Path),
 			zap.String("Stale source path", stalePath),
 		)
-	} else if value, err := runExpr(s.env, &nmc.MappingConfig); err != nil {
+	} else if value, err := runExpr(env, &nmc.MappingConfig); err != nil {
 		logger.GetLogger().Warn(
 			"Could not evaluate the expression of a notification, assuming a notification is needed",
 			zap.String("Path", nmc.Path),
@@ -262,7 +277,7 @@ func (s *NotificationMapper) evaluateCheck(nmc *config.NotificationMappingConfig
 		)
 	}
 
-	notifying, changed := applyHysteresis(nmc, s.states[nmc], rawNotifying, now)
+	notifying, changed := applyHysteresis(nmc, state, rawNotifying, now)
 	if !changed && !republish {
 		return nil
 	}
@@ -339,7 +354,42 @@ func precompileWhen(nmc *config.NotificationMappingConfig) {
 	}
 }
 
-func (s *NotificationMapper) applies(nmc *config.NotificationMappingConfig) (bool, error) {
+// notificationEvaluator runs a fixed list of notification checks against
+// whatever ExpressionEnvironment a caller hands it, each on its own
+// notificationState, with no notion of source paths or staleness (that's
+// NotificationMapper's job) - just hysteresis via evaluateNotificationCheck.
+// It's the shared piece behind any mapper that wants to emit a notification
+// derived directly from data it decodes, without that data ever having to
+// be published as its own SignalK value first (see BinaryMapper and
+// CanBusMapper).
+type notificationEvaluator struct {
+	checks []*config.NotificationMappingConfig
+	states map[*config.NotificationMappingConfig]*notificationState
+}
+
+func newNotificationEvaluator(checks []*config.NotificationMappingConfig) notificationEvaluator {
+	states := make(map[*config.NotificationMappingConfig]*notificationState, len(checks))
+	for _, nmc := range checks {
+		states[nmc] = &notificationState{}
+	}
+	return notificationEvaluator{checks: checks, states: states}
+}
+
+// evaluate runs every check against env as of now, appending whatever
+// update each one produces (see evaluateNotificationCheck) onto result.
+func (e *notificationEvaluator) evaluate(env ExpressionEnvironment, now time.Time, result *message.Mapped) {
+	for _, nmc := range e.checks {
+		if u := evaluateNotificationCheck(env, nmc, e.states[nmc], now, false, false, ""); u != nil {
+			result.AddUpdate(u)
+		}
+	}
+}
+
+// checkApplies reports whether nmc.When gates it in as of env's current
+// values (true when When is unset). It is a free function, not a method on
+// NotificationMapper, so any mapper evaluating a NotificationMappingConfig
+// against its own ExpressionEnvironment can reuse it.
+func checkApplies(env ExpressionEnvironment, nmc *config.NotificationMappingConfig) (bool, error) {
 	if nmc.When == "" {
 		return true, nil
 	}
@@ -351,7 +401,7 @@ func (s *NotificationMapper) applies(nmc *config.NotificationMappingConfig) (boo
 		}
 	}
 
-	output, err := runVM(nmc.CompiledWhen, s.env)
+	output, err := runVM(nmc.CompiledWhen, env)
 	if err != nil {
 		return true, err
 	}

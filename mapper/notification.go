@@ -354,6 +354,37 @@ func precompileWhen(nmc *config.NotificationMappingConfig) {
 	}
 }
 
+// notificationEvaluator runs a fixed list of notification checks against
+// whatever ExpressionEnvironment a caller hands it, each on its own
+// notificationState, with no notion of source paths or staleness (that's
+// NotificationMapper's job) - just hysteresis via evaluateNotificationCheck.
+// It's the shared piece behind any mapper that wants to emit a notification
+// derived directly from data it decodes, without that data ever having to
+// be published as its own SignalK value first (see BinaryMapper and
+// CanBusMapper).
+type notificationEvaluator struct {
+	checks []*config.NotificationMappingConfig
+	states map[*config.NotificationMappingConfig]*notificationState
+}
+
+func newNotificationEvaluator(checks []*config.NotificationMappingConfig) notificationEvaluator {
+	states := make(map[*config.NotificationMappingConfig]*notificationState, len(checks))
+	for _, nmc := range checks {
+		states[nmc] = &notificationState{}
+	}
+	return notificationEvaluator{checks: checks, states: states}
+}
+
+// evaluate runs every check against env as of now, appending whatever
+// update each one produces (see evaluateNotificationCheck) onto result.
+func (e *notificationEvaluator) evaluate(env ExpressionEnvironment, now time.Time, result *message.Mapped) {
+	for _, nmc := range e.checks {
+		if u := evaluateNotificationCheck(env, nmc, e.states[nmc], now, false, false, ""); u != nil {
+			result.AddUpdate(u)
+		}
+	}
+}
+
 // checkApplies reports whether nmc.When gates it in as of env's current
 // values (true when When is unset). It is a free function, not a method on
 // NotificationMapper, so any mapper evaluating a NotificationMappingConfig

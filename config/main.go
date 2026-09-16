@@ -340,6 +340,10 @@ type FftConfig struct {
 	SpectrumPath          string  `mapstructure:"spectrumPath"`
 	SamplesChannelBitSize int64   `mapstructure:"samplesChannelBitSize"`
 	FrequencyStepSize     float64 `mapstructure:"frequencyStepSize"`
+	// GapDetectionThreshold flags an FFT window as unreliable when one
+	// sample interval in it is more than this many times the window's mean
+	// interval [optional default is 3]
+	GapDetectionThreshold float64 `mapstructure:"gapDetectionThreshold"`
 }
 
 func NewFftConfig(configFilePath string) []*FftConfig {

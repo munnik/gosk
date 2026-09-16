@@ -205,14 +205,19 @@ var _ = Describe("DoMap canbus", func() {
 		// triggers on Torque_Rotor_Module_1_Raw_Data (using "value") and
 		// reaches across to Torque_Rotor_Module_2_Raw_Data's persistent
 		// env value, relying on Module_2 being decoded first within the
-		// same Raw_Data_0 frame (see dbc.nix's field order).
+		// same Raw_Data_0 frame (see dbc.nix's field order), scaling the
+		// raw digit difference by rated torque the same way
+		// mappingsForMannerTcpBendingMoment scales its raw byte
+		// difference. A rated torque of 32768 (a nonsense unit but a
+		// convenient number) makes the expected result easy to check by
+		// hand: (600-100)/32768*1.1111111*32768 = 500*1.1111111.
 		bendingMoment := []config.CanBusMappingConfig{
 			{
 				Name:   "Torque_Rotor_Module_1_Raw_Data",
 				Origin: "Raw_Data_0",
 				MappingConfig: config.MappingConfig{
-					Path:       "propulsion.mainEngine.drive.bendingMomentRaw",
-					Expression: "value - Raw_Data_0_Torque_Rotor_Module_2_Raw_Data",
+					Path:       "propulsion.mainEngine.drive.bendingMoment",
+					Expression: "(value - Raw_Data_0_Torque_Rotor_Module_2_Raw_Data) / 32768 * 1.1111111 * 32768",
 				},
 			},
 		}
@@ -230,7 +235,7 @@ var _ = Describe("DoMap canbus", func() {
 		Expect(err).ToNot(HaveOccurred())
 		values := out.ToSingleValueMapped()
 		Expect(values).To(HaveLen(1))
-		Expect(values[0].Path).To(Equal("propulsion.mainEngine.drive.bendingMomentRaw"))
-		Expect(values[0].Value).To(Equal(500.0))
+		Expect(values[0].Path).To(Equal("propulsion.mainEngine.drive.bendingMoment"))
+		Expect(values[0].Value).To(Equal(500.0 * 1.1111111))
 	})
 })

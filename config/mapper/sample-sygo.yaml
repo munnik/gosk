@@ -1,5 +1,6 @@
 ---
-context: "vessels.urn:mrn:imo:mmsi:244620991" # if the data itself doesn't provide a context then this context is used
+# if the data itself doesn't provide a context then this context is used
+context: "vessels.urn:mrn:imo:mmsi:244620991"
 protocol: "csv"
 mappings:
   - beginsWith: "01,"
@@ -27,8 +28,9 @@ mappings:
     expression: "floatValues[0] * 1000.0"
     path: "design.displacement"
   - beginsWith: "B115,"
+    # yamllint disable rule:line-length
     expression: >
-      floatValues[0] < 5 ? ((floatValues[0] - 0) / 5 * (178 - 0) + 0) / 1000 : 
+      floatValues[0] < 5 ? ((floatValues[0] - 0) / 5 * (178 - 0) + 0) / 1000 :
       floatValues[0] < 10 ? ((floatValues[0] - 5) / 5 * (356 - 178) + 178) / 1000 :
       floatValues[0] < 15 ? ((floatValues[0] - 10) / 5 * (532 - 356) + 356) / 1000 :
       floatValues[0] < 20 ? ((floatValues[0] - 15) / 5 * (713 - 532) + 532) / 1000 :
@@ -56,10 +58,12 @@ mappings:
       floatValues[0] < 130 ? ((floatValues[0] - 125) / 5 * (4889 - 4725) + 4725) / 1000 :
       floatValues[0] < 135 ? ((floatValues[0] - 130) / 5 * (5052 - 4889) + 4889) / 1000 :
       ((floatValues[0] - 135) / 5 * (5216 - 5052) + 5052) / 1000
+    # yamllint enable rule:line-length
     path: "tanks.fuel.port.aft.currentVolume"
   - beginsWith: "B116,"
+    # yamllint disable rule:line-length
     expression: >
-      floatValues[0] < 5 ? ((floatValues[0] - 0) / 5 * (178 - 0) + 0) / 1000 : 
+      floatValues[0] < 5 ? ((floatValues[0] - 0) / 5 * (178 - 0) + 0) / 1000 :
       floatValues[0] < 10 ? ((floatValues[0] - 5) / 5 * (356 - 178) + 178) / 1000 :
       floatValues[0] < 15 ? ((floatValues[0] - 10) / 5 * (532 - 356) + 356) / 1000 :
       floatValues[0] < 20 ? ((floatValues[0] - 15) / 5 * (713 - 532) + 532) / 1000 :
@@ -87,4 +91,5 @@ mappings:
       floatValues[0] < 130 ? ((floatValues[0] - 125) / 5 * (4889 - 4725) + 4725) / 1000 :
       floatValues[0] < 135 ? ((floatValues[0] - 130) / 5 * (5052 - 4889) + 4889) / 1000 :
       ((floatValues[0] - 135) / 5 * (5216 - 5052) + 5052) / 1000
+    # yamllint enable rule:line-length
     path: "tanks.fuel.starboard.aft.currentVolume"

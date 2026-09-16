@@ -1,5 +1,6 @@
 ---
-context: "vessels.urn:mrn:imo:mmsi:244770688" # if the data itself doesn't provide a context then this context is used
+# if the data itself doesn't provide a context then this context is used
+context: "vessels.urn:mrn:imo:mmsi:244770688"
 protocol: "canbus"
 dbcFile: "/home/albert/Documents/FuelEssence/TelMA_ID0x100.dbc"
 mappings:
@@ -15,4 +16,3 @@ mappings:
     origin: "TelMA_Data"
     expression: "value"
     path: "propulsion.main.engineTorque"
-

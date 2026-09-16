@@ -11,10 +11,10 @@ DROP MATERIALIZED view "transfer_local_data" CASCADE;
 CREATE MATERIALIZED VIEW "transfer_local_data_other_context"
 WITH (timescaledb.continuous, timescaledb.materialized_only=FALSE) AS
 SELECT
-    public.time_bucket(INTERVAL '5 min', "time") AS "start", 
-    "origin", 
-    COUNT("mapped_data_other_context"."origin") AS "count" 
-FROM "mapped_data_other_context" 
+    public.time_bucket(INTERVAL '5 min', "time") AS "start",
+    "origin",
+    COUNT("mapped_data_other_context"."origin") AS "count"
+FROM "mapped_data_other_context"
 GROUP BY 1, 2
 WITH NO DATA;
 
@@ -28,10 +28,10 @@ SELECT public.add_continuous_aggregate_policy('transfer_local_data_other_context
 CREATE MATERIALIZED VIEW "transfer_local_data_mathing_context"
 WITH (timescaledb.continuous, timescaledb.materialized_only=FALSE) AS
 SELECT
-    public.time_bucket(INTERVAL '5 min', "time") AS "start", 
-    "origin", 
-    COUNT("mapped_data_matching_context"."origin") AS "count" 
-FROM "mapped_data_matching_context" 
+    public.time_bucket(INTERVAL '5 min', "time") AS "start",
+    "origin",
+    COUNT("mapped_data_matching_context"."origin") AS "count"
+FROM "mapped_data_matching_context"
 GROUP BY 1, 2
 WITH NO DATA;
 SELECT public.add_retention_policy('transfer_local_data_mathing_context', INTERVAL '3 month');
@@ -42,17 +42,17 @@ SELECT public.add_continuous_aggregate_policy('transfer_local_data_mathing_conte
   schedule_interval => INTERVAL '1 hour');
 
 CREATE VIEW "transfer_local_data" AS (
-  SELECT "start", "origin", sum("count") AS "count" 
-  FROM (SELECT * FROM "transfer_local_data_other_context" UNION ALL SELECT * FROM "transfer_local_data_mathing_context") AS DATA 
+  SELECT "start", "origin", sum("count") AS "count"
+  FROM (SELECT * FROM "transfer_local_data_other_context" UNION ALL SELECT * FROM "transfer_local_data_mathing_context") AS DATA
   GROUP BY "start", "origin");
 
 
 CREATE OR REPLACE VIEW "transfer_data" AS
-SELECT 
-    "transfer_remote_data"."origin", 
-    "transfer_remote_data"."start", 
-    COALESCE("transfer_local_data"."count", 0) AS "local_count", 
+SELECT
+    "transfer_remote_data"."origin",
+    "transfer_remote_data"."start",
+    COALESCE("transfer_local_data"."count", 0) AS "local_count",
     "transfer_remote_data"."count" AS "remote_count"
-FROM "transfer_local_data" 
+FROM "transfer_local_data"
 RIGHT JOIN "transfer_remote_data" ON "transfer_local_data"."start" = "transfer_remote_data"."start" AND "transfer_local_data"."origin" = "transfer_remote_data"."origin"
 WHERE "transfer_remote_data"."start" BETWEEN (SELECT MIN("start") FROM "transfer_local_data") AND (SELECT MAX("start") FROM "transfer_local_data");

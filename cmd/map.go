@@ -134,7 +134,8 @@ func doMap(cmd *cobra.Command, args []string) {
 		}
 		c2 := config.NewCanBusMapperConfig(cfgFile)
 		cmc := config.NewCanBusMappingConfig(cfgFile)
-		m, err := mapper.NewCanBusMapper(c2, cmc)
+		nc2 := config.NewMappingNotificationsConfig(cfgFile)
+		m, err := mapper.NewCanBusMapper(c2, cmc, nc2)
 		if err != nil {
 			logger.GetLogger().Fatal(
 				"Error while creating the mapper",

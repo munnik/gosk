@@ -163,12 +163,11 @@ func (db *PostgresqlDatabase) WriteRaw(raw *message.Raw) {
 
 		return nil
 	})
+	length := db.batch.Len()
 	db.batchMutex.Unlock()
 
 	db.batchSizeGauge.Inc()
-	if db.batch.Len() > db.batchSize {
-		go db.flushBatch()
-	}
+	db.flushIfNeeded(length)
 }
 
 func (db *PostgresqlDatabase) WriteMapped(mapped *message.Mapped) {
@@ -235,12 +234,11 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 
 		return nil
 	})
+	length := db.batch.Len()
 	db.batchMutex.Unlock()
 
 	db.batchSizeGauge.Inc()
-	if db.batch.Len() > db.batchSize {
-		go db.flushBatch()
-	}
+	db.flushIfNeeded(length)
 }
 
 func (db *PostgresqlDatabase) updateStaticData(context, path string, value any) {
@@ -301,12 +299,11 @@ func (db *PostgresqlDatabase) updateStaticData(context, path string, value any) 
 
 		return nil
 	})
+	length := db.batch.Len()
 	db.batchMutex.Unlock()
 
 	db.batchSizeGauge.Inc()
-	if db.batch.Len() > db.batchSize {
-		go db.flushBatch()
-	}
+	db.flushIfNeeded(length)
 }
 
 func (db *PostgresqlDatabase) ReadMostRecentMapped(fromTime time.Time) ([]*message.Mapped, error) {
@@ -631,6 +628,27 @@ func (db *PostgresqlDatabase) DowngradeDatabase() error {
 		return err
 	}
 	return nil
+}
+
+// maxBatchBacklogFactor bounds how far the batch can grow past batchSize
+// before flushIfNeeded blocks its caller on a synchronous flush instead of
+// just triggering one in the background and returning immediately: past
+// that point a database that's fallen behind (or stalled) needs to slow
+// its writer down, not let it keep queuing indefinitely. Write*/
+// updateStaticData's caller (writer.PostgresqlWriter.Write) processes
+// messages one at a time, so blocking here directly paces how fast it
+// drains its subscriber's buffer - which then falls back to dropping data
+// once full, a safe failure mode, instead of this process's memory
+// growing without limit until the kernel OOM-kills it.
+const maxBatchBacklogFactor = 4
+
+func (db *PostgresqlDatabase) flushIfNeeded(length int) {
+	switch {
+	case length > db.batchSize*maxBatchBacklogFactor:
+		db.flushBatch()
+	case length > db.batchSize:
+		go db.flushBatch()
+	}
 }
 
 func (db *PostgresqlDatabase) flushBatch() {

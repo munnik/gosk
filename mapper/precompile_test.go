@@ -80,7 +80,7 @@ func TestRawModbusMapperPrecompiles(t *testing.T) {
 func TestBinaryMapperPrecompiles(t *testing.T) {
 	mappings := []config.MappingConfig{mapping("value")}
 
-	if _, err := mapper.NewBinaryMapper(config.MapperConfig{Context: "testingContext"}, mappings); err != nil {
+	if _, err := mapper.NewBinaryMapper(config.MapperConfig{Context: "testingContext"}, mappings, nil); err != nil {
 		t.Fatalf("could not construct the mapper: %v", err)
 	}
 	if mappings[0].CompiledExpression == nil {

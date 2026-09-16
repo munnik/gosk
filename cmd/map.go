@@ -210,7 +210,8 @@ func doMap(cmd *cobra.Command, args []string) {
 			)
 		}
 		mc := config.NewMappingConfig(cfgFile)
-		m, err := mapper.NewBinaryMapper(c, mc)
+		nc := config.NewMappingNotificationsConfig(cfgFile)
+		m, err := mapper.NewBinaryMapper(c, mc, nc)
 		if err != nil {
 			logger.GetLogger().Fatal(
 				"Error while creating the mapper",

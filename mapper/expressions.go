@@ -15,7 +15,21 @@ import (
 
 type ExpressionEnvironment map[string]any
 
-var virtualMachine = vm.VM{}
+// runVM runs a compiled expression program in a fresh vm.VM. A vm.VM isn't
+// safe to reuse across concurrent calls - it holds a mutable execution
+// stack (see its Stack/Scopes/scopePool fields) that Run mutates in place
+// - so this must never become a single shared instance again: gosk's
+// mapper stages call runExpr (and therefore this) from multiple goroutines
+// at once wherever a mapper is sharded for concurrency (see shard.go), and
+// a shared VM there previously produced silently wrong computed values
+// under concurrent load rather than a crash, since two goroutines'
+// interleaved pushes/pops onto the same stack still produce *a* value, just
+// not the right one. A fresh vm.VM{} is a cheap zero-value struct - its
+// slices grow lazily as the program executes - so there's no meaningful
+// cost to not reusing one.
+func runVM(program *vm.Program, env any) (any, error) {
+	return (&vm.VM{}).Run(program, env)
+}
 
 func NewExpressionEnvironment() ExpressionEnvironment {
 	return ExpressionEnvironment{
@@ -247,7 +261,7 @@ func runExpr(env ExpressionEnvironment, mappingConfig *config.MappingConfig) (in
 		}
 	}
 	// the compiled program exists, let's run it
-	output, err := virtualMachine.Run(mappingConfig.CompiledExpression, env)
+	output, err := runVM(mappingConfig.CompiledExpression, env)
 	if err != nil {
 		logger.GetLogger().Warn(
 			"Could not run the mapping expression",
@@ -309,7 +323,7 @@ func runTimestampExpr(env ExpressionEnvironment, mappingConfig *config.MappingCo
 		}
 	}
 	// the compiled program exists, let's run it
-	output, err := virtualMachine.Run(mappingConfig.CompiledTimestampExpression, env)
+	output, err := runVM(mappingConfig.CompiledTimestampExpression, env)
 	if err != nil {
 		logger.GetLogger().Warn(
 			"Could not run the timestamp expression",

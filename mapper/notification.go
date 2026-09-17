@@ -19,6 +19,19 @@ type NotificationMapper struct {
 	states               map[*config.NotificationMappingConfig]*notificationState
 	lastSeen             map[string]time.Time
 	env                  ExpressionEnvironment
+
+	// shards, when there's more than one, partitions this mapper's own
+	// checks into independent NotificationMapper instances - each with a
+	// disjoint subset of notificationMappings/states and its own private
+	// env/lastSeen, so they share no mutable state with each other. See
+	// AggregateMapper's shards field and partitionByPaths for why that's
+	// safe, and processSharded's doc comment for the incident this fixes.
+	// Map (unlike DoMap itself, which always runs this mapper's complete,
+	// unsharded checks in one synchronous call) uses shards so unrelated
+	// checks - notably a slow/expensive one next to a 2kHz sensor's - run
+	// concurrently instead of making each other wait.
+	shards      []*NotificationMapper
+	shardOfPath map[string]int
 }
 
 type notificationState struct {
@@ -50,6 +63,46 @@ func (s *notificationState) reset() (changed bool) {
 }
 
 func NewNotificationMapper(c config.MapperConfig, nmcs []*config.NotificationMappingConfig) (*NotificationMapper, error) {
+	s := newNotificationMapper(c, nmcs)
+
+	shardOfPath, shardCount := partitionByPaths(nmcs, func(nmc *config.NotificationMappingConfig) []string { return nmc.SourcePaths })
+	byShard := make([][]*config.NotificationMappingConfig, shardCount)
+	var periodicOnly []*config.NotificationMappingConfig
+	for _, nmc := range nmcs {
+		if len(nmc.SourcePaths) == 0 {
+			// a check with no source paths can never be triggered by
+			// DoMap (notificationMappings, what routes an incoming path
+			// to the checks that care about it, is keyed by SourcePaths)
+			// - it only ever gets evaluated by the periodic sweep (see
+			// refreshMap and GetTickerInterval's doc comment). It still
+			// needs a shard to keep being swept once sharding is in play
+			// at all: the top-level, undelegated mapper's own ticker
+			// only runs in the shardCount<=1 fallback in Map, so without
+			// a shard of its own here such a check would otherwise go
+			// completely unswept the moment any OTHER check causes
+			// sharding to kick in.
+			periodicOnly = append(periodicOnly, nmc)
+			continue
+		}
+		shard := shardOfPath[nmc.SourcePaths[0]] // every one of nmc's own paths resolves to the same shard by construction
+		byShard[shard] = append(byShard[shard], nmc)
+	}
+	if len(periodicOnly) > 0 {
+		byShard = append(byShard, periodicOnly)
+	}
+
+	if len(byShard) > 1 {
+		s.shards = make([]*NotificationMapper, len(byShard))
+		for i, ns := range byShard {
+			s.shards[i] = newNotificationMapper(c, ns)
+		}
+		s.shardOfPath = shardOfPath
+	}
+
+	return s, nil
+}
+
+func newNotificationMapper(c config.MapperConfig, nmcs []*config.NotificationMappingConfig) *NotificationMapper {
 	env := NewExpressionEnvironment()
 
 	mappings := make(map[string][]*config.NotificationMappingConfig)
@@ -61,7 +114,7 @@ func NewNotificationMapper(c config.MapperConfig, nmcs []*config.NotificationMap
 		}
 	}
 
-	return &NotificationMapper{config: c, env: env, notificationMappings: mappings, states: states, lastSeen: make(map[string]time.Time)}, nil
+	return &NotificationMapper{config: c, env: env, notificationMappings: mappings, states: states, lastSeen: make(map[string]time.Time)}
 }
 
 // GetTickerInterval returns the interval on which every check should
@@ -78,7 +131,15 @@ func (s *NotificationMapper) GetTickerInterval() time.Duration {
 // completely silent (nothing left to trigger DoMap for it) still gets
 // noticed once its Timeout elapses.
 func (s *NotificationMapper) Map(subscriber *nanomsg.Subscriber[message.Mapped], publisher *nanomsg.Publisher[message.Mapped]) {
-	process(subscriber, publisher, s, true)
+	if len(s.shards) < 2 {
+		process(subscriber, publisher, s, true)
+		return
+	}
+	shards := make([]shardedMapper, len(s.shards))
+	for i, shard := range s.shards {
+		shards[i] = shard
+	}
+	processSharded(subscriber, publisher, shards, s.shardOfPath, true)
 }
 
 // DoMap passes every incoming value through unchanged, in addition to
@@ -263,7 +324,7 @@ func (s *NotificationMapper) applies(nmc *config.NotificationMappingConfig) (boo
 		}
 	}
 
-	output, err := virtualMachine.Run(nmc.CompiledWhen, s.env)
+	output, err := runVM(nmc.CompiledWhen, s.env)
 	if err != nil {
 		return true, err
 	}

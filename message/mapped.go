@@ -7,6 +7,7 @@ import (
 	"time"
 )
 
+//easyjson:json
 type Mapped struct {
 	Context string   `json:"context"` // indicates what the data is about
 	Origin  string   `json:"origin"`  // indicates the creator of the data

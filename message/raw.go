@@ -61,6 +61,8 @@ func (r *Raw) WithValue(v []byte) *Raw {
 // approach always produced "" - so MarshalJSON normalizes a nil r.Value
 // to an empty (non-nil) slice before assigning it here, to keep matching
 // that regardless of which one this particular Raw happens to hold.
+//
+//easyjson:json
 type rawWire struct {
 	Connector string `json:"connector"`
 	Timestamp string `json:"timestamp"`
@@ -74,13 +76,16 @@ func (r Raw) MarshalJSON() ([]byte, error) {
 	if value == nil {
 		value = []byte{}
 	}
-	return json.Marshal(rawWire{
+	// rawWire.MarshalJSON is easyjson-generated - calling it directly,
+	// rather than json.Marshal(rawWire{...}), skips encoding/json's own
+	// per-call interface-detection/reflection setup on top of it.
+	return rawWire{
 		Connector: r.Connector,
 		Timestamp: r.Timestamp.UTC().Format(time.RFC3339Nano),
 		Type:      r.Type,
 		Uuid:      r.Uuid.String(),
 		Value:     value,
-	})
+	}.MarshalJSON()
 }
 
 func (r *Raw) UnmarshalJSON(data []byte) error {

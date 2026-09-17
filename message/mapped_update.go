@@ -5,6 +5,7 @@ import (
 	"time"
 )
 
+//easyjson:json
 type Update struct {
 	Source    Source    `json:"source"`
 	Timestamp time.Time `json:"timestamp"`

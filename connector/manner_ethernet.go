@@ -12,8 +12,16 @@ import (
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
+	"github.com/munnik/gosk/sdnotify"
 	"go.uber.org/zap"
 )
+
+// warmupTimeoutExtension is how far ExtendTimeout pushes systemd's start
+// timeout out on each call while readToChannel is still receiving bytes
+// but Publish hasn't decoded (and published) a full 6-value frame yet -
+// see readToChannel. Comfortably longer than sdnotify.ExtendTimeoutMinInterval
+// so the extension never lapses between calls.
+const warmupTimeoutExtension = 15 * time.Second
 
 // MannerEthernetConnector reads from a socket and extracts the induvidual dataframes and sends it on the mangos socket
 type MannerEthernetConnector struct {
@@ -87,6 +95,17 @@ func (r MannerEthernetConnector) readToChannel(streamBuffer chan byte) {
 			}
 			if err == io.ErrUnexpectedEOF {
 				os.Exit(0)
+			}
+			if n > 0 {
+				// Publish only calls sdnotify.Ready() once a full 6-value
+				// frame has been found and decoded (see the marker scan in
+				// Publish) - on a cold start that can take a while to reach
+				// if there's a backlog of data to scan through first, well
+				// past systemd's Type=notify start timeout. Extend it for
+				// as long as bytes are genuinely still arriving, so a
+				// process making real progress doesn't get killed and
+				// forced to reconnect and start scanning from zero again.
+				sdnotify.ExtendTimeout(warmupTimeoutExtension)
 			}
 			for i := 0; i < n; i++ {
 				streamBuffer <- buffer[i]

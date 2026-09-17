@@ -23,7 +23,7 @@
 
           src = self;
 
-          vendorHash = "sha256-pKdC1l7X2TSM4/A2SVt6m8i3ixAck3otiuVIDgFNxPc=";
+          vendorHash = "sha256-m5O/iiiJ1Z4QZsjn1HcI4K6vC45fllG+5EHBjJX81BU=";
 
           doCheck = false; # tests require a database available
 

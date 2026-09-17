@@ -36,7 +36,7 @@ func NewExpressionEnvironment() ExpressionEnvironment {
 		"bitwiseNot":         BitwiseNot,
 		"bitwiseContains":    BitwiseContains,
 		"isBitSet":           IsBitSet,
-		"notify":             Notify,
+		"between":            Between,
 		"float64ToRegisters": Float64ToRegisters,
 	}
 }
@@ -156,7 +156,16 @@ func PowerW(rotations float64, torque float64) float64 {
 
 func CopySign(f float64, sign float64) float64 {
 	return math.Copysign(f, sign)
+}
 
+// Returns true if value is between min and max, both bounds are inclusive.
+// value, min and max can be any numeric type, they do not need to be float64.
+func Between(value, min, max any) (bool, error) {
+	floats, err := ListToFloats([]any{value, min, max})
+	if err != nil {
+		return false, err
+	}
+	return floats[0] >= floats[1] && floats[0] <= floats[2], nil
 }
 
 func ToFloat(mostSignificant, leastSignificant uint16) float32 {
@@ -220,10 +229,6 @@ func IsBitSet(input uint16, position int) bool {
 	return BitwiseContains(input, 1<<position)
 }
 
-func Notify(s bool, m string) []message.Notification {
-	return []message.Notification{{State: &s, Message: &m}}
-}
-
 func runExpr(env ExpressionEnvironment, mappingConfig *config.MappingConfig) (interface{}, error) {
 	for key, value := range mappingConfig.ExpressionEnvironment {
 		env[key] = value
@@ -260,8 +265,32 @@ func runExpr(env ExpressionEnvironment, mappingConfig *config.MappingConfig) (in
 		}
 	}
 
+	// A NaN or Inf result (e.g. a division by a zero delta on a mapper's
+	// first-ever evaluation, before it has a previous sample to diff
+	// against) can never be JSON-marshalled - encoding/json rejects both.
+	// Left as a normal value, that doesn't just fail to report this one
+	// path: nanomsg.Publisher.Send marshals the whole message.Mapped at
+	// once, so one bad value silently drops every other value alongside
+	// it too, and - since a Publisher's sdnotify.Ready only fires after a
+	// successful send - a mapper whose first output happens to include
+	// one can never start at all under Type=notify, no matter how long
+	// it's given. Reject it here instead, the same way a failed compile
+	// or run is already rejected, so the caller skips just this one path
+	// and keeps whatever else it computed.
+	if f, ok := output.(float64); ok && (math.IsNaN(f) || math.IsInf(f, 0)) {
+		err := fmt.Errorf("expression result is %v, not a finite number", f)
+		logger.GetLogger().Warn(
+			"Discarding a non-finite mapping expression result",
+			zap.String("Expression", mappingConfig.Expression),
+			zap.String("Environment", fmt.Sprintf("%+v", env)),
+			zap.String("Error", err.Error()),
+		)
+		return nil, err
+	}
+
 	return output, nil
 }
+
 func runTimestampExpr(env ExpressionEnvironment, mappingConfig *config.MappingConfig) (interface{}, error) {
 	for key, value := range mappingConfig.ExpressionEnvironment {
 		env[key] = value

@@ -28,3 +28,7 @@ devenv.local.nix
 .pre-commit-config.yaml
 
 .config/
+
+# Claude Code
+.claude/
+.mcp.json

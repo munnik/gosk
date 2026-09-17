@@ -1,6 +1,8 @@
 package mapper
 
 import (
+	"time"
+
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
@@ -16,12 +18,32 @@ type Mapper[TS nanomsg.Message, TP nanomsg.Message] interface {
 
 type RealMapper[T nanomsg.Message] interface {
 	DoMap(*T) (*message.Mapped, error)
+	GetTickerInterval() time.Duration
 }
 
 type RealRawMapper[T nanomsg.Message] interface {
 	DoMap(*T) (*message.Raw, error)
 }
 
+// periodicMapper is implemented by mappers that can additionally be
+// re-evaluated on a fixed interval instead of only reacting to incoming
+// data, see process. refreshMap is called with the current time and returns
+// the resulting output, if any.
+type periodicMapper interface {
+	refreshMap(now time.Time) *message.Mapped
+}
+
+// process runs mapper reactively: every value received from subscriber is
+// passed to mapper.DoMap and the result, if non-empty, is published.
+//
+// When interval is positive and mapper also implements periodicMapper,
+// mapper.refreshMap is additionally called on that interval, and its result
+// published the same way. This lets a mapper notice something an incoming
+// value alone would not, e.g. that expected data has stopped arriving
+// entirely. interval is ignored, without effect, for a mapper that does not
+// implement periodicMapper, and a zero interval (the default) never starts
+// the ticker at all, so mappers that do not opt in behave exactly as
+// before.
 func process[T nanomsg.Message](subscriber *nanomsg.Subscriber[T], publisher *nanomsg.Publisher[message.Mapped], mapper RealMapper[T], ignoreEmptyUpdates bool) {
 	receiveBuffer := make(chan *T, bufferSize)
 	defer close(receiveBuffer)
@@ -31,29 +53,48 @@ func process[T nanomsg.Message](subscriber *nanomsg.Subscriber[T], publisher *na
 	go subscriber.Receive(receiveBuffer)
 	go publisher.Send(sendBuffer)
 
-	var err error
+	// tick is left nil, and is therefore never selected, unless the mapper
+	// implements periodicMapper and was configured with a positive interval
+	var tick <-chan time.Time
+	sweeper, canSweep := mapper.(periodicMapper)
+	tickerInterval := mapper.GetTickerInterval()
+	if canSweep && tickerInterval > 0 {
+		ticker := time.NewTicker(tickerInterval)
+		defer ticker.Stop()
+		tick = ticker.C
+	}
 
-	for in := range receiveBuffer {
-		var out *message.Mapped
-		if out, err = mapper.DoMap(in); err != nil {
-			logger.GetLogger().Warn(
-				"Could not map the received data",
-				zap.Any("Input", in),
-				zap.String("Error", err.Error()),
-			)
-			continue
-		}
-		if len(out.Updates) == 0 {
-			if !ignoreEmptyUpdates {
-				logger.GetLogger().Warn(
-					"No updates after mapping the data",
-					zap.Any("Input", in),
-					zap.Any("Output", out),
-				)
+	for {
+		select {
+		case in, ok := <-receiveBuffer:
+			if !ok {
+				return
 			}
-			continue
+			out, err := mapper.DoMap(in)
+			if err != nil {
+				logger.GetLogger().Warn(
+					"Could not map the received data",
+					zap.Any("Input", in),
+					zap.String("Error", err.Error()),
+				)
+				continue
+			}
+			if len(out.Updates) == 0 {
+				if !ignoreEmptyUpdates {
+					logger.GetLogger().Warn(
+						"No updates after mapping the data",
+						zap.Any("Input", in),
+						zap.Any("Output", out),
+					)
+				}
+				continue
+			}
+			sendBuffer <- out
+		case now := <-tick:
+			if out := sweeper.refreshMap(now); len(out.Updates) > 0 {
+				sendBuffer <- out
+			}
 		}
-		sendBuffer <- out
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"slices"
+	"time"
 
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
@@ -44,6 +45,13 @@ func NewCanBusMapper(c config.CanBusMapperConfig, cmc []config.CanBusMappingConf
 		mappings[m.Origin][m.Name] = m
 	}
 	return &CanBusMapper{config: c, protocol: config.CanBusType, dbc: dbc, canbusMappings: mappings}, nil
+}
+
+// GetTickerInterval returns the interval on which the mapper should
+// additionally be re-evaluated regardless of incoming data, see
+// periodicMapper in main.go. Zero disables this.
+func (m *CanBusMapper) GetTickerInterval() time.Duration {
+	return m.config.Interval
 }
 
 func (m *CanBusMapper) Map(subscriber *nanomsg.Subscriber[message.Raw], publisher *nanomsg.Publisher[message.Mapped]) {

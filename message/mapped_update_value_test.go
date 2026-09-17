@@ -1,14 +1,16 @@
 package message_test
 
 import (
+	"encoding/json"
+
 	. "github.com/munnik/gosk/message"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("Value", func() {
-	f := false
-	t := true
+	f := "normal"
+	t := "alarm"
 	DescribeTable(
 		"Equals",
 		func(left *Value, right *Value, expected bool) {
@@ -45,4 +47,23 @@ var _ = Describe("Value", func() {
 			false,
 		),
 	)
+})
+
+var _ = Describe("Decode", func() {
+	It("returns nil for a nil input instead of matching the first all-optional struct it tries", func() {
+		// mapstructure.DecodeMetadata trivially "succeeds" decoding a nil
+		// input into any all-optional struct (e.g. Position), leaving it at
+		// its zero value with no Unused fields to report, so a naive
+		// implementation would mistake a nil for that struct's zero value.
+		decoded, err := Decode(nil)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(decoded).To(BeNil())
+	})
+
+	It("keeps a JSON null value nil after unmarshalling, e.g. a cleared notification", func() {
+		v := &Value{}
+		err := json.Unmarshal([]byte(`{"path":"notifications.test","value":null}`), v)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(v.Value).To(BeNil())
+	})
 })

@@ -9,4 +9,3 @@ CREATE TRIGGER "update_mmsi_trigger"
 AFTER
 INSERT ON "mapped_data" FOR EACH ROW
     WHEN (NEW."path" = 'mmsi') EXECUTE PROCEDURE "update_mmsi"();
-

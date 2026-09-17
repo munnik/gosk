@@ -2,6 +2,7 @@ package mapper
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/message"
@@ -22,6 +23,13 @@ func NewBinaryMapper(c config.MapperConfig, mc []config.MappingConfig) (*BinaryM
 		mappingsConfig: mc,
 		env:            NewExpressionEnvironment(),
 	}, nil
+}
+
+// GetTickerInterval returns the interval on which the mapper should
+// additionally be re-evaluated regardless of incoming data, see
+// periodicMapper in main.go. Zero disables this.
+func (m *BinaryMapper) GetTickerInterval() time.Duration {
+	return m.config.Interval
 }
 
 func (m *BinaryMapper) Map(subscriber *nanomsg.Subscriber[message.Raw], publisher *nanomsg.Publisher[message.Mapped]) {

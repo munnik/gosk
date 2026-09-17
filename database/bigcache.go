@@ -21,8 +21,20 @@ type BigCache struct {
 func NewBigCache(c *config.BigCacheConfig) *BigCache {
 	cacheConfig := bigcache.DefaultConfig(time.Duration(c.LifeWindow) * time.Second)
 	cacheConfig.HardMaxCacheSize = c.HardMaxCacheSize
-	rawCache, _ := bigcache.New(context.Background(), cacheConfig)
-	mappedCache, _ := bigcache.New(context.Background(), cacheConfig)
+	rawCache, err := bigcache.New(context.Background(), cacheConfig)
+	if err != nil {
+		logger.GetLogger().Fatal(
+			"Could not create the raw cache",
+			zap.String("Error", err.Error()),
+		)
+	}
+	mappedCache, err := bigcache.New(context.Background(), cacheConfig)
+	if err != nil {
+		logger.GetLogger().Fatal(
+			"Could not create the mapped cache",
+			zap.String("Error", err.Error()),
+		)
+	}
 	return &BigCache{rawCache: rawCache, mappedCache: mappedCache}
 }
 

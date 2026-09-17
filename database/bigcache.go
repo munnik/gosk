@@ -2,7 +2,6 @@ package database
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -28,7 +27,7 @@ func NewBigCache(c *config.BigCacheConfig) *BigCache {
 }
 
 func (c *BigCache) WriteRaw(raw *message.Raw, returnChanges bool) []*message.Raw {
-	rawBytes, err := json.Marshal(raw)
+	rawBytes, err := raw.MarshalMsg(nil)
 	if err != nil {
 		logger.GetLogger().Warn(
 			"Could not marshal the value",
@@ -51,7 +50,7 @@ func (c *BigCache) WriteMapped(mappedList ...*message.Mapped) []*message.Mapped 
 		for _, m := range mapped.ToSingleValueMapped() {
 			if originalBytes, err := c.mappedCache.Get(m.Context + "." + m.Path); err == nil {
 				var original message.SingleValueMapped
-				if err := json.Unmarshal(originalBytes, &original); err == nil {
+				if _, err := original.UnmarshalMsg(originalBytes); err == nil {
 					if original.Equals(m) || m.Timestamp.Before(original.Timestamp) {
 						continue
 					}
@@ -59,7 +58,7 @@ func (c *BigCache) WriteMapped(mappedList ...*message.Mapped) []*message.Mapped 
 				m = original.Merge(m)
 			}
 			changes = append(changes, m)
-			bytes, err := json.Marshal(m)
+			bytes, err := m.MarshalMsg(nil)
 			if err != nil {
 				logger.GetLogger().Warn(
 					"Could not marshal the value",
@@ -91,7 +90,7 @@ func (c *BigCache) ReadRaw(where string, arguments ...interface{}) ([]message.Ra
 		}
 
 		var raw message.Raw
-		if err := json.Unmarshal(bytes, &raw); err != nil {
+		if _, err := raw.UnmarshalMsg(bytes); err != nil {
 			logger.GetLogger().Warn(
 				"Could not unmarshal the value",
 				zap.String("Error", err.Error()),
@@ -115,7 +114,7 @@ func (c *BigCache) ReadRaw(where string, arguments ...interface{}) ([]message.Ra
 				zap.String("Error", err.Error()),
 			)
 		}
-		if err := json.Unmarshal(entry.Value(), &raw); err != nil {
+		if _, err := raw.UnmarshalMsg(entry.Value()); err != nil {
 			logger.GetLogger().Warn(
 				"Could not unmarshal the value",
 				zap.String("Error", err.Error()),
@@ -141,7 +140,7 @@ func (c *BigCache) ReadMapped(where string, arguments ...interface{}) ([]*messag
 			)
 		}
 		var m message.SingleValueMapped
-		if err := json.Unmarshal(entry.Value(), &m); err != nil {
+		if _, err := m.UnmarshalMsg(entry.Value()); err != nil {
 			logger.GetLogger().Warn(
 				"Could not unmarshal the value",
 				zap.String("Error", err.Error()),

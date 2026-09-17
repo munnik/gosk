@@ -203,6 +203,213 @@ func (z *mappedMsgp) Msgsize() (s int) {
 }
 
 // DecodeMsg implements msgp.Decodable
+func (z *singleValueMappedMsgp) DecodeMsg(dc *msgp.Reader) (err error) {
+	var field []byte
+	_ = field
+	var zb0001 uint32
+	zb0001, err = dc.ReadMapHeader()
+	if err != nil {
+		err = msgp.WrapError(err)
+		return
+	}
+	for zb0001 > 0 {
+		zb0001--
+		field, err = dc.ReadMapKeyPtr()
+		if err != nil {
+			err = msgp.WrapError(err)
+			return
+		}
+		switch msgp.UnsafeString(field) {
+		case "context":
+			z.Context, err = dc.ReadString()
+			if err != nil {
+				err = msgp.WrapError(err, "Context")
+				return
+			}
+		case "origin":
+			z.Origin, err = dc.ReadString()
+			if err != nil {
+				err = msgp.WrapError(err, "Origin")
+				return
+			}
+		case "source":
+			err = z.Source.DecodeMsg(dc)
+			if err != nil {
+				err = msgp.WrapError(err, "Source")
+				return
+			}
+		case "timestamp":
+			z.Timestamp, err = dc.ReadTime()
+			if err != nil {
+				err = msgp.WrapError(err, "Timestamp")
+				return
+			}
+		case "value":
+			z.Value, err = dc.ReadBytes(z.Value)
+			if err != nil {
+				err = msgp.WrapError(err, "Value")
+				return
+			}
+		default:
+			err = dc.Skip()
+			if err != nil {
+				err = msgp.WrapError(err)
+				return
+			}
+		}
+	}
+	return
+}
+
+// EncodeMsg implements msgp.Encodable
+func (z *singleValueMappedMsgp) EncodeMsg(en *msgp.Writer) (err error) {
+	// map header, size 5
+	// write "context"
+	err = en.Append(0x85, 0xa7, 0x63, 0x6f, 0x6e, 0x74, 0x65, 0x78, 0x74)
+	if err != nil {
+		return
+	}
+	err = en.WriteString(z.Context)
+	if err != nil {
+		err = msgp.WrapError(err, "Context")
+		return
+	}
+	// write "origin"
+	err = en.Append(0xa6, 0x6f, 0x72, 0x69, 0x67, 0x69, 0x6e)
+	if err != nil {
+		return
+	}
+	err = en.WriteString(z.Origin)
+	if err != nil {
+		err = msgp.WrapError(err, "Origin")
+		return
+	}
+	// write "source"
+	err = en.Append(0xa6, 0x73, 0x6f, 0x75, 0x72, 0x63, 0x65)
+	if err != nil {
+		return
+	}
+	err = z.Source.EncodeMsg(en)
+	if err != nil {
+		err = msgp.WrapError(err, "Source")
+		return
+	}
+	// write "timestamp"
+	err = en.Append(0xa9, 0x74, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d, 0x70)
+	if err != nil {
+		return
+	}
+	err = en.WriteTime(z.Timestamp)
+	if err != nil {
+		err = msgp.WrapError(err, "Timestamp")
+		return
+	}
+	// write "value"
+	err = en.Append(0xa5, 0x76, 0x61, 0x6c, 0x75, 0x65)
+	if err != nil {
+		return
+	}
+	err = en.WriteBytes(z.Value)
+	if err != nil {
+		err = msgp.WrapError(err, "Value")
+		return
+	}
+	return
+}
+
+// MarshalMsg implements msgp.Marshaler
+func (z *singleValueMappedMsgp) MarshalMsg(b []byte) (o []byte, err error) {
+	o = msgp.Require(b, z.Msgsize())
+	// map header, size 5
+	// string "context"
+	o = append(o, 0x85, 0xa7, 0x63, 0x6f, 0x6e, 0x74, 0x65, 0x78, 0x74)
+	o = msgp.AppendString(o, z.Context)
+	// string "origin"
+	o = append(o, 0xa6, 0x6f, 0x72, 0x69, 0x67, 0x69, 0x6e)
+	o = msgp.AppendString(o, z.Origin)
+	// string "source"
+	o = append(o, 0xa6, 0x73, 0x6f, 0x75, 0x72, 0x63, 0x65)
+	o, err = z.Source.MarshalMsg(o)
+	if err != nil {
+		err = msgp.WrapError(err, "Source")
+		return
+	}
+	// string "timestamp"
+	o = append(o, 0xa9, 0x74, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d, 0x70)
+	o = msgp.AppendTime(o, z.Timestamp)
+	// string "value"
+	o = append(o, 0xa5, 0x76, 0x61, 0x6c, 0x75, 0x65)
+	o = msgp.AppendBytes(o, z.Value)
+	return
+}
+
+// UnmarshalMsg implements msgp.Unmarshaler
+func (z *singleValueMappedMsgp) UnmarshalMsg(bts []byte) (o []byte, err error) {
+	var field []byte
+	_ = field
+	var zb0001 uint32
+	zb0001, bts, err = msgp.ReadMapHeaderBytes(bts)
+	if err != nil {
+		err = msgp.WrapError(err)
+		return
+	}
+	for zb0001 > 0 {
+		zb0001--
+		field, bts, err = msgp.ReadMapKeyZC(bts)
+		if err != nil {
+			err = msgp.WrapError(err)
+			return
+		}
+		switch msgp.UnsafeString(field) {
+		case "context":
+			z.Context, bts, err = msgp.ReadStringBytes(bts)
+			if err != nil {
+				err = msgp.WrapError(err, "Context")
+				return
+			}
+		case "origin":
+			z.Origin, bts, err = msgp.ReadStringBytes(bts)
+			if err != nil {
+				err = msgp.WrapError(err, "Origin")
+				return
+			}
+		case "source":
+			bts, err = z.Source.UnmarshalMsg(bts)
+			if err != nil {
+				err = msgp.WrapError(err, "Source")
+				return
+			}
+		case "timestamp":
+			z.Timestamp, bts, err = msgp.ReadTimeBytes(bts)
+			if err != nil {
+				err = msgp.WrapError(err, "Timestamp")
+				return
+			}
+		case "value":
+			z.Value, bts, err = msgp.ReadBytesBytes(bts, z.Value)
+			if err != nil {
+				err = msgp.WrapError(err, "Value")
+				return
+			}
+		default:
+			bts, err = msgp.Skip(bts)
+			if err != nil {
+				err = msgp.WrapError(err)
+				return
+			}
+		}
+	}
+	o = bts
+	return
+}
+
+// Msgsize returns an upper bound estimate of the number of bytes occupied by the serialized message
+func (z *singleValueMappedMsgp) Msgsize() (s int) {
+	s = 1 + 8 + msgp.StringPrefixSize + len(z.Context) + 7 + msgp.StringPrefixSize + len(z.Origin) + 7 + z.Source.Msgsize() + 10 + msgp.TimeSize + 6 + msgp.BytesPrefixSize + len(z.Value)
+	return
+}
+
+// DecodeMsg implements msgp.Decodable
 func (z *sourceMsgp) DecodeMsg(dc *msgp.Reader) (err error) {
 	var field []byte
 	_ = field

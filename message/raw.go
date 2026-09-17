@@ -40,14 +40,47 @@ func (r *Raw) WithValue(v []byte) *Raw {
 	return r
 }
 
+// rawWire is Raw's JSON shape, field-for-field and in the same field order
+// the old map[string]string-based MarshalJSON produced (Go sorts map keys
+// alphabetically when marshaling, and connector/timestamp/type/uuid/value
+// already sort that way) - so this produces byte-identical output, just
+// via the struct encoder instead of allocating and sorting a map on every
+// single call. Value stays []byte rather than a pre-encoded string:
+// encoding/json already base64-encodes a []byte field itself (with the
+// same standard, padded alphabet base64.StdEncoding.EncodeToString would
+// produce), writing straight into the output buffer instead of needing an
+// intermediate string allocation. On node-hbr-rpa10, MarshalJSON on Raw
+// values - one of the hottest paths in the whole pipeline, called on
+// every 2kHz sample from the shaft power meter - accounted for close to
+// half of a connector process's total CPU time under load (see gosk's
+// performance investigation), and virtually all of that was this
+// map/sort overhead, not the actual work of producing the bytes.
+//
+// A nil []byte and a non-nil, empty []byte marshal differently (null vs
+// "") - the old base64.StdEncoding.EncodeToString(nil)-into-a-string-map
+// approach always produced "" - so MarshalJSON normalizes a nil r.Value
+// to an empty (non-nil) slice before assigning it here, to keep matching
+// that regardless of which one this particular Raw happens to hold.
+type rawWire struct {
+	Connector string `json:"connector"`
+	Timestamp string `json:"timestamp"`
+	Type      string `json:"type"`
+	Uuid      string `json:"uuid"`
+	Value     []byte `json:"value"`
+}
+
 func (r Raw) MarshalJSON() ([]byte, error) {
-	var result map[string]string = make(map[string]string)
-	result["connector"] = r.Connector
-	result["timestamp"] = r.Timestamp.UTC().Format(time.RFC3339Nano)
-	result["type"] = r.Type
-	result["uuid"] = r.Uuid.String()
-	result["value"] = base64.StdEncoding.EncodeToString(r.Value)
-	return json.Marshal(&result)
+	value := r.Value
+	if value == nil {
+		value = []byte{}
+	}
+	return json.Marshal(rawWire{
+		Connector: r.Connector,
+		Timestamp: r.Timestamp.UTC().Format(time.RFC3339Nano),
+		Type:      r.Type,
+		Uuid:      r.Uuid.String(),
+		Value:     value,
+	})
 }
 
 func (r *Raw) UnmarshalJSON(data []byte) error {

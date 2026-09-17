@@ -7,3 +7,4 @@ mappings:
     # at 2000 samples per second this is a bit over 8 seconds
     samplesChannelBitSize: 14
     frequencyStepSize: 0.5
+    gapDetectionThreshold: 3

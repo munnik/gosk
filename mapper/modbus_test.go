@@ -17,7 +17,7 @@ var _ = Describe("DoMap Modbus", func() {
 		config.NewModbusMappingsConfig("modbus_test.yaml"),
 	)
 	now := time.Now()
-	f := false
+	f := "normal"
 	m1 := "The fuel level is too high"
 	m2 := "The fuel level is too low"
 	m3 := "The bilge level is too high"

@@ -1,2 +1,6 @@
 ---
 url: "postgres://gosk:gosk@localhost:5432/gosk_test"
+# Flush every write immediately instead of waiting for the default 100-item
+# batch or 10s ticker, so tests that write then immediately read back don't
+# have to race the background flush.
+batch_flush_length: 0

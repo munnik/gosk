@@ -23,7 +23,7 @@ type Handler struct {
 }
 
 func NewHanlder(w *SignalKWriter) *Handler {
-	result := &Handler{w: w, sessions: gws.NewConcurrentMap[string, *gws.Conn](16)}
+	result := &Handler{w: w, sessions: gws.NewConcurrentMap[string, *gws.Conn]()}
 	go result.ping()
 
 	return result
@@ -101,7 +101,7 @@ func (h *Handler) Broadcast(message *message.Mapped) {
 	b := gws.NewBroadcaster(gws.OpcodeText, payload)
 	defer b.Close()
 	h.sessions.Range(func(key string, conn *gws.Conn) bool {
-		b.Broadcast(conn)
+		b.Broadcast(conn, nil)
 		return true
 	})
 }

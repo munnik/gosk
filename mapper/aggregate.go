@@ -11,9 +11,19 @@ import (
 )
 
 type AggregateMapper struct {
-	config            config.MapperConfig
-	protocol          string
-	retentionTime     time.Duration
+	config   config.MapperConfig
+	protocol string
+	// pathRetentionTime is keyed by source path (dot-separated, as it
+	// appears in aggregateMappings - not the underscored form used in
+	// env/history), the max RetentionTime among mappings that read that
+	// path from history. A path no mapping ever reads history for isn't
+	// in this map at all, and Go's zero value for a missing key (0) evicts
+	// its buffer down to essentially the latest entry - unlike the single
+	// global retention this replaces, a long window one slow-changing
+	// path's moving average needs (fuel rate, say) no longer forces every
+	// other path's buffer, including a 2kHz sensor's, to hold the same
+	// window's worth of history for no reason.
+	pathRetentionTime map[string]time.Duration
 	aggregateMappings map[string][]*config.ExpressionMappingConfig
 	env               ExpressionEnvironment
 }
@@ -21,17 +31,24 @@ type AggregateMapper struct {
 func NewAggregateMapper(c config.MapperConfig, emc []*config.ExpressionMappingConfig) (*AggregateMapper, error) {
 	env := NewExpressionEnvironment()
 	env["history"] = make(map[string][]message.SingleValueMapped, 0)
-	retentionTime := 0 * time.Second
+	pathRetentionTime := make(map[string]time.Duration)
 	mappings := make(map[string][]*config.ExpressionMappingConfig)
 	for _, m := range emc {
 		for _, s := range m.SourcePaths {
 			mappings[s] = append(mappings[s], m)
-		}
-		if m.RetentionTime > retentionTime {
-			retentionTime = m.RetentionTime
+			if m.RetentionTime > pathRetentionTime[s] {
+				pathRetentionTime[s] = m.RetentionTime
+			}
 		}
 	}
-	return &AggregateMapper{config: c, protocol: config.SignalKType, retentionTime: retentionTime, aggregateMappings: mappings, env: env}, nil
+	return &AggregateMapper{config: c, protocol: config.SignalKType, pathRetentionTime: pathRetentionTime, aggregateMappings: mappings, env: env}, nil
+}
+
+// GetTickerInterval returns the interval on which the mapper should
+// additionally be re-evaluated regardless of incoming data, see
+// periodicMapper in main.go. Zero disables this.
+func (m *AggregateMapper) GetTickerInterval() time.Duration {
+	return m.config.Interval
 }
 
 func (m *AggregateMapper) Map(subscriber *nanomsg.Subscriber[message.Mapped], publisher *nanomsg.Publisher[message.Mapped]) {
@@ -43,39 +60,54 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 	u := message.NewUpdate().WithSource(*s).WithTimestamp(time.Time{}) // initialize with empty timestamp instead of hidden now
 
 	overwrites := make(map[string]struct{}, 0)
+	historyMap := m.env["history"].(map[string][]message.SingleValueMapped)
 
+	// First pass: fold every relevant value in this single input into env
+	// and history, and note which mappings need re-evaluating - without
+	// evaluating any of them yet. A mapping with two source paths that
+	// both land in the same input (e.g. torque and revolutions from one
+	// Manner frame) would otherwise get evaluated once per source path
+	// instead of once per input: at a couple of kHz that's real wasted
+	// work, and the wasted evaluation runs against a partially-updated env
+	// (only the first of the two source paths applied yet), computing a
+	// value from one fresh reading and one stale one - u.AddValue's
+	// dedup-by-path means it never reaches a caller (the correct
+	// evaluation a moment later replaces it before this Update is ever
+	// returned), but it's still evaluated for nothing.
+	triggered := make(map[*config.ExpressionMappingConfig]struct{})
 	for _, svm := range input.ToSingleValueMapped() {
-		if mappings, ok := m.aggregateMappings[svm.Path]; ok {
-			if svm.Timestamp.After(u.Timestamp) { // take most recent timestamp from relevant data
-				u.WithTimestamp(svm.Timestamp)
-			}
-			u.Source.Uuid = svm.Source.Uuid // take the uuid from the message that updated this value
-			path := strings.ReplaceAll(svm.Path, ".", "_")
+		mappings, ok := m.aggregateMappings[svm.Path]
+		if !ok {
+			continue
+		}
+		if svm.Timestamp.After(u.Timestamp) { // take most recent timestamp from relevant data
+			u.WithTimestamp(svm.Timestamp)
+		}
+		u.Source.Uuid = svm.Source.Uuid // take the uuid from the message that updated this value
+		path := strings.ReplaceAll(svm.Path, ".", "_")
 
-			if _, ok := m.env["history"]; !ok {
-				m.env["history"] = make(map[string][]message.SingleValueMapped, 0)
-			}
-			historyMap := m.env["history"].(map[string][]message.SingleValueMapped)
-			if _, ok := historyMap[path]; !ok {
-				historyMap[path] = make([]message.SingleValueMapped, 0)
-			}
+		// remove old data from buffer
+		retention := m.pathRetentionTime[svm.Path]
+		for len(historyMap[path]) > 0 && historyMap[path][0].Timestamp.Before(time.Now().Add(-retention)) {
+			historyMap[path] = historyMap[path][1:]
+		}
+		historyMap[path] = append(historyMap[path], svm)
 
-			// remove old data from buffer
-			for len(historyMap[path]) > 0 && historyMap[path][0].Timestamp.Before(time.Now().Add(-m.retentionTime)) {
-				historyMap[path] = historyMap[path][1:]
-			}
-			historyMap[path] = append(historyMap[path], svm)
+		m.env[path] = svm
+		for _, mapping := range mappings {
+			triggered[mapping] = struct{}{}
+		}
+	}
 
-			m.env[path] = svm
-			for _, mapping := range mappings {
-				output, err := runExpr(m.env, &mapping.MappingConfig)
-				if err == nil {
-					if mapping.Overwrite {
-						overwrites[mapping.Path] = struct{}{}
-					}
-					u.AddValue(message.NewValue().WithPath(mapping.Path).WithValue(output))
-				}
+	// Second pass: each triggered mapping now sees every source path this
+	// input updated, evaluated exactly once.
+	for mapping := range triggered {
+		output, err := runExpr(m.env, &mapping.MappingConfig)
+		if err == nil {
+			if mapping.Overwrite {
+				overwrites[mapping.Path] = struct{}{}
 			}
+			u.AddValue(message.NewValue().WithPath(mapping.Path).WithValue(output))
 		}
 	}
 

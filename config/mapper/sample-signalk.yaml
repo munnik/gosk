@@ -4,5 +4,5 @@ protocol: "signalk"
 mappings:
   - expression: "environment_outside_temperature - 200"
     path: "environment.inside.temperature"
-    sourcePaths: 
+    sourcePaths:
       - "environment.outside.temperature"

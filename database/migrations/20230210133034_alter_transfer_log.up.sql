@@ -1,9 +1,9 @@
-ALTER TABLE "transfer_log" 
+ALTER TABLE "transfer_log"
 RENAME TO "transfer_log_temp";
 
 CREATE TABLE "transfer_log" (
-    "time" TIMESTAMP WITH TIME ZONE NOT NULL, 
-    "origin" TEXT NOT NULL, 
+    "time" TIMESTAMP WITH TIME ZONE NOT NULL,
+    "origin" TEXT NOT NULL,
     "message" JSONB NOT NULL
 );
 

@@ -9,3 +9,4 @@ inputs:
     url: github:cachix/devenv-nixpkgs/rolling
   nixpkgs-unstable:
     url: github:nixos/nixpkgs/nixpkgs-unstable
+allow_unfree: true

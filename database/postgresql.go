@@ -3,9 +3,11 @@ package database
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,8 +28,11 @@ import (
 	"go.uber.org/zap"
 )
 
+// rawDataColumns is both raw_data's COPY column list (see WriteRaw) and
+// the column order rawRow's fields must be produced in.
+var rawDataColumns = []string{"time", "connector", "value", "uuid", "type"}
+
 const (
-	rawInsertQuery                 = `INSERT INTO "raw_data" ("time", "connector", "value", "uuid", "type") VALUES ($1, $2, $3, $4, $5)`
 	mappedInsertQuery              = `INSERT INTO "%s" ("time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT ("time", "origin", "context", "connector", "path") DO UPDATE SET value = EXCLUDED.value`
 	selectMappedQuery              = `SELECT "time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid" FROM "mapped_data"`
 	selectMostRecentMappedQuery    = `SELECT DISTINCT ON ("context", "path") "time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid" FROM "mapped_data" WHERE "time" > $1 ORDER BY "context", "path", "time" DESC`
@@ -50,12 +55,25 @@ type IncompletePeriod struct {
 	RemoteCount int
 }
 
+// rawRow holds one raw_data row waiting to be COPYed in, in rawDataColumns
+// order.
+type rawRow struct {
+	timestamp time.Time
+	connector string
+	value     []byte
+	uuid      uuid.UUID
+	type_     string
+}
+
 type PostgresqlDatabase struct {
 	url             string
 	connection      *pgxpool.Pool
 	connectionMutex sync.Mutex
 	batch           *pgx.Batch
 	batchSize       int
+	rawBatch        []rawRow
+	rawBatchMutex   sync.Mutex
+	rawFlushMutex   sync.Mutex
 	lastFlush       time.Time
 	flushMutex      sync.Mutex
 	batchMutex      sync.Mutex
@@ -87,7 +105,13 @@ func NewPostgresqlDatabase(c *config.PostgresqlConfig) *PostgresqlDatabase {
 		for {
 			<-ticker.C
 			if time.Now().After(result.lastFlush.Add(c.BatchFlushInterval)) {
+				// A given writer process only ever calls one of WriteRaw or
+				// WriteMapped/WriteSingleValueMapped (see cmd/write.go), so
+				// exactly one of these two ever has anything queued -
+				// calling both here is simpler than tracking which, and the
+				// empty one is a no-op (see copyBatch/copyRawBatch).
 				result.flushBatch()
+				result.flushRawBatch()
 			}
 		}
 	}()
@@ -144,29 +168,27 @@ func (db *PostgresqlDatabase) GetConnection() *pgxpool.Pool {
 	return conn
 }
 
+// WriteRaw queues raw for a batched COPY into raw_data (see flushRawBatch),
+// rather than an INSERT queued alongside WriteMapped/updateStaticData's
+// pgx.Batch: raw_data has no unique constraint or ON CONFLICT clause to
+// preserve (unlike mapped_data/static_data's upserts), which makes it a
+// clean fit for COPY, Postgres's actual bulk-load path - one execution
+// for the whole batch instead of one per row, pipelined or not.
 func (db *PostgresqlDatabase) WriteRaw(raw *message.Raw) {
 	db.writesCounter.Inc()
-	db.batchMutex.Lock()
-	db.batch.Queue(rawInsertQuery, raw.Timestamp, raw.Connector, raw.Value, raw.Uuid, raw.Type).Exec(func(ct pgconn.CommandTag) error {
-		if ct.RowsAffected() == 0 {
-			logger.GetLogger().Warn("0 rows affected",
-				zap.String("query", rawInsertQuery),
-				zap.Time("timestamp", raw.Timestamp),
-				zap.String("connector", raw.Connector),
-				zap.ByteString("value", raw.Value),
-				zap.String("uuid", raw.Uuid.String()),
-				zap.String("type", raw.Type),
-			)
-		}
-
-		return nil
+	db.rawBatchMutex.Lock()
+	db.rawBatch = append(db.rawBatch, rawRow{
+		timestamp: raw.Timestamp,
+		connector: raw.Connector,
+		value:     raw.Value,
+		uuid:      raw.Uuid,
+		type_:     raw.Type,
 	})
-	db.batchMutex.Unlock()
+	length := len(db.rawBatch)
+	db.rawBatchMutex.Unlock()
 
 	db.batchSizeGauge.Inc()
-	if db.batch.Len() > db.batchSize {
-		go db.flushBatch()
-	}
+	db.flushRawIfNeeded(length)
 }
 
 func (db *PostgresqlDatabase) WriteMapped(mapped *message.Mapped) {
@@ -198,7 +220,15 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 	// run this before quoting the string
 	db.updateStaticData(svm.Context, path, svm.Value)
 
-	if str, ok := svm.Value.(string); ok {
+	if svm.Value == nil {
+		// A bare nil is sent to postgres as SQL NULL, which violates the
+		// "value" column's NOT NULL constraint (e.g. a cleared
+		// notification, see mapper/notification.go). What's actually
+		// wanted is the *JSON* null literal, a valid jsonb value - encode
+		// it explicitly instead of letting pgx's default nil handling turn
+		// it into a SQL NULL.
+		svm.Value = json.RawMessage("null")
+	} else if str, ok := svm.Value.(string); ok {
 		svm.Value = strconv.Quote(str)
 	}
 	table := "mapped_data_matching_context"
@@ -225,12 +255,11 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 
 		return nil
 	})
+	length := db.batch.Len()
 	db.batchMutex.Unlock()
 
 	db.batchSizeGauge.Inc()
-	if db.batch.Len() > db.batchSize {
-		go db.flushBatch()
-	}
+	db.flushIfNeeded(length)
 }
 
 func (db *PostgresqlDatabase) updateStaticData(context, path string, value any) {
@@ -291,12 +320,11 @@ func (db *PostgresqlDatabase) updateStaticData(context, path string, value any) 
 
 		return nil
 	})
+	length := db.batch.Len()
 	db.batchMutex.Unlock()
 
 	db.batchSizeGauge.Inc()
-	if db.batch.Len() > db.batchSize {
-		go db.flushBatch()
-	}
+	db.flushIfNeeded(length)
 }
 
 func (db *PostgresqlDatabase) ReadMostRecentMapped(fromTime time.Time) ([]*message.Mapped, error) {
@@ -623,9 +651,47 @@ func (db *PostgresqlDatabase) DowngradeDatabase() error {
 	return nil
 }
 
+// maxBatchBacklogFactor bounds how far the batch can grow past batchSize
+// before flushIfNeeded blocks its caller on a synchronous flush instead of
+// just triggering one in the background and returning immediately: past
+// that point a database that's fallen behind (or stalled) needs to slow
+// its writer down, not let it keep queuing indefinitely. Write*/
+// updateStaticData's caller (writer.PostgresqlWriter.Write) processes
+// messages one at a time, so blocking here directly paces how fast it
+// drains its subscriber's buffer - which then falls back to dropping data
+// once full, a safe failure mode, instead of this process's memory
+// growing without limit until the kernel OOM-kills it.
+const maxBatchBacklogFactor = 4
+
+func (db *PostgresqlDatabase) flushIfNeeded(length int) {
+	switch {
+	case length > db.batchSize*maxBatchBacklogFactor:
+		db.flushBatch()
+	case length > db.batchSize:
+		go db.flushBatch()
+	}
+}
+
+// flushRawIfNeeded is flushIfNeeded's counterpart for the raw_data COPY
+// batch (see WriteRaw/flushRawBatch) - same threshold, same backpressure
+// reasoning.
+func (db *PostgresqlDatabase) flushRawIfNeeded(length int) {
+	switch {
+	case length > db.batchSize*maxBatchBacklogFactor:
+		db.flushRawBatch()
+	case length > db.batchSize:
+		go db.flushRawBatch()
+	}
+}
+
 func (db *PostgresqlDatabase) flushBatch() {
-	// db.flushMutex.Lock() // make sure only one flush runs at the same time, to prevent deadlocks
-	// defer db.flushMutex.Unlock()
+	// Serialize flushes (the ticker in NewPostgresqlDatabase and the
+	// batch.Len() > batchSize check in Write*/updateStaticData can both
+	// trigger one concurrently). Overlapping SendBatch calls sharing the
+	// same pool were the likely cause of "prepared statement does not
+	// exist" errors that then looped forever below (see invalidateConnection).
+	db.flushMutex.Lock()
+	defer db.flushMutex.Unlock()
 
 	batchToFlush := db.copyBatch()
 	// prevent flushing when queue is empty
@@ -649,15 +715,18 @@ func (db *PostgresqlDatabase) flushBatch() {
 			return
 		}
 		logger.GetLogger().Error(
-			"Unable to flush batch, reinserting queries to the queue",
+			"Unable to flush batch as a whole, retrying its queries individually",
 			zap.String("Error", err.Error()),
 		)
-		for _, query := range batchToFlush.QueuedQueries {
-			db.batchMutex.Lock()
-			db.batch.QueuedQueries = append(db.batch.QueuedQueries, query)
-			db.batchMutex.Unlock()
-			time.Sleep(10 * time.Second / time.Duration(batchToFlush.Len())) // spread out the queries over 10 seconds
-		}
+		// The failure could be caused by connection/session state (e.g. a
+		// prepared statement cached against a connection that's since been
+		// replaced or reset server-side). Retrying against that same
+		// connection would just fail identically forever, silently, since
+		// nothing downstream of Write*'s queue-then-return observes these
+		// retries. Drop it so the retries below (and the next flush) get a
+		// fresh one.
+		db.invalidateConnection()
+		db.retryIndividually(batchToFlush)
 		return
 	}
 	logger.GetLogger().Info(
@@ -667,6 +736,118 @@ func (db *PostgresqlDatabase) flushBatch() {
 	)
 	db.lastFlush = time.Now()
 	db.lastFlushGauge.SetToCurrentTime()
+}
+
+// flushRawBatch COPYs the queued raw_data rows in one execution, rather
+// than the one-query-per-row approach flushBatch takes for mapped_data/
+// static_data's upserts (see WriteRaw's doc comment for why COPY doesn't
+// fit those). Unlike retryIndividually, a failed COPY has no per-row
+// retry: it's an all-or-nothing statement, and raw_data has no constraint
+// a row could permanently violate the way an upsert or a NOT NULL column
+// elsewhere might, so requeuing the whole batch on failure (the same
+// connection-invalidate-and-retry reasoning as flushBatch's) is enough.
+func (db *PostgresqlDatabase) flushRawBatch() {
+	db.rawFlushMutex.Lock()
+	defer db.rawFlushMutex.Unlock()
+
+	rows := db.copyRawBatch()
+	if rows == nil {
+		return
+	}
+	uuid := uuid.New()
+	start := time.Now()
+	logger.GetLogger().Info(
+		"Going to flush",
+		zap.String("uuid", uuid.String()),
+	)
+	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
+	defer cancel()
+	_, err := db.GetConnection().CopyFrom(
+		ctx,
+		pgx.Identifier{"raw_data"},
+		rawDataColumns,
+		pgx.CopyFromSlice(len(rows), func(i int) ([]any, error) {
+			r := rows[i]
+			return []any{r.timestamp, r.connector, r.value, r.uuid, r.type_}, nil
+		}),
+	)
+	if err != nil {
+		if ctx.Err() != nil {
+			logger.GetLogger().Error("Timeout during database insertion", zap.Error(ctx.Err()), zap.Error(err))
+			db.timeoutsCounter.Inc()
+			return
+		}
+		logger.GetLogger().Error(
+			"Unable to COPY the raw_data batch, requeuing it",
+			zap.String("Error", err.Error()),
+		)
+		db.invalidateConnection()
+		db.rawBatchMutex.Lock()
+		db.rawBatch = append(rows, db.rawBatch...)
+		db.rawBatchMutex.Unlock()
+		return
+	}
+	logger.GetLogger().Info(
+		"Flush completed",
+		zap.String("uuid", uuid.String()),
+		zap.Duration("duration", time.Since(start)),
+	)
+	db.lastFlush = time.Now()
+	db.lastFlushGauge.SetToCurrentTime()
+}
+
+// invalidateConnection closes and discards the current connection pool, so
+// the next GetConnection call establishes a fresh one instead of reusing a
+// connection that may be left in a bad session state.
+func (db *PostgresqlDatabase) invalidateConnection() {
+	db.connectionMutex.Lock()
+	defer db.connectionMutex.Unlock()
+	if db.connection != nil {
+		db.connection.Close()
+		db.connection = nil
+	}
+}
+
+// retryIndividually re-sends each query from a batch that failed as a
+// whole, one at a time. A single permanently failing query (e.g. a NOT
+// NULL or other constraint violation) would otherwise keep the *entire*
+// batch requeued and retried forever, blocking every other query queued
+// alongside it - including brand new, unrelated ones, since they all share
+// the same underlying queue. Queries whose failure is classified as a
+// Postgres data or integrity error (SQLSTATE class 22 or 23 - the kind
+// that will never succeed no matter how many times it's retried) are
+// logged and dropped. Anything else (connectivity issues, a still-stale
+// prepared statement, timeouts, ...) is requeued for the next flush, same
+// as the whole-batch retry used to do.
+func (db *PostgresqlDatabase) retryIndividually(batch *pgx.Batch) {
+	conn := db.GetConnection()
+	for _, query := range batch.QueuedQueries {
+		ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
+		_, err := conn.Exec(ctx, query.SQL, query.Arguments...)
+		cancel()
+		if err == nil {
+			continue
+		}
+
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && (strings.HasPrefix(pgErr.Code, "22") || strings.HasPrefix(pgErr.Code, "23")) {
+			logger.GetLogger().Error(
+				"Dropping a query that permanently fails with a data/integrity error, it would otherwise block every other queued query forever",
+				zap.String("sql", query.SQL),
+				zap.String("sqlstate", pgErr.Code),
+				zap.Error(err),
+			)
+			continue
+		}
+
+		logger.GetLogger().Error(
+			"Query failed even individually, reinserting it into the queue",
+			zap.Error(err),
+		)
+		db.batchMutex.Lock()
+		db.batch.QueuedQueries = append(db.batch.QueuedQueries, query)
+		db.batchMutex.Unlock()
+	}
 }
 
 func (db *PostgresqlDatabase) copyBatch() *pgx.Batch {
@@ -685,4 +866,22 @@ func (db *PostgresqlDatabase) copyBatch() *pgx.Batch {
 
 	batchToFlush := &pgx.Batch{QueuedQueries: queuedQueries}
 	return batchToFlush
+}
+
+// copyRawBatch is copyBatch's counterpart for the raw_data COPY batch: nil
+// means nothing to flush, matching copyBatch's nil-Batch convention.
+func (db *PostgresqlDatabase) copyRawBatch() []rawRow {
+	db.rawBatchMutex.Lock()
+	defer db.rawBatchMutex.Unlock()
+
+	if len(db.rawBatch) == 0 {
+		return nil
+	}
+
+	db.flushesCounter.Inc()
+	rows := db.rawBatch
+	db.rawBatch = nil
+	db.batchSizeGauge.Set(0)
+
+	return rows
 }

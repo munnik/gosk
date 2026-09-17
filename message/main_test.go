@@ -219,7 +219,7 @@ var _ = Describe("Mapped", func() {
 				alt := 0.0
 				lat := 37.81479
 				lon := -122.44880152
-				t := true
+				t := "alarm"
 				m := "AIS: Antenna VSWR exceeds limit"
 				s := NewSource().WithLabel("AIS").WithType(config.NMEA0183Type).WithUuid(uuid.MustParse("84679362-f963-405f-aa37-a6a8ed961417"))
 				v1 := NewValue().WithPath("navigation.position").WithValue(Position{Altitude: &alt, Latitude: &lat, Longitude: &lon})
@@ -256,7 +256,7 @@ var _ = Describe("Mapped", func() {
         						{
           							"path": "notifications.ais",
           							"value": {
-										  "state": true,
+										  "state": "alarm",
 										  "message": "AIS: Antenna VSWR exceeds limit"
 									}
         						}

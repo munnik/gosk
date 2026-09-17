@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"net/url"
+	"slices"
 	"time"
 
 	"github.com/expr-lang/expr/vm"
@@ -132,6 +133,7 @@ type MapperConfig struct {
 	Context         string            `mapstructure:"context"`
 	Protocol        string            `mapstructure:"protocol"`
 	ProtocolOptions map[string]string `mapstructure:"protocolOptions"`
+	Interval        time.Duration     `mapstructure:"interval"`
 }
 
 func NewMapperConfig(configFilePath string) MapperConfig {
@@ -253,12 +255,95 @@ func NewExpressionMappingConfig(configFilePath string) []*ExpressionMappingConfi
 	return result
 }
 
+// NotificationMappingConfig describes a single notification check on mapped
+// data. Expression is a boolean expression, e.g. comparing a ratio or a
+// difference between two paths against expected bounds. It evaluates to
+// true when the check's notification should be raised and false when it
+// should be cleared. When is an optional boolean expression, the check is
+// only performed when it evaluates to true, it defaults to always
+// performing the check.
+//
+// To avoid flapping notifications, raising the notification is only
+// confirmed once the expression has evaluated to true continuously for
+// SetDelay, and clearing it is only confirmed once the expression has
+// evaluated to false continuously for ResetDelay. Both default to zero,
+// i.e. confirmed immediately, when omitted.
+//
+// State and Method map onto the Signal K notification object's state and
+// method properties, and are only used while the notification is raised,
+// Message and State are required. Clearing the notification publishes a
+// null value instead, as described at
+// https://signalk.org/specification/1.8.2/doc/notifications.html. Method
+// defaults to ["sound", "visual"] when omitted.
+//
+// Timeout, when set, additionally treats a source path as gone once it has
+// not received a new value for longer than Timeout, and fails safe by
+// assuming the notification is needed, the same way a failed Expression
+// does. It only applies to a source path that has been seen at least once,
+// a source path that never reported a value is left to Expression to fail
+// on. Timeout is disabled (the default) when omitted.
+type NotificationMappingConfig struct {
+	MappingConfig `mapstructure:",squash"`
+	SourcePaths   []string `mapstructure:"sourcePaths"`
+	When          string   `mapstructure:"when"`
+	CompiledWhen  *vm.Program
+	Message       string        `mapstructure:"message"`
+	State         string        `mapstructure:"state"`
+	Method        []string      `mapstructure:"method"`
+	SetDelay      time.Duration `mapstructure:"setDelay"`
+	ResetDelay    time.Duration `mapstructure:"resetDelay"`
+	Timeout       time.Duration `mapstructure:"timeout"`
+}
+
+func NewNotificationMappingConfig(configFilePath string) []*NotificationMappingConfig {
+	var result []*NotificationMappingConfig
+	readConfigFile(&result, configFilePath, "mappings")
+	for _, nmc := range result {
+		nmc.verify()
+	}
+	return result
+}
+
+func (n *NotificationMappingConfig) verify() {
+	// notificationStates are the valid values for a Signal K notification's
+	// state property, see
+	// https://signalk.org/specification/1.8.2/doc/notifications.html
+	notificationStates := []string{"nominal", "normal", "alert", "warn", "alarm", "emergency"}
+
+	n.MappingConfig.verify()
+	if n.Message == "" {
+		logger.GetLogger().Warn(
+			"Message was not set",
+			zap.String("Notification mapping", fmt.Sprintf("%+v", n)),
+		)
+	}
+	if n.State == "" {
+		logger.GetLogger().Warn(
+			"State was not set",
+			zap.String("Notification mapping", fmt.Sprintf("%+v", n)),
+		)
+	} else if !slices.Contains(notificationStates, n.State) {
+		logger.GetLogger().Warn(
+			"State is not a valid Signal K notification state",
+			zap.String("State", n.State),
+			zap.Strings("Valid states", notificationStates),
+		)
+	}
+	if len(n.Method) == 0 {
+		n.Method = []string{"sound", "visual"}
+	}
+}
+
 type FftConfig struct {
 	MappingConfig         `mapstructure:",squash"`
 	Path                  string  `mapstructure:"path"`
 	SpectrumPath          string  `mapstructure:"spectrumPath"`
 	SamplesChannelBitSize int64   `mapstructure:"samplesChannelBitSize"`
 	FrequencyStepSize     float64 `mapstructure:"frequencyStepSize"`
+	// GapDetectionThreshold flags an FFT window as unreliable when one
+	// sample interval in it is more than this many times the window's mean
+	// interval [optional default is 3]
+	GapDetectionThreshold float64 `mapstructure:"gapDetectionThreshold"`
 }
 
 func NewFftConfig(configFilePath string) []*FftConfig {
@@ -320,15 +405,11 @@ type PostgresqlConfig struct {
 	URLString          string        `mapstructure:"url"`
 	BatchFlushLength   int           `mapstructure:"batch_flush_length"`
 	BatchFlushInterval time.Duration `mapstructure:"batch_flush_interval"`
-	BufferSize         int           `mapstructure:"buffer_size"`       // size of the buffer for incoming messages
-	NumberOfWorkers    int           `mapstructure:"number_of_workers"` // number of workers to handle the incoming messages
 	Timeout            time.Duration `mapstructure:"timeout"`
 }
 
 func defaultPostgresqlConfig() PostgresqlConfig {
 	return PostgresqlConfig{
-		BufferSize:         100,
-		NumberOfWorkers:    10,
 		Timeout:            5 * time.Second,
 		BatchFlushLength:   100,
 		BatchFlushInterval: 10 * time.Second,

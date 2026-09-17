@@ -1,0 +1,44 @@
+---
+context: "vessels.self"
+# re-evaluate every check every 30s, in addition to whenever new data for
+# one of its source paths arrives; this is what lets a check whose source
+# paths have all gone completely silent still be noticed once its timeout
+# elapses. Disabled (the default) when omitted
+interval: 30s
+mappings:
+  - path: "notifications.propulsion.mainEngine.drive.power"
+    sourcePaths:
+      - "propulsion.mainEngine.fuel.rate"
+      - "propulsion.mainEngine.drive.power"
+    # only check when fuel is actually being consumed
+    when: "propulsion_mainEngine_fuel_rate.Value > 0"
+    # true (raise the notification) when the power does not match the fuel rate
+    expression: >-
+      not between(
+        propulsion_mainEngine_drive_power.Value,
+        propulsion_mainEngine_fuel_rate.Value / 0.25,
+        propulsion_mainEngine_fuel_rate.Value / 0.19
+      )
+    # only raise the notification once it persisted for a full minute,
+    # defaults to 0 (instant) when omitted
+    setDelay: 1m
+    # only clear the notification once it persisted for 10s,
+    # defaults to 0 (instant) when omitted
+    resetDelay: 10s
+    # if fuel.rate or drive.power has not updated for 2 minutes, treat that
+    # source path as gone and raise the notification, same as a failed
+    # expression; disabled (the default) when omitted
+    timeout: 2m
+    message: "the power of the main engine does not match the fuel rate"
+  - path: "notifications.propulsion.mainEngine.fuel.supplyReturn"
+    sourcePaths:
+      - "propulsion.mainEngine.fuel.rate.supply"
+      - "propulsion.mainEngine.fuel.rate.return"
+    # true (raise the notification) when the supply fuel rate is not higher
+    # than the return fuel rate
+    expression: >-
+      propulsion_mainEngine_fuel_rate_supply.Value <
+      propulsion_mainEngine_fuel_rate_return.Value
+    message: >-
+      supply fuel rate of the main engine is not higher than the return
+      fuel rate

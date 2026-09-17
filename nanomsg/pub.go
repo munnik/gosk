@@ -2,8 +2,10 @@ package nanomsg
 
 import (
 	"encoding/json"
+	"sync"
 
 	"github.com/munnik/gosk/logger"
+	"github.com/munnik/gosk/sdnotify"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.nanomsg.org/mangos/v3"
 	"go.nanomsg.org/mangos/v3/protocol/pub"
@@ -15,6 +17,12 @@ import (
 
 type Publisher[T Message] struct {
 	socket mangos.Socket
+	// ready fires sdnotify.Ready once, the first time this publisher
+	// successfully sends a message - see its doc comment for why "has
+	// published something real" is a more meaningful readiness signal
+	// than "the socket is bound", which happens moments after process
+	// start regardless of whether anything is actually flowing yet.
+	ready sync.Once
 
 	receivedCounter   prometheus.Counter
 	marshalledCounter prometheus.Counter
@@ -82,6 +90,7 @@ func (p *Publisher[T]) send(bytes []byte) {
 	if p.publishedCounter != nil {
 		p.publishedCounter.Inc()
 	}
+	p.ready.Do(sdnotify.Ready)
 }
 
 func (p *Publisher[T]) Send(buffer chan *T) {

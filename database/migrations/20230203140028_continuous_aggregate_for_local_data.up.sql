@@ -1,10 +1,10 @@
 CREATE MATERIALIZED VIEW "transfer_local_data"
 WITH (timescaledb.continuous, timescaledb.materialized_only=FALSE) AS
 SELECT
-    public.time_bucket(INTERVAL '5 min', "time") AS "start", 
-    "origin", 
-    COUNT("mapped_data"."origin") AS "count" 
-FROM "mapped_data" 
+    public.time_bucket(INTERVAL '5 min', "time") AS "start",
+    "origin",
+    COUNT("mapped_data"."origin") AS "count"
+FROM "mapped_data"
 GROUP BY 1, 2
 WITH NO DATA;
 

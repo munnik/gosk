@@ -26,9 +26,52 @@ type AggregateMapper struct {
 	pathRetentionTime map[string]time.Duration
 	aggregateMappings map[string][]*config.ExpressionMappingConfig
 	env               ExpressionEnvironment
+
+	// shards, when there's more than one, partitions this mapper's own
+	// mappings into independent AggregateMapper instances - each with a
+	// disjoint subset of aggregateMappings and its own private env and
+	// history, so they share no mutable state with each other. See
+	// partitionByPaths for why that's safe: two mappings end up in
+	// different shards only when they share no source path, directly or
+	// transitively, so neither shard's computation can ever depend on the
+	// other's state. Map (unlike DoMap itself, which always runs this
+	// mapper's complete, unsharded mappings in one synchronous call - see
+	// its own doc comment) uses shards to run unrelated sensors' data
+	// concurrently instead of making them wait behind each other on a
+	// single goroutine, the situation that motivated sharding at all: see
+	// processSharded's doc comment for the incident this fixes.
+	shards      []*AggregateMapper
+	shardOfPath map[string]int
 }
 
 func NewAggregateMapper(c config.MapperConfig, emc []*config.ExpressionMappingConfig) (*AggregateMapper, error) {
+	m := newAggregateMapper(c, emc)
+
+	shardOfPath, shardCount := partitionByPaths(emc, func(mc *config.ExpressionMappingConfig) []string { return mc.SourcePaths })
+	if shardCount > 1 {
+		byShard := make([][]*config.ExpressionMappingConfig, shardCount)
+		for _, mc := range emc {
+			if len(mc.SourcePaths) == 0 {
+				// never triggered by anything either way - see
+				// aggregateMappings, which is keyed by SourcePaths - so
+				// there's no shard to put it in, and nowhere it would ever
+				// be evaluated from regardless.
+				continue
+			}
+			shard := shardOfPath[mc.SourcePaths[0]] // every one of mc's own paths resolves to the same shard by construction
+			byShard[shard] = append(byShard[shard], mc)
+		}
+		m.shards = make([]*AggregateMapper, shardCount)
+		for i, ms := range byShard {
+			m.shards[i] = newAggregateMapper(c, ms)
+		}
+		m.shardOfPath = shardOfPath
+	}
+
+	return m, nil
+}
+
+func newAggregateMapper(c config.MapperConfig, emc []*config.ExpressionMappingConfig) *AggregateMapper {
 	env := NewExpressionEnvironment()
 	env["history"] = make(map[string][]message.SingleValueMapped, 0)
 	pathRetentionTime := make(map[string]time.Duration)
@@ -41,7 +84,7 @@ func NewAggregateMapper(c config.MapperConfig, emc []*config.ExpressionMappingCo
 			}
 		}
 	}
-	return &AggregateMapper{config: c, protocol: config.SignalKType, pathRetentionTime: pathRetentionTime, aggregateMappings: mappings, env: env}, nil
+	return &AggregateMapper{config: c, protocol: config.SignalKType, pathRetentionTime: pathRetentionTime, aggregateMappings: mappings, env: env}
 }
 
 // GetTickerInterval returns the interval on which the mapper should
@@ -52,7 +95,15 @@ func (m *AggregateMapper) GetTickerInterval() time.Duration {
 }
 
 func (m *AggregateMapper) Map(subscriber *nanomsg.Subscriber[message.Mapped], publisher *nanomsg.Publisher[message.Mapped]) {
-	process(subscriber, publisher, m, false)
+	if len(m.shards) < 2 {
+		process(subscriber, publisher, m, false)
+		return
+	}
+	shards := make([]shardedMapper, len(m.shards))
+	for i, s := range m.shards {
+		shards[i] = s
+	}
+	processSharded(subscriber, publisher, shards, m.shardOfPath, false)
 }
 
 func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) {

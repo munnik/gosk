@@ -23,6 +23,7 @@ import (
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
+	"github.com/munnik/gosk/sdnotify"
 	"github.com/munnik/gosk/version"
 	"github.com/munnik/gosk/writer"
 	"github.com/prometheus/client_golang/prometheus"
@@ -158,6 +159,7 @@ func doWriteDatabaseRaw(cmd *cobra.Command, args []string) {
 	}
 	c := config.NewPostgresqlConfig(cfgFile)
 	w := writer.NewPostgresqlWriter[message.Raw](c)
+	sdnotify.Ready()
 	w.Write(subscriber)
 }
 
@@ -178,6 +180,7 @@ func doWriteDatabaseMapped(cmd *cobra.Command, args []string) {
 	}
 	c := config.NewPostgresqlConfig(cfgFile)
 	w := writer.NewPostgresqlWriter[message.Mapped](c)
+	sdnotify.Ready()
 	w.Write(subscriber)
 }
 
@@ -198,6 +201,7 @@ func doWriteMQTT(cmd *cobra.Command, args []string) {
 	}
 	c := config.NewMQTTConfig(cfgFile)
 	w := writer.NewMqttWriter(c)
+	sdnotify.Ready()
 	w.WriteMapped(subscriber)
 }
 
@@ -218,6 +222,7 @@ func doWriteSignalK(cmd *cobra.Command, args []string) {
 	}
 	c := config.NewSignalKConfig(cfgFile).WithVersion(version.Version)
 	s := writer.NewSignalKWriter(c)
+	sdnotify.Ready()
 	s.WriteMapped(subscriber)
 }
 
@@ -238,6 +243,7 @@ func doWriteLWE(cmd *cobra.Command, args []string) {
 	}
 	c := config.NewLWEConfig(cfgFile)
 	w := writer.NewLWEWriter(c)
+	sdnotify.Ready()
 	w.WriteRaw(subscriber)
 }
 
@@ -251,6 +257,7 @@ func doWriteStdOutMapped(cmd *cobra.Command, args []string) {
 		)
 	}
 	s := writer.NewStdOutWriter()
+	sdnotify.Ready()
 	s.WriteMapped(subscriber)
 }
 
@@ -264,6 +271,7 @@ func doWriteStdOutRaw(cmd *cobra.Command, args []string) {
 		)
 	}
 	s := writer.NewStdOutWriter()
+	sdnotify.Ready()
 	s.WriteRaw(subscriber)
 }
 
@@ -277,6 +285,7 @@ func doWriteStdOutRawString(cmd *cobra.Command, args []string) {
 		)
 	}
 	s := writer.NewStdOutWriter()
+	sdnotify.Ready()
 	s.WriteRawString(subscriber)
 }
 
@@ -297,5 +306,6 @@ func doWriteGrafana(cmd *cobra.Command, args []string) {
 	}
 	c := config.NewMQTTConfig(cfgFile)
 	w := writer.NewGrafanaWriter(c)
+	sdnotify.Ready()
 	w.WriteMapped(subscriber)
 }

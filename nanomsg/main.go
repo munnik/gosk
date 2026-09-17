@@ -9,6 +9,15 @@ import (
 	"go.uber.org/zap"
 )
 
+// Message is deliberately just the type union, not also a method-set
+// requirement: Mapped/Raw's MarshalMsg has a value receiver but
+// UnmarshalMsg has a pointer one (it has to, to mutate the receiver) -
+// Go's generics can't express "T's pointer type has this method" as part
+// of a plain type-union constraint. Publisher.Send and Subscriber.Receive
+// instead reach msgp.Marshaler/Unmarshaler via a runtime type assertion
+// on *T, exactly the way encoding/json.Marshal/Unmarshal already dispatch
+// to a type's MarshalJSON/UnmarshalJSON internally - not a new pattern,
+// just moved from the stdlib's own reflection into ours.
 type Message interface {
 	message.Raw | message.Mapped
 }

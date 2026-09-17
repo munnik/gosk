@@ -5,6 +5,7 @@ import (
 
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
+	"github.com/munnik/gosk/sdnotify"
 	"go.uber.org/zap"
 
 	// register transports
@@ -16,6 +17,12 @@ import (
 type Proxy struct {
 	publisher    mangos.Socket
 	stopChannels []chan struct{}
+	// ready fires sdnotify.Ready once, the first time ANY of this
+	// proxy's SubscribeTo goroutines successfully forwards a message -
+	// see Publisher.ready's doc comment for the reasoning, shared here
+	// since Proxy talks to its underlying socket directly instead of
+	// going through Publisher.Send.
+	ready sync.Once
 }
 
 // NewProxy creates a new instance
@@ -60,6 +67,7 @@ func (p *Proxy) SubscribeTo(url string, wg *sync.WaitGroup) {
 						)
 						continue
 					}
+					p.ready.Do(sdnotify.Ready)
 				}
 			case <-stopChannel:
 				wg.Done()

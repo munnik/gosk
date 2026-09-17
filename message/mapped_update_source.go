@@ -2,6 +2,7 @@ package message
 
 import "github.com/google/uuid"
 
+//easyjson:json
 type Source struct {
 	Label        string    `json:"label"`
 	Type         string    `json:"type"`

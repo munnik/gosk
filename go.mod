@@ -18,6 +18,7 @@ require (
 	github.com/jpillora/backoff v1.0.0
 	github.com/klauspost/compress v1.20.0
 	github.com/lxzan/gws v1.10.2
+	github.com/mailru/easyjson v0.9.2
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/munnik/go-signalk v0.0.3
 	github.com/munnik/modbus v1.6.6
@@ -51,6 +52,7 @@ require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
+	github.com/josharian/intern v1.0.0 // indirect
 	github.com/lib/pq v1.12.3 // indirect
 	github.com/martinlindhe/unit v0.0.0-20260805114624-07488d1da8d9 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect

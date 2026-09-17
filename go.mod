@@ -6,6 +6,7 @@ require (
 	github.com/Jeffail/gabs v1.4.0
 	github.com/adrianmo/go-nmea v1.11.0
 	github.com/allegro/bigcache/v3 v3.2.0
+	github.com/coreos/go-systemd/v22 v22.7.0
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/expr-lang/expr v1.17.8
 	github.com/fgrosse/zaptest v1.2.1

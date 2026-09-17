@@ -255,6 +255,29 @@ func runExpr(env ExpressionEnvironment, mappingConfig *config.MappingConfig) (in
 		}
 	}
 
+	// A NaN or Inf result (e.g. a division by a zero delta on a mapper's
+	// first-ever evaluation, before it has a previous sample to diff
+	// against) can never be JSON-marshalled - encoding/json rejects both.
+	// Left as a normal value, that doesn't just fail to report this one
+	// path: nanomsg.Publisher.Send marshals the whole message.Mapped at
+	// once, so one bad value silently drops every other value alongside
+	// it too, and - since a Publisher's sdnotify.Ready only fires after a
+	// successful send - a mapper whose first output happens to include
+	// one can never start at all under Type=notify, no matter how long
+	// it's given. Reject it here instead, the same way a failed compile
+	// or run is already rejected, so the caller skips just this one path
+	// and keeps whatever else it computed.
+	if f, ok := output.(float64); ok && (math.IsNaN(f) || math.IsInf(f, 0)) {
+		err := fmt.Errorf("expression result is %v, not a finite number", f)
+		logger.GetLogger().Warn(
+			"Discarding a non-finite mapping expression result",
+			zap.String("Expression", mappingConfig.Expression),
+			zap.String("Environment", fmt.Sprintf("%+v", env)),
+			zap.String("Error", err.Error()),
+		)
+		return nil, err
+	}
+
 	return output, nil
 }
 

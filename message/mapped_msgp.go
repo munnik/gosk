@@ -39,6 +39,17 @@ type mappedMsgp struct {
 	Updates []updateMsgp `msg:"updates"`
 }
 
+// singleValueMappedMsgp is SingleValueMapped's wire shape (see
+// mapped_single_value_msgp.go) - defined here, not there, because msgp's
+// single-file codegen mode can't resolve sourceMsgp across files.
+type singleValueMappedMsgp struct {
+	Context   string     `msg:"context"`
+	Origin    string     `msg:"origin"`
+	Source    sourceMsgp `msg:"source"`
+	Timestamp time.Time  `msg:"timestamp"`
+	Value     []byte     `msg:"value"`
+}
+
 func sourceToMsgp(s Source) sourceMsgp {
 	return sourceMsgp{Label: s.Label, Type: s.Type, Uuid: s.Uuid.String(), TransferUuid: s.TransferUuid.String()}
 }

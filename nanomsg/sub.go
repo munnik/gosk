@@ -1,12 +1,12 @@
 package nanomsg
 
 import (
-	"encoding/json"
 	"time"
 
 	"github.com/jpillora/backoff"
 	"github.com/munnik/gosk/logger"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/tinylib/msgp/msgp"
 	"go.nanomsg.org/mangos/v3"
 	"go.nanomsg.org/mangos/v3/protocol/sub"
 	"go.uber.org/zap"
@@ -111,7 +111,7 @@ func (s *Subscriber[T]) Receive(buffer chan *T) {
 
 	for bytes := range receiveBuffer {
 		m := new(T)
-		if err := json.Unmarshal(bytes, m); err != nil {
+		if _, err := any(m).(msgp.Unmarshaler).UnmarshalMsg(bytes); err != nil {
 			logger.GetLogger().Warn(
 				"Could not unmarshal the received data",
 				zap.ByteString("Received", bytes),

@@ -4,8 +4,13 @@ protocol: "modbus"
 mappings:
   - slave: 1 # slave id
     functionCode: 4
-    address: 51440 # address of the first register to map
+    address: 0 # address of the first register to map
     numberOfCoilsOrRegisters: 4
-    expression: "float64ToRegisters(testdata.Value)"
-    path: "testdata"
-
+    expression: "float64ToRegisters(propulsion_mainEnginePort_fuel_rate.Value)"
+    path: "propulsion.mainEnginePort.fuel.rate"
+  - slave: 1 # slave id
+    functionCode: 4
+    address: 4 # address of the first register to map
+    numberOfCoilsOrRegisters: 4
+    expression: "float64ToRegisters(propulsion_mainEngineStarboard_fuel_rate.Value)"
+    path: "propulsion.mainEngineStarboard.fuel.rate"

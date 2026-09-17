@@ -12,12 +12,13 @@ func stringPtr(s string) *string    { return &s }
 
 // TestMappedMsgpRoundTripPreservesPolymorphicValues is the critical
 // correctness test for the msgp integration: Value.Value is interface{},
-// and mappedMsgp works around that by embedding each Value as a whole
-// JSON blob (see mapped_msgp.go's doc comment) rather than encoding it
-// natively - this specifically exercises that path with the tricky cases
-// (a struct-shaped Position, a Notification with a nil field, a plain
-// scalar), not just scalars, since those are exactly the values Decode's
-// mapstructure-based dispatch has to get right.
+// and mappedMsgp works around that by tagging each Value with its
+// concrete type before encoding it natively (see value_msgp.go and
+// mapped_msgp.go's doc comments) rather than guessing on the way back in
+// - this specifically exercises the tricky cases (a struct-shaped
+// Position, a Notification with a nil field, a plain scalar), not just
+// scalars, since those are exactly the values Decode's mapstructure-based
+// fallback has to get right for anything NOT covered by a tag.
 func TestMappedMsgpRoundTripPreservesPolymorphicValues(t *testing.T) {
 	original := *NewMapped().WithContext("vessels.urn:mrn:imo:mmsi:123456789").WithOrigin("vessels.urn:mrn:imo:mmsi:123456789").
 		AddUpdate(

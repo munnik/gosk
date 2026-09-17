@@ -1,7 +1,6 @@
 package message
 
 import (
-	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -10,18 +9,15 @@ import (
 // mappedMsgp, updateMsgp, sourceMsgp are Mapped/Update/Source's msgpack
 // wire shape - map mode (field names still on the wire, so field
 // reordering/additions stay wire-compatible, unlike msgp's faster but
-// brittle tuple/positional mode). Values stores each Value struct as a
-// whole, JSON-encoded blob rather than native msgp fields: Value.Value is
-// interface{}, holding whichever of Position/Notification/Spectrum/a
-// plain scalar/etc a given path's data actually is (see Decode in
-// mapped_update_value_types.go), and msgp's codegen needs a static type
-// per field just as easyjson's does - so this keeps that dynamic,
-// self-describing behavior working completely unchanged (still calls
-// Value's own existing UnmarshalJSON/Decode dispatch), at the cost of not
-// speeding up that one field. Everything around it - Source, Timestamp,
-// Path structure, the Values slice itself - gets the full msgp speedup,
-// which is where profiling on node-hbr-rpa10 found the actual cost
-// living, not inside Value's own dispatch.
+// brittle tuple/positional mode). Each element of Values is one Value,
+// encoded by value_msgp.go's marshalValueMsg/unmarshalValueMsg: a type
+// tag written from an actual Go type switch (not a guess) followed by
+// that type's own native msgp encoding, so Value.Value's polymorphism
+// (see Decode in mapped_update_value_types.go) costs a single byte and a
+// direct dispatch instead of Decode()'s linear trial-and-error - the
+// second profiling round on node-hbr-rpa10 found that guessing, not the
+// outer envelope, was what kept aggregate's CPU cost high after the
+// first msgp pass.
 //
 //go:generate msgp -tests=false -o=mapped_msgp_gen.go -unexported
 type sourceMsgp struct {
@@ -68,7 +64,7 @@ func (m Mapped) MarshalMsg(b []byte) ([]byte, error) {
 	for i, u := range m.Updates {
 		values := make([][]byte, len(u.Values))
 		for j, v := range u.Values {
-			blob, err := json.Marshal(v)
+			blob, err := marshalValueMsg(v, nil)
 			if err != nil {
 				return b, err
 			}
@@ -100,9 +96,11 @@ func (m *Mapped) UnmarshalMsg(bts []byte) ([]byte, error) {
 		}
 		values := make([]Value, len(wu.Values))
 		for j, blob := range wu.Values {
-			if err := values[j].UnmarshalJSON(blob); err != nil {
+			decoded, _, err := unmarshalValueMsg(blob)
+			if err != nil {
 				return rest, err
 			}
+			values[j] = decoded
 		}
 		m.Updates[i] = Update{Source: source, Timestamp: wu.Timestamp, Values: values}
 	}

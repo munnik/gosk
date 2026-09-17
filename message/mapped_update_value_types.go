@@ -11,6 +11,17 @@ type Merger interface {
 	Merge(right Merger) (Merger, error)
 }
 
+// msgp codegen for every concrete type Value.Value can hold, used by
+// value_msgp.go's tagged encoding to skip Decode()'s trial-and-error on
+// gosk's internal nanomsg transport: since MarshalMsg picks the tag from
+// an actual Go type switch (not a guess), the matching UnmarshalMsg
+// branch decodes straight into the right type, no probing needed. Adding
+// a new type to Decode()'s candidate list must also add it to
+// value_msgp.go's marshalValueMsg/unmarshalValueMsg switches, or it
+// silently falls back to the (still-correct, just slower) JSON+Decode()
+// path there.
+//
+//go:generate msgp -tests=false -o=mapped_update_value_types_msgp_gen.go
 type VesselType struct {
 	Id          *int    `json:"id,omitempty"`
 	Description *string `json:"description,omitempty"`

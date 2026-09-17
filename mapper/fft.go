@@ -5,6 +5,7 @@ import (
 	"math/cmplx"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,9 +13,16 @@ import (
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
+	"github.com/munnik/gosk/sdnotify"
 	"go.uber.org/zap"
 	"gonum.org/v1/gonum/dsp/fourier"
 )
+
+// warmupTimeoutExtension is how far ExtendTimeout pushes systemd's start
+// timeout out on each call while an FftMapper is still filling its sample
+// buffer - comfortably longer than sdnotify.ExtendTimeoutMinInterval so
+// the extension never lapses between calls.
+const warmupTimeoutExtension = 15 * time.Second
 
 // defaultGapDetectionThreshold is used when a mapping's
 // config.FftConfig.GapDetectionThreshold is unset (zero). See
@@ -25,6 +33,13 @@ type FftMapper struct {
 	config   config.MapperConfig
 	protocol string
 	mappings map[string]*singleFftMapper
+	// warmedUp is set once this mapper has produced its first spectrum -
+	// i.e. once its Publisher has called sdnotify.Ready() (see
+	// nanomsg/pub.go). Until then, DoMap keeps nudging systemd's start
+	// timeout via sdnotify.ExtendTimeout to cover the many seconds it can
+	// take to fill a window's worth of samples (see doFft); afterwards
+	// there's no longer a start timeout to extend, so it stops.
+	warmedUp atomic.Bool
 }
 
 type singleFftMapper struct {
@@ -115,6 +130,10 @@ func (m *FftMapper) Map(subscriber *nanomsg.Subscriber[message.Mapped], publishe
 }
 
 func (m *FftMapper) DoMap(input *message.Mapped) (*message.Mapped, error) {
+	if !m.warmedUp.Load() {
+		sdnotify.ExtendTimeout(warmupTimeoutExtension)
+	}
+
 	result := message.NewMapped().WithContext(m.config.Context).WithOrigin(m.config.Context)
 	s := message.NewSource().WithLabel("signalk").WithType(m.protocol).WithUuid(uuid.Nil)
 	u := message.NewUpdate().WithSource(*s).WithTimestamp(time.Time{}) // initialize with empty timestamp instead of hidden now
@@ -142,6 +161,7 @@ func (m *FftMapper) DoMap(input *message.Mapped) (*message.Mapped, error) {
 	if len(u.Values) == 0 {
 		return result, nil
 	}
+	m.warmedUp.Store(true)
 	return result.AddUpdate(u), nil
 }
 

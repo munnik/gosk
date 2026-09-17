@@ -4,6 +4,7 @@ import (
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
+	"github.com/munnik/gosk/sdnotify"
 	"github.com/munnik/gosk/transfer"
 	"github.com/spf13/cobra"
 )
@@ -40,6 +41,11 @@ func init() {
 func doTransferRequest(cmd *cobra.Command, args []string) {
 	c := config.NewTransferConfig(cfgFile)
 	w := transfer.NewTransferRequester(c)
+	// Unlike every other processor type, this one neither subscribes to
+	// nor publishes any nanomsg data - Run polls the database/its peers
+	// directly - so there's no "first message" to hang readiness off of.
+	// It's ready as soon as it's constructed.
+	sdnotify.Ready()
 	w.Run()
 }
 

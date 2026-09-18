@@ -52,5 +52,13 @@ func doTransferRequest(cmd *cobra.Command, args []string) {
 func doTransferRespond(cmd *cobra.Command, args []string) {
 	c := config.NewTransferConfig(cfgFile)
 	w := transfer.NewTransferResponder(c)
+	// Like doTransferRequest above, but more so: this one only ever
+	// publishes in response to a request from a peer, so gating readiness
+	// on nanomsg.Publisher's first-successful-send (see pub.go's send)
+	// would mean a peer that simply never asks anything - not unusual, this
+	// is the responder side - leaves the unit stuck below TimeoutStartSec
+	// forever. Listening for requests is itself the meaningful ready state
+	// here.
+	sdnotify.Ready()
 	w.Run(nanomsg.NewPublisher[message.Mapped](publishURL))
 }

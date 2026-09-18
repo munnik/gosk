@@ -27,9 +27,14 @@ type Raw struct {
 const ConnectorStatusType = "connectorStatus"
 
 // Values Raw.Value holds when Type is ConnectorStatusType.
+// ConnectorStatusDisconnectedOrNoData covers both a connector that never
+// managed to connect at all and one that connected but has since stopped
+// receiving data - see connector/main.go's process, which repeats this
+// report every config.Timeout for as long as either is true, rather than
+// reporting it once.
 const (
-	ConnectorStatusConnected    = "connected"
-	ConnectorStatusDisconnected = "disconnected"
+	ConnectorStatusConnectedAndData     = "connectedAndData"
+	ConnectorStatusDisconnectedOrNoData = "disconnectedOrNoData"
 )
 
 func NewRaw() *Raw {

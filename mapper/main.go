@@ -79,7 +79,7 @@ func process[T nanomsg.Message](subscriber *nanomsg.Subscriber[T], publisher *na
 			// it in practice.
 			if raw, ok := any(*in).(message.Raw); ok && raw.Type == message.ConnectorStatusType {
 				if csm, ok := mapper.(ConnectorStatusMapper); ok {
-					out := csm.MapConnectorStatus(raw.Connector, string(raw.Value) == message.ConnectorStatusConnected)
+					out := csm.MapConnectorStatus(raw.Connector, string(raw.Value) == message.ConnectorStatusConnectedAndData)
 					if len(out.Updates) > 0 {
 						sendBuffer <- out
 					}

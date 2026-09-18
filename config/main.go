@@ -40,16 +40,25 @@ const (
 )
 
 type ConnectorConfig struct {
-	Name      string        `mapstructure:"name"`
-	URL       *url.URL      `mapstructure:"_"`
-	URLString string        `mapstructure:"url"`
-	Listen    bool          `mapstructure:"listen"`
-	BaudRate  int           `mapstructure:"baudRate"`
-	DataBits  int           `mapstructure:"dataBits"`
-	StopBits  string        `mapstructure:"stopBits"`
-	Parity    string        `mapstructure:"parity"`
-	Protocol  string        `mapstructure:"protocol"`
-	Timeout   time.Duration `mapstructure:"timeout"`
+	Name      string   `mapstructure:"name"`
+	URL       *url.URL `mapstructure:"_"`
+	URLString string   `mapstructure:"url"`
+	Listen    bool     `mapstructure:"listen"`
+	BaudRate  int      `mapstructure:"baudRate"`
+	DataBits  int      `mapstructure:"dataBits"`
+	StopBits  string   `mapstructure:"stopBits"`
+	Parity    string   `mapstructure:"parity"`
+	Protocol  string   `mapstructure:"protocol"`
+	// Timeout is how long connector/main.go's process waits without any
+	// data before reporting DisconnectedOrNoData (repeating that report
+	// every Timeout for as long as it stays true - see process's doc
+	// comment). Keep this under gosk.nix's systemd TimeoutStartSec (40s)
+	// for every connect-type processor: systemd only considers a
+	// Type=notify unit "started" once it publishes something at all, and
+	// a Timeout longer than that leaves it stuck "activating" - and
+	// deploy-rs/nixos-rebuild switch failing the whole fleet's deploy
+	// over it - for the gap between the two.
+	Timeout time.Duration `mapstructure:"timeout"`
 }
 
 func NewConnectorConfig(configFilePath string) *ConnectorConfig {
@@ -59,7 +68,7 @@ func NewConnectorConfig(configFilePath string) *ConnectorConfig {
 		DataBits: 8,
 		StopBits: "1",
 		Parity:   "N",
-		Timeout:  5 * time.Minute,
+		Timeout:  30 * time.Second,
 	}
 	readConfigFile(result, configFilePath)
 

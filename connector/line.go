@@ -20,12 +20,11 @@ import (
 type LineConnector struct {
 	config     *config.ConnectorConfig
 	connection io.ReadWriter
-	timeout    *time.Timer
 }
 
 func NewLineConnector(c *config.ConnectorConfig) (*LineConnector, error) {
 	var err error
-	l := &LineConnector{config: c, timeout: time.AfterFunc(c.Timeout, exit)}
+	l := &LineConnector{config: c}
 	l.connection, err = l.createConnection()
 	if err != nil {
 		return nil, err
@@ -47,13 +46,12 @@ func (r *LineConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
 			}
 		}
 	}()
-	process(stream, r.config.Name, r.config.Protocol, publisher, r.timeout, r.config.Timeout)
+	process(stream, r.config.Name, r.config.Protocol, publisher, r.config.Timeout)
 }
 
 func (r *LineConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw]) {
 	go func() {
 		receiveBuffer := make(chan *message.Raw, bufferCapacity)
-		defer close(receiveBuffer)
 		go subscriber.Receive(receiveBuffer)
 
 		for raw := range receiveBuffer {
@@ -102,7 +100,7 @@ func (l LineConnector) createConnection() (io.ReadWriter, error) {
 func (l LineConnector) createNetworkConnection() (io.ReadWriter, error) {
 	if l.config.Listen {
 		if l.config.URL.Scheme == "tcp" {
-			listener, err := net.Listen(l.config.URL.Scheme, fmt.Sprintf("%s:%s", l.config.URL.Hostname(), l.config.URL.Port()))
+			listener, err := net.Listen(l.config.URL.Scheme, net.JoinHostPort(l.config.URL.Hostname(), l.config.URL.Port()))
 			if err != nil {
 				return nil, fmt.Errorf("unable to listen on %v, the error that occurred was %v", l.config.URL.String(), err)
 			}
@@ -112,7 +110,7 @@ func (l LineConnector) createNetworkConnection() (io.ReadWriter, error) {
 			}
 			return conn, nil
 		} else if l.config.URL.Scheme == "udp" {
-			conn, err := net.ListenPacket(l.config.URL.Scheme, fmt.Sprintf("%s:%s", l.config.URL.Hostname(), l.config.URL.Port()))
+			conn, err := net.ListenPacket(l.config.URL.Scheme, net.JoinHostPort(l.config.URL.Hostname(), l.config.URL.Port()))
 			if err != nil {
 				return nil, fmt.Errorf("unable to listen on %v, the error that occurred was %v", l.config.URL.String(), err)
 			}
@@ -120,7 +118,7 @@ func (l LineConnector) createNetworkConnection() (io.ReadWriter, error) {
 			return UdpListenerConnection{conn: conn}, nil
 		}
 	} else {
-		conn, err := net.Dial(l.config.URL.Scheme, fmt.Sprintf("%s:%s", l.config.URL.Hostname(), l.config.URL.Port()))
+		conn, err := net.Dial(l.config.URL.Scheme, net.JoinHostPort(l.config.URL.Hostname(), l.config.URL.Port()))
 		if err != nil {
 			return nil, fmt.Errorf("unable to dial to %v, the error that occurred was %v", l.config.URL.String(), err)
 		}
@@ -180,7 +178,18 @@ func (l LineConnector) createFileConnection() (io.ReadWriter, error) {
 func (l LineConnector) scan(reader io.Reader, stream chan<- []byte) error {
 	scanner := bufio.NewScanner(reader)
 	for scanner.Scan() {
-		stream <- scanner.Bytes()
+		// scanner.Bytes() aliases the scanner's own internal buffer, which
+		// the next Scan() overwrites. Everything downstream of this channel
+		// outlives that: process wraps the slice in a message.Raw (which
+		// keeps it by reference), buffers it up to bufferCapacity deep, and
+		// nanomsg.Publisher.Send marshals it later still. Handing the live
+		// buffer over therefore doesn't just race, it silently publishes
+		// whatever line happened to be scanned by the time the marshaller
+		// got to it - in a reproduction of this pipeline, over half the
+		// lines came out as the content of a later one. Copy per line.
+		line := make([]byte, len(scanner.Bytes()))
+		copy(line, scanner.Bytes())
+		stream <- line
 	}
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("error while scanning %v, the error that occurred was %v", l.config.URL.String(), err)

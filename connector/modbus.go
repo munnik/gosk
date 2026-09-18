@@ -3,7 +3,6 @@ package connector
 import (
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
@@ -19,7 +18,6 @@ type ModbusConnector struct {
 	config               *config.ConnectorConfig
 	registerGroupsConfig []config.RegisterGroupConfig
 	realClient           *modbus.Client
-	timeout              *time.Timer
 	lock                 *sync.Mutex
 }
 
@@ -84,7 +82,6 @@ func NewModbusConnector(c *config.ConnectorConfig, rgcs []config.RegisterGroupCo
 		config:               c,
 		registerGroupsConfig: rgcs,
 		realClient:           realClient,
-		timeout:              time.AfterFunc(c.Timeout, exit),
 		lock:                 &sync.Mutex{},
 	}, nil
 }
@@ -103,7 +100,7 @@ func (m *ModbusConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
 			}
 		}
 	}()
-	process(stream, m.config.Name, m.config.Protocol, publisher, m.timeout, m.config.Timeout)
+	process(stream, m.config.Name, m.config.Protocol, publisher, m.config.Timeout)
 }
 
 func (m *ModbusConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw]) {
@@ -116,7 +113,6 @@ func (m *ModbusConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw])
 			m.lock,
 		)
 		receiveBuffer := make(chan *message.Raw, bufferCapacity)
-		defer close(receiveBuffer)
 		go subscriber.Receive(receiveBuffer)
 
 		for raw := range receiveBuffer {
@@ -131,11 +127,25 @@ func (m *ModbusConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw])
 	}()
 }
 
+// receive polls every configured register group until they have all
+// stopped, and reports the first error any of them produced. Publish's
+// loop then restarts the whole set.
+//
+// Waiting for all of them, rather than returning on the first error, is
+// what makes that restart safe. Returning early closed the error channel
+// while the other groups were still polling, so the next one to fail
+// panicked the process with a send on a closed channel, and the restart
+// added a second full set of pollers on top of the ones still running -
+// each generation contending harder for the shared modbus lock than the
+// last. Neither is reachable today only because ModbusClient.Poll has no
+// path that returns at all (it logs a failed read and keeps polling; see
+// its "how to handle failed reads" TODO), so the error plumbing here has
+// never actually run. That makes this latent rather than live - and it
+// stays latent instead of becoming a crash the day that TODO is answered.
 func (m *ModbusConnector) receive(stream chan<- []byte) error {
-	errors := make(chan error)
-	defer close(errors)
-	done := make(chan bool)
-	defer close(done)
+	// buffered by one per group so a failing poller can always report and
+	// exit, whether or not anyone is still selecting on the channel
+	errors := make(chan error, len(m.registerGroupsConfig))
 
 	var wg sync.WaitGroup
 	wg.Add(len(m.registerGroupsConfig))
@@ -143,6 +153,7 @@ func (m *ModbusConnector) receive(stream chan<- []byte) error {
 	// start a go routine for each register group, if an error occurs send it on the error channel
 	for _, rgc := range m.registerGroupsConfig {
 		go func(rgc config.RegisterGroupConfig) {
+			defer wg.Done()
 			client := protocol.NewModbusClient(
 				m.realClient,
 				rgc.ExtractModbusHeader(),
@@ -163,18 +174,14 @@ func (m *ModbusConnector) receive(stream chan<- []byte) error {
 				)
 				errors <- err
 			}
-			wg.Done()
 		}(rgc)
 	}
-	go func() {
-		// if the reading of all register groups is finished close the done channel
-		wg.Wait()
-	}()
-	select {
-	case <-done:
-		// all reading is done, break the select statement
-		break
-	case err := <-errors:
+
+	wg.Wait()
+	close(errors)
+
+	// report the first failure, if any; the rest are already logged above
+	for err := range errors {
 		return err
 	}
 	return nil

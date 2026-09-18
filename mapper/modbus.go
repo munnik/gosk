@@ -30,6 +30,12 @@ func NewModbusMapper(c config.MapperConfig, mmc []config.ModbusMappingsConfig) (
 	}, nil
 }
 
+// MapConnectorStatus implements ConnectorStatusMapper - see its doc
+// comment and process in main.go.
+func (m *ModbusMapper) MapConnectorStatus(connector string, connected bool) *message.Mapped {
+	return NewConnectorStatusUpdate(m.config.Context, connector, connected)
+}
+
 // GetTickerInterval returns the interval on which the mapper should
 // additionally be re-evaluated regardless of incoming data, see
 // periodicMapper in main.go. Zero disables this.

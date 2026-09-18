@@ -27,12 +27,11 @@ const warmupTimeoutExtension = 15 * time.Second
 type MannerEthernetConnector struct {
 	config     *config.ConnectorConfig
 	connection io.ReadWriter
-	timeout    *time.Timer
 }
 
 func NewMannerEthernetConnector(c *config.ConnectorConfig) (*MannerEthernetConnector, error) {
 	var err error
-	l := &MannerEthernetConnector{config: c, timeout: time.AfterFunc(c.Timeout, exit)}
+	l := &MannerEthernetConnector{config: c}
 	l.connection, err = l.createConnection()
 	if err != nil {
 		return nil, err
@@ -58,7 +57,7 @@ func (r *MannerEthernetConnector) Publish(publisher *nanomsg.Publisher[message.R
 			}
 		}
 	}()
-	process(stream, r.config.Name, r.config.Protocol, publisher, r.timeout, r.config.Timeout)
+	process(stream, r.config.Name, r.config.Protocol, publisher, r.config.Timeout)
 }
 
 func extractValue(streamBuffer chan byte) int {
@@ -77,7 +76,6 @@ func extractFirstValue(byte1 byte, streamBuffer chan byte) int {
 func (r *MannerEthernetConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw]) {
 	go func() {
 		receiveBuffer := make(chan *message.Raw, bufferCapacity)
-		defer close(receiveBuffer)
 		go subscriber.Receive(receiveBuffer)
 
 		for raw := range receiveBuffer {
@@ -93,7 +91,14 @@ func (r MannerEthernetConnector) readToChannel(streamBuffer chan byte) {
 			if err != nil {
 				logger.GetLogger().Error("Error reading from the network stream", zap.Error(err))
 			}
-			if err == io.ErrUnexpectedEOF {
+			// Any read error means this connection is finished, not just
+			// io.ErrUnexpectedEOF: a TCP peer that goes away reports plain
+			// io.EOF, which this used to log and then retry immediately,
+			// forever - a hot loop pinning a core and flooding the journal
+			// rather than reconnecting. Exiting lets systemd restart the
+			// unit, which is how the connection gets rebuilt (createConnection
+			// only runs at construction).
+			if err != nil {
 				os.Exit(0)
 			}
 			if n > 0 {
@@ -139,7 +144,7 @@ func (r MannerEthernetConnector) createConnection() (io.ReadWriter, error) {
 func (r MannerEthernetConnector) createNetworkConnection() (io.ReadWriter, error) {
 	if r.config.Listen {
 		if r.config.URL.Scheme == "tcp" {
-			listener, err := net.Listen(r.config.URL.Scheme, fmt.Sprintf("%s:%s", r.config.URL.Hostname(), r.config.URL.Port()))
+			listener, err := net.Listen(r.config.URL.Scheme, net.JoinHostPort(r.config.URL.Hostname(), r.config.URL.Port()))
 			if err != nil {
 				return nil, fmt.Errorf("unable to listen on %v, the error that occurred was %v", r.config.URL.String(), err)
 			}
@@ -149,7 +154,7 @@ func (r MannerEthernetConnector) createNetworkConnection() (io.ReadWriter, error
 			}
 			return conn, nil
 		} else if r.config.URL.Scheme == "udp" {
-			conn, err := net.ListenPacket(r.config.URL.Scheme, fmt.Sprintf("%s:%s", r.config.URL.Hostname(), r.config.URL.Port()))
+			conn, err := net.ListenPacket(r.config.URL.Scheme, net.JoinHostPort(r.config.URL.Hostname(), r.config.URL.Port()))
 			if err != nil {
 				return nil, fmt.Errorf("unable to listen on %v, the error that occurred was %v", r.config.URL.String(), err)
 			}
@@ -157,7 +162,7 @@ func (r MannerEthernetConnector) createNetworkConnection() (io.ReadWriter, error
 			return UdpListenerConnection{conn: conn}, nil
 		}
 	} else {
-		conn, err := net.Dial(r.config.URL.Scheme, fmt.Sprintf("%s:%s", r.config.URL.Hostname(), r.config.URL.Port()))
+		conn, err := net.Dial(r.config.URL.Scheme, net.JoinHostPort(r.config.URL.Hostname(), r.config.URL.Port()))
 		if err != nil {
 			return nil, fmt.Errorf("unable to dial to %v, the error that occurred was %v", r.config.URL.String(), err)
 		}

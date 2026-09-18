@@ -15,17 +15,6 @@ import (
 	_ "go.nanomsg.org/mangos/v3/transport/all"
 )
 
-// msgBufferPool holds reusable msgpack encode buffers for Send. mangos'
-// socket.Send copies its argument before returning (see
-// go.nanomsg.org/mangos/v3/internal/core/socket.go's Send), so a buffer is
-// safe to return to the pool as soon as send() below is done with it.
-var msgBufferPool = sync.Pool{
-	New: func() any {
-		b := make([]byte, 0, 512)
-		return &b
-	},
-}
-
 type Publisher[T Message] struct {
 	socket mangos.Socket
 	// ready fires sdnotify.Ready once, the first time this publisher
@@ -104,30 +93,52 @@ func (p *Publisher[T]) send(bytes []byte) {
 	p.ready.Do(sdnotify.Ready)
 }
 
+// Send marshals and publishes everything arriving on buffer, in the order
+// it arrives, until buffer is closed.
+//
+// Marshal-and-send runs inline rather than in a goroutine per message. A
+// goroutine per message lets the scheduler decide which message reaches
+// socket.Send first, so the publisher can reorder its own output - and
+// this is load-bearing further down the pipeline, not just a cosmetic
+// ordering nicety: a mapper that keeps "the latest value" state across
+// messages (e.g. AggregateMapper.DoMap's env[path] = svm, or
+// ModbusMapper.DoMap's delta/rate tracking) has no way to tell a
+// reordered message from a genuinely new one, so an older message
+// arriving after a newer one silently clobbers it - and a history buffer
+// appended to in arrival order, rather than timestamp order, can feed a
+// moving average or rate calculation entries out of chronological
+// sequence. There is no throughput argument for parallelizing this
+// either: mangos' socket.Send only copies into the per-pipe send queues
+// and returns, it never blocks on the network - see send below.
 func (p *Publisher[T]) Send(buffer chan *T) {
 	go checkBufferSize(buffer, "send", p.bufferSizeGauge)
+
+	// One encode buffer, owned by this loop and reused across sends.
+	// mangos' socket.Send copies its argument before returning (see
+	// go.nanomsg.org/mangos/v3/internal/core/socket.go's Send), so the
+	// next iteration is free to overwrite it.
+	buf := make([]byte, 0, 512)
 
 	for m := range buffer {
 		if p.receivedCounter != nil {
 			p.receivedCounter.Inc()
 		}
-		go func(m *T) {
-			bufPtr := msgBufferPool.Get().(*[]byte)
-			defer msgBufferPool.Put(bufPtr)
 
-			bytes, err := any(m).(msgp.Marshaler).MarshalMsg((*bufPtr)[:0])
-			if err != nil {
-				logger.GetLogger().Warn(
-					"Could not marshal the mapped data",
-					zap.String("Error", err.Error()),
-				)
-				return
-			}
-			*bufPtr = bytes
-			if p.marshalledCounter != nil {
-				p.marshalledCounter.Inc()
-			}
-			p.send(bytes)
-		}(m)
+		bytes, err := any(m).(msgp.Marshaler).MarshalMsg(buf[:0])
+		if err != nil {
+			logger.GetLogger().Warn(
+				"Could not marshal the mapped data",
+				zap.String("Error", err.Error()),
+			)
+			continue
+		}
+		// keep whatever MarshalMsg grew the buffer to, so the next
+		// message reuses the larger allocation instead of regrowing it
+		buf = bytes
+
+		if p.marshalledCounter != nil {
+			p.marshalledCounter.Inc()
+		}
+		p.send(bytes)
 	}
 }

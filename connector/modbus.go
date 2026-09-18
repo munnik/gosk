@@ -22,6 +22,16 @@ type ModbusConnector struct {
 }
 
 func NewModbusConnector(c *config.ConnectorConfig, rgcs []config.RegisterGroupConfig) (*ModbusConnector, error) {
+	if len(rgcs) == 0 {
+		// Not fatal - see receive's doc comment for why this connector
+		// blocks instead of polling - but worth a visible warning at
+		// startup, since a modbus connector with nothing to poll is
+		// always a configuration gap, never intentional.
+		logger.GetLogger().Warn(
+			"Modbus connector configured with no register groups, it will never publish any data",
+			zap.String("Name", c.Name),
+		)
+	}
 	for _, rgc := range rgcs {
 		// TODO add write function codes
 		if rgc.FunctionCode == protocol.ReadCoils || rgc.FunctionCode == protocol.ReadDiscreteInputs {
@@ -143,6 +153,22 @@ func (m *ModbusConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw])
 // never actually run. That makes this latent rather than live - and it
 // stays latent instead of becoming a crash the day that TODO is answered.
 func (m *ModbusConnector) receive(stream chan<- []byte) error {
+	// A connector with no register groups configured at all - a
+	// misconfiguration (see NewModbusConnector's warning), not a
+	// transient condition - has nothing for wg.Wait below to wait on,
+	// so it would return immediately instead of blocking the way a
+	// real register group's never-returning Poll normally does (see
+	// this function's own doc comment). Publish's `for { m.receive
+	// (stream) }` would then spin as fast as the scheduler allows -
+	// observed on node-lambert-lambert burning more than a full CPU
+	// core per idle connector, entirely from channel/waitgroup
+	// allocation churn. Block forever instead: connector/main.go's
+	// process already reports this connector as DisconnectedOrNoData -
+	// which is accurate, it never publishes anything - at zero cost.
+	if len(m.registerGroupsConfig) == 0 {
+		select {}
+	}
+
 	// buffered by one per group so a failing poller can always report and
 	// exit, whether or not anyone is still selecting on the channel
 	errors := make(chan error, len(m.registerGroupsConfig))

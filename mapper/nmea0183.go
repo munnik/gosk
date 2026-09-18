@@ -58,6 +58,12 @@ func NewNmea0183Mapper(c config.MapperConfig) (*Nmea0183Mapper, error) {
 	return &Nmea0183Mapper{config: c, protocol: config.NMEA0183Type, parser: nmea.SentenceParser{CheckCRC: ccc.CheckCRC}}, nil
 }
 
+// MapConnectorStatus implements ConnectorStatusMapper - see its doc
+// comment and process in main.go.
+func (m *Nmea0183Mapper) MapConnectorStatus(connector string, connected bool) *message.Mapped {
+	return NewConnectorStatusUpdate(m.config.Context, connector, connected)
+}
+
 // GetTickerInterval returns the interval on which the mapper should
 // additionally be re-evaluated regardless of incoming data, see
 // periodicMapper in main.go. Zero disables this.

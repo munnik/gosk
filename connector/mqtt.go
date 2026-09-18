@@ -3,7 +3,6 @@ package connector
 import (
 	"fmt"
 	"sync"
-	"time"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/munnik/gosk/config"
@@ -16,7 +15,6 @@ type MQTTConnector struct {
 	config     *config.ConnectorConfig
 	mqttConfig *config.MQTTConfig
 	mqttClient *mqtt.Client
-	timeout    *time.Timer
 	lock       *sync.Mutex
 }
 
@@ -24,7 +22,6 @@ func NewMQTTConnector(c *config.ConnectorConfig, mqttC *config.MQTTConfig) (*MQT
 	m := MQTTConnector{
 		config:     c,
 		mqttConfig: mqttC,
-		timeout:    time.AfterFunc(c.Timeout, exit),
 		lock:       &sync.Mutex{},
 	}
 	if mqttC.Topic == "" {
@@ -37,7 +34,7 @@ func (m *MQTTConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
 	stream := make(chan []byte, 1)
 	defer close(stream)
 	m.mqttClient = mqtt.New(m.mqttConfig, m.handleMessageReceived(stream), m.mqttConfig.Topic)
-	process(stream, m.config.Name, m.config.Protocol, publisher, m.timeout, m.config.Timeout)
+	process(stream, m.config.Name, m.config.Protocol, publisher, m.config.Timeout)
 }
 
 func (m *MQTTConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw]) {

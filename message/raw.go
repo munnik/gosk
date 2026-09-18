@@ -18,6 +18,20 @@ type Raw struct {
 	Value     []byte    `json:"value"`
 }
 
+// ConnectorStatusType marks a Raw message as a connector reporting its own
+// online/offline status (see connector/main.go's process), rather than
+// protocol data for a mapper to decode. Its Value is one of the
+// ConnectorStatus* constants below. A mapper that wants to surface this as
+// a SignalK notification checks for this Type before treating a Raw
+// message as its usual protocol payload - see mapper/main.go's process.
+const ConnectorStatusType = "connectorStatus"
+
+// Values Raw.Value holds when Type is ConnectorStatusType.
+const (
+	ConnectorStatusConnected    = "connected"
+	ConnectorStatusDisconnected = "disconnected"
+)
+
 func NewRaw() *Raw {
 	return &Raw{
 		Uuid:      uuid.New(),

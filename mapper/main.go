@@ -46,7 +46,6 @@ type periodicMapper interface {
 // before.
 func process[T nanomsg.Message](subscriber *nanomsg.Subscriber[T], publisher *nanomsg.Publisher[message.Mapped], mapper RealMapper[T], ignoreEmptyUpdates bool) {
 	receiveBuffer := make(chan *T, bufferSize)
-	defer close(receiveBuffer)
 	sendBuffer := make(chan *message.Mapped, bufferSize)
 	defer close(sendBuffer)
 
@@ -69,6 +68,23 @@ func process[T nanomsg.Message](subscriber *nanomsg.Subscriber[T], publisher *na
 		case in, ok := <-receiveBuffer:
 			if !ok {
 				return
+			}
+			// A connector status report (see message.ConnectorStatusType)
+			// isn't protocol data - DoMap doesn't know how to decode it,
+			// and shouldn't have to. Hand it to MapConnectorStatus instead,
+			// when the mapper implements it; a mapper that doesn't is
+			// presumably not fed by a connector's Raw stream at all (e.g.
+			// AggregateMapper, NotificationMapper), so any T for which
+			// this type assertion could even succeed already implements
+			// it in practice.
+			if raw, ok := any(*in).(message.Raw); ok && raw.Type == message.ConnectorStatusType {
+				if csm, ok := mapper.(ConnectorStatusMapper); ok {
+					out := csm.MapConnectorStatus(raw.Connector, string(raw.Value) == message.ConnectorStatusConnected)
+					if len(out.Updates) > 0 {
+						sendBuffer <- out
+					}
+				}
+				continue
 			}
 			out, err := mapper.DoMap(in)
 			if err != nil {
@@ -100,7 +116,6 @@ func process[T nanomsg.Message](subscriber *nanomsg.Subscriber[T], publisher *na
 
 func processRaw[T nanomsg.Message](subscriber *nanomsg.Subscriber[T], publisher *nanomsg.Publisher[message.Raw], mapper RealRawMapper[T]) {
 	receiveBuffer := make(chan *T, bufferSize)
-	defer close(receiveBuffer)
 	sendBuffer := make(chan *message.Raw, bufferSize)
 	defer close(sendBuffer)
 

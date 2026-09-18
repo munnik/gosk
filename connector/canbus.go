@@ -2,7 +2,6 @@ package connector
 
 import (
 	"context"
-	"time"
 
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
@@ -14,14 +13,12 @@ import (
 )
 
 type CanBusConnector struct {
-	config  *config.ConnectorConfig
-	timeout *time.Timer
+	config *config.ConnectorConfig
 }
 
 func NewCanBusConnector(c *config.ConnectorConfig) (*CanBusConnector, error) {
 	return &CanBusConnector{
-		config:  c,
-		timeout: time.AfterFunc(c.Timeout, exit),
+		config: c,
 	}, nil
 }
 
@@ -39,7 +36,7 @@ func (r *CanBusConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
 			}
 		}
 	}()
-	process(stream, r.config.Name, r.config.Protocol, publisher, r.timeout, r.config.Timeout)
+	process(stream, r.config.Name, r.config.Protocol, publisher, r.config.Timeout)
 }
 
 func (*CanBusConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw]) {

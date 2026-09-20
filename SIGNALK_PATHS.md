@@ -193,7 +193,7 @@ Current SignalK specs don't have paths for events. GOSK uses the following paths
 
 ## 4. Weather and sea state
 
-The weather mapper (see `mapper/weather.go`) fills in the environment branch from a public weather API using the vessel's own position. Most of what it publishes uses existing SignalK paths, `environment/outside/temperature`, `dewPointTemperature`, `relativeHumidity`, `pressure`, `heatIndexTemperature`, `apparentWindChillTemperature` and `theoreticalWindChillTemperature`, `environment/wind/speedOverGround`, `directionTrue`, `directionMagnetic`, `angleTrueGround`, `speedApparent` and `angleApparent`, `environment/water/temperature` and `environment/current`.
+The meteo/hydro mapper (see `mapper/meteohydro.go`) fills in the environment branch from a public weather API using the vessel's own position. Most of what it publishes uses existing SignalK paths, `environment/outside/temperature`, `dewPointTemperature`, `relativeHumidity`, `pressure`, `heatIndexTemperature`, `apparentWindChillTemperature` and `theoreticalWindChillTemperature`, `environment/wind/speedOverGround`, `directionTrue`, `directionMagnetic`, `angleTrueGround`, `speedApparent` and `angleApparent`, `environment/water/temperature` and `environment/current`.
 
 Current SignalK specs have no paths at all for a sea state, and none for gusts or visibility either. GOSK uses the following paths for those:
 

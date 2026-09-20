@@ -8,7 +8,7 @@ import (
 )
 
 // timedFloat is a navigation value together with the timestamp of the
-// message it came from. Everything the weather mapper reads from the
+// message it came from. Everything the meteo/hydro mapper reads from the
 // navigation stream can go stale, a value is only usable while it is
 // younger than the mapper's NavigationTimeout.
 type timedFloat struct {
@@ -30,7 +30,7 @@ func (t *timedFloat) set(value float64, timestamp time.Time) {
 	t.valid = true
 }
 
-// navigationState is the latest navigation data the weather mapper has
+// navigationState is the latest navigation data the meteo/hydro mapper has
 // seen. It is only written from DoMap and only read from refreshMap, both
 // of which run on process's single goroutine, so it needs no locking of
 // its own.
@@ -55,13 +55,13 @@ type navigationState struct {
 }
 
 const (
-	weatherPathPosition                 = "navigation.position"
-	weatherPathSpeedOverGround          = "navigation.speedOverGround"
-	weatherPathCourseOverGroundTrue     = "navigation.courseOverGroundTrue"
-	weatherPathCourseOverGroundMagnetic = "navigation.courseOverGroundMagnetic"
-	weatherPathHeadingTrue              = "navigation.headingTrue"
-	weatherPathHeadingMagnetic          = "navigation.headingMagnetic"
-	weatherPathMagneticVariation        = "navigation.magneticVariation"
+	meteoHydroPathPosition                 = "navigation.position"
+	meteoHydroPathSpeedOverGround          = "navigation.speedOverGround"
+	meteoHydroPathCourseOverGroundTrue     = "navigation.courseOverGroundTrue"
+	meteoHydroPathCourseOverGroundMagnetic = "navigation.courseOverGroundMagnetic"
+	meteoHydroPathHeadingTrue              = "navigation.headingTrue"
+	meteoHydroPathHeadingMagnetic          = "navigation.headingMagnetic"
+	meteoHydroPathMagneticVariation        = "navigation.magneticVariation"
 )
 
 // intervalSmoothing weighs the most recent gap between two positions
@@ -71,10 +71,10 @@ const (
 const intervalSmoothing = 0.5
 
 // update folds a single mapped value into the navigation state. Values on
-// paths the weather mapper does not use are ignored.
+// paths the meteo/hydro mapper does not use are ignored.
 func (n *navigationState) update(svm message.SingleValueMapped) {
 	switch svm.Path {
-	case weatherPathPosition:
+	case meteoHydroPathPosition:
 		position, ok := svm.Value.(message.Position)
 		if !ok || position.Latitude == nil || position.Longitude == nil {
 			// an altitude only position, or a value that is not a
@@ -84,17 +84,17 @@ func (n *navigationState) update(svm message.SingleValueMapped) {
 		n.latitude = *position.Latitude
 		n.longitude = *position.Longitude
 		n.updateInterval(svm.Timestamp)
-	case weatherPathSpeedOverGround:
+	case meteoHydroPathSpeedOverGround:
 		n.setFloat(&n.speedOverGround, svm)
-	case weatherPathCourseOverGroundTrue:
+	case meteoHydroPathCourseOverGroundTrue:
 		n.setFloat(&n.courseOverGroundTrue, svm)
-	case weatherPathCourseOverGroundMagnetic:
+	case meteoHydroPathCourseOverGroundMagnetic:
 		n.setFloat(&n.courseOverGroundMagnetic, svm)
-	case weatherPathHeadingTrue:
+	case meteoHydroPathHeadingTrue:
 		n.setFloat(&n.headingTrue, svm)
-	case weatherPathHeadingMagnetic:
+	case meteoHydroPathHeadingMagnetic:
 		n.setFloat(&n.headingMagnetic, svm)
-	case weatherPathMagneticVariation:
+	case meteoHydroPathMagneticVariation:
 		n.setFloat(&n.magneticVariation, svm)
 	}
 }

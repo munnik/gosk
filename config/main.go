@@ -36,7 +36,7 @@ const (
 
 	FftType = "fft"
 
-	WeatherType = "weather"
+	MeteoHydroType = "meteohydro"
 
 	ParityMap string = "NOE" // None, Odd, Even
 )
@@ -554,8 +554,8 @@ func NewTestDataConfig(configFilePath string) *TestDataConfig {
 	return result
 }
 
-// WeatherMapperConfig configures the weather mapper, see
-// mapper.WeatherMapper. Every duration and threshold has a sane default,
+// MeteoHydroMapperConfig configures the meteo/hydro mapper, see
+// mapper.MeteoHydroMapper. Every duration and threshold has a sane default,
 // a configuration that only sets context and protocol is enough to run it
 // against the public Open-Meteo API.
 //
@@ -608,7 +608,7 @@ func NewTestDataConfig(configFilePath string) *TestDataConfig {
 // moving: its course over ground is meaningless at (almost) zero speed,
 // so it is neither used as the reference direction for wind angles nor
 // as the vessel's motion vector below this speed.
-type WeatherMapperConfig struct {
+type MeteoHydroMapperConfig struct {
 	MapperConfig              `mapstructure:",squash"`
 	URL                       string        `mapstructure:"url"`
 	MarineURL                 string        `mapstructure:"marineUrl"`
@@ -644,10 +644,10 @@ const (
 	defaultGridResolution = 0.1
 )
 
-// DefaultWeatherMapperConfig is the configuration the weather mapper runs
+// DefaultMeteoHydroMapperConfig is the configuration the meteo/hydro mapper runs
 // with when the configuration file only sets context and protocol.
-func DefaultWeatherMapperConfig() WeatherMapperConfig {
-	return WeatherMapperConfig{
+func DefaultMeteoHydroMapperConfig() MeteoHydroMapperConfig {
+	return MeteoHydroMapperConfig{
 		URL:                       DefaultWeatherURL,
 		MarineURL:                 DefaultMarineWeatherURL,
 		MinPublishInterval:        MinAllowedPublishInterval,
@@ -666,15 +666,15 @@ func DefaultWeatherMapperConfig() WeatherMapperConfig {
 	}
 }
 
-func NewWeatherMapperConfig(configFilePath string) WeatherMapperConfig {
-	result := DefaultWeatherMapperConfig()
+func NewMeteoHydroMapperConfig(configFilePath string) MeteoHydroMapperConfig {
+	result := DefaultMeteoHydroMapperConfig()
 	readConfigFile(&result, configFilePath)
 	result.verify()
 
 	return result
 }
 
-func (w *WeatherMapperConfig) verify() {
+func (w *MeteoHydroMapperConfig) verify() {
 	if w.MinPublishInterval < MinAllowedPublishInterval {
 		logger.GetLogger().Warn(
 			"The configured minimum publish interval is too short, using the minimum allowed interval instead",

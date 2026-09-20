@@ -25,7 +25,7 @@ type observation interface {
 }
 
 // weatherObservation is the provider independent set of atmospheric
-// values the weather mapper knows how to publish. Everything is already
+// values the meteo/hydro mapper knows how to publish. Everything is already
 // in SignalK units, a nil field is a value this provider did not report
 // for this position.
 type weatherObservation struct {
@@ -410,9 +410,9 @@ func kilometersPerHourToMetersPerSecond(kilometersPerHour *float64) *float64 {
 	return &result
 }
 
-// weatherCacheEntry is a single fetched observation, kept until it ages
+// observationCacheEntry is a single fetched observation, kept until it ages
 // past the mapper's MaxDataAge or is evicted to keep the cache bounded.
-type weatherCacheEntry[T observation] struct {
+type observationCacheEntry[T observation] struct {
 	observation T
 	// fetched is when this entry was retrieved, the age the refresh and
 	// max age checks are against. The observation's own timestamp is not
@@ -422,25 +422,25 @@ type weatherCacheEntry[T observation] struct {
 	fetched time.Time
 }
 
-// weatherCache holds one observation per grid cell so a vessel that keeps
+// observationCache holds one observation per grid cell so a vessel that keeps
 // reporting positions within the same cell is served from memory instead
 // of from the weather API. It is safe for concurrent use: entries are
 // written by the goroutine doing the fetch and read by the mapper's own
 // goroutine.
-type weatherCache[T observation] struct {
+type observationCache[T observation] struct {
 	mutex      sync.Mutex
 	resolution float64
 	maxAge     time.Duration
 	maxEntries int
-	entries    map[string]*weatherCacheEntry[T]
+	entries    map[string]*observationCacheEntry[T]
 }
 
-func newWeatherCache[T observation](resolution float64, maxAge time.Duration, maxEntries int) *weatherCache[T] {
-	return &weatherCache[T]{
+func newObservationCache[T observation](resolution float64, maxAge time.Duration, maxEntries int) *observationCache[T] {
+	return &observationCache[T]{
 		resolution: resolution,
 		maxAge:     maxAge,
 		maxEntries: maxEntries,
-		entries:    make(map[string]*weatherCacheEntry[T]),
+		entries:    make(map[string]*observationCacheEntry[T]),
 	}
 }
 
@@ -448,7 +448,7 @@ func newWeatherCache[T observation](resolution float64, maxAge time.Duration, ma
 // fetched, and reused, per cell: with the default resolution of 0.1 deg
 // that is a cell of roughly 11 km of latitude, well inside the resolution
 // of the weather models behind the public APIs.
-func (c *weatherCache[T]) key(latitude float64, longitude float64) string {
+func (c *observationCache[T]) key(latitude float64, longitude float64) string {
 	return fmt.Sprintf(
 		"%d/%d",
 		int64(math.Round(latitude/c.resolution)),
@@ -458,7 +458,7 @@ func (c *weatherCache[T]) key(latitude float64, longitude float64) string {
 
 // get returns the entry for the cell containing this position, if there is
 // one that has not aged past maxAge.
-func (c *weatherCache[T]) get(latitude float64, longitude float64, now time.Time) (*weatherCacheEntry[T], bool) {
+func (c *observationCache[T]) get(latitude float64, longitude float64, now time.Time) (*observationCacheEntry[T], bool) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -469,11 +469,11 @@ func (c *weatherCache[T]) get(latitude float64, longitude float64, now time.Time
 	return entry, true
 }
 
-func (c *weatherCache[T]) put(latitude float64, longitude float64, now time.Time, observation T) {
+func (c *observationCache[T]) put(latitude float64, longitude float64, now time.Time, observation T) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	c.entries[c.key(latitude, longitude)] = &weatherCacheEntry[T]{observation: observation, fetched: now}
+	c.entries[c.key(latitude, longitude)] = &observationCacheEntry[T]{observation: observation, fetched: now}
 	c.evict(now)
 }
 
@@ -482,7 +482,7 @@ func (c *weatherCache[T]) put(latitude float64, longitude float64, now time.Time
 // is small (a cell per default is 11 km wide, a vessel at 20 knots enters
 // a new one every 18 minutes) so a linear scan is cheaper than maintaining
 // a separate ordering. The caller holds the mutex.
-func (c *weatherCache[T]) evict(now time.Time) {
+func (c *observationCache[T]) evict(now time.Time) {
 	for key, entry := range c.entries {
 		if now.Sub(entry.fetched) > c.maxAge {
 			delete(c.entries, key)

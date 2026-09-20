@@ -1,5 +1,5 @@
 ---
-# The weather mapper subscribes to the mapped data of the mapper that
+# The meteo/hydro mapper subscribes to the mapped data of the mapper that
 # publishes this vessel's navigation branch (navigation.position and,
 # optionally, navigation.speedOverGround, navigation.headingTrue,
 # navigation.courseOverGroundTrue, their magnetic variants and
@@ -8,10 +8,10 @@
 # with the rest of the pipeline using a proxy:
 #
 #   gosk map -s "tcp://127.0.0.1:6011" -p "tcp://127.0.0.1:6013" \
-#     --config "config/mapper/sample-weather.yaml"
+#     --config "config/mapper/sample-meteohydro.yaml"
 #
 context: "vessels.urn:mrn:imo:mmsi:123456789"
-protocol: "weather"
+protocol: "meteohydro"
 
 # Base url of an Open-Meteo compatible forecast API, the query parameters
 # are added by the mapper. Defaults to the public API, which needs no

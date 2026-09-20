@@ -11,7 +11,7 @@ import (
 )
 
 // sourceFetcher couples one upstream endpoint with the cache and the rate
-// limiting around it. The weather mapper has one per endpoint (the
+// limiting around it. The meteo/hydro mapper has one per endpoint (the
 // forecast API and the marine API), which keeps a marine API that is
 // down, or that has nothing to say about the canal the vessel is on, from
 // affecting the atmospheric values at all.
@@ -23,7 +23,7 @@ type sourceFetcher[T observation] struct {
 	// name identifies the endpoint in log messages.
 	name   string
 	source source[T]
-	cache  *weatherCache[T]
+	cache  *observationCache[T]
 
 	// refreshInterval is how long an observation is reused before a new
 	// one is fetched for the same grid cell.
@@ -50,7 +50,7 @@ type sourceFetcher[T observation] struct {
 	backoff     *backoff.Backoff
 }
 
-func newSourceFetcher[T observation](name string, s source[T], cache *weatherCache[T], refreshInterval time.Duration, emptyRefreshInterval time.Duration, minRequestInterval time.Duration, maxRequestInterval time.Duration, requestTimeout time.Duration) *sourceFetcher[T] {
+func newSourceFetcher[T observation](name string, s source[T], cache *observationCache[T], refreshInterval time.Duration, emptyRefreshInterval time.Duration, minRequestInterval time.Duration, maxRequestInterval time.Duration, requestTimeout time.Duration) *sourceFetcher[T] {
 	return &sourceFetcher[T]{
 		name:                 name,
 		source:               s,
@@ -131,7 +131,7 @@ func (f *sourceFetcher[T]) fetch(now time.Time, latitude float64, longitude floa
 		wait := f.backoff.Duration()
 		f.nextRequest = now.Add(wait)
 		logger.GetLogger().Warn(
-			"Could not get the weather for the current position",
+			"Could not get the observations for the current position",
 			zap.String("Source", f.name),
 			zap.Float64("Latitude", latitude),
 			zap.Float64("Longitude", longitude),

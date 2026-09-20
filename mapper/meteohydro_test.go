@@ -75,11 +75,11 @@ func degrees(value float64) float64 {
 	return value * math.Pi / 180
 }
 
-const weatherTestContext = "vessels.urn:mrn:imo:mmsi:123456789"
+const meteoHydroTestContext = "vessels.urn:mrn:imo:mmsi:123456789"
 
-func weatherTestConfig() config.WeatherMapperConfig {
-	c := config.DefaultWeatherMapperConfig()
-	c.Context = weatherTestContext
+func meteoHydroTestConfig() config.MeteoHydroMapperConfig {
+	c := config.DefaultMeteoHydroMapperConfig()
+	c.Context = meteoHydroTestContext
 	return c
 }
 
@@ -124,11 +124,11 @@ func navigationUpdate(timestamp time.Time, values ...*message.Value) *message.Ma
 	for _, value := range values {
 		update.AddValue(value)
 	}
-	return message.NewMapped().WithContext(weatherTestContext).AddUpdate(update)
+	return message.NewMapped().WithContext(meteoHydroTestContext).AddUpdate(update)
 }
 
 func positionValue(latitude float64, longitude float64) *message.Value {
-	return message.NewValue().WithPath(weatherPathPosition).WithValue(message.Position{Latitude: &latitude, Longitude: &longitude})
+	return message.NewValue().WithPath(meteoHydroPathPosition).WithValue(message.Position{Latitude: &latitude, Longitude: &longitude})
 }
 
 // valuesByPath collapses an update into a path to value map. Every value
@@ -348,14 +348,14 @@ var _ = Describe("navigationState", func() {
 	})
 
 	It("measures the interval between two positions", func() {
-		state.update(message.SingleValueMapped{Path: weatherPathPosition, Timestamp: now, Value: message.Position{Latitude: float(52), Longitude: float(4)}})
+		state.update(message.SingleValueMapped{Path: meteoHydroPathPosition, Timestamp: now, Value: message.Position{Latitude: float(52), Longitude: float(4)}})
 		Expect(state.interval).To(BeZero())
 
-		state.update(message.SingleValueMapped{Path: weatherPathPosition, Timestamp: now.Add(30 * time.Second), Value: message.Position{Latitude: float(52), Longitude: float(4)}})
+		state.update(message.SingleValueMapped{Path: meteoHydroPathPosition, Timestamp: now.Add(30 * time.Second), Value: message.Position{Latitude: float(52), Longitude: float(4)}})
 		Expect(state.interval).To(Equal(30 * time.Second))
 
 		// a repeated timestamp says nothing about the rate
-		state.update(message.SingleValueMapped{Path: weatherPathPosition, Timestamp: now.Add(30 * time.Second), Value: message.Position{Latitude: float(52), Longitude: float(4)}})
+		state.update(message.SingleValueMapped{Path: meteoHydroPathPosition, Timestamp: now.Add(30 * time.Second), Value: message.Position{Latitude: float(52), Longitude: float(4)}})
 		Expect(state.interval).To(Equal(30 * time.Second))
 	})
 })
@@ -391,7 +391,7 @@ var _ = Describe("windChill and heatIndex", func() {
 	})
 })
 
-var _ = Describe("weatherCache", func() {
+var _ = Describe("observationCache", func() {
 	var now time.Time
 
 	BeforeEach(func() {
@@ -399,7 +399,7 @@ var _ = Describe("weatherCache", func() {
 	})
 
 	It("serves every position within the same grid cell", func() {
-		cache := newWeatherCache[*weatherObservation](0.1, time.Hour, 10)
+		cache := newObservationCache[*weatherObservation](0.1, time.Hour, 10)
 		cache.put(52.01, 4.01, now, fullObservation(now))
 
 		_, ok := cache.get(52.02, 4.02, now)
@@ -410,7 +410,7 @@ var _ = Describe("weatherCache", func() {
 	})
 
 	It("does not serve an observation that aged past the maximum age", func() {
-		cache := newWeatherCache[*weatherObservation](0.1, time.Hour, 10)
+		cache := newObservationCache[*weatherObservation](0.1, time.Hour, 10)
 		cache.put(52, 4, now, fullObservation(now))
 
 		_, ok := cache.get(52, 4, now.Add(59*time.Minute))
@@ -421,7 +421,7 @@ var _ = Describe("weatherCache", func() {
 	})
 
 	It("keeps at most the configured number of cells, dropping the oldest", func() {
-		cache := newWeatherCache[*weatherObservation](0.1, time.Hour, 2)
+		cache := newObservationCache[*weatherObservation](0.1, time.Hour, 2)
 		cache.put(52, 4, now, fullObservation(now))
 		cache.put(53, 4, now.Add(time.Minute), fullObservation(now))
 		cache.put(54, 4, now.Add(2*time.Minute), fullObservation(now))
@@ -434,11 +434,29 @@ var _ = Describe("weatherCache", func() {
 	})
 })
 
-var _ = Describe("WeatherMapper", func() {
+var _ = Describe("MeteoHydroMapper", func() {
 	var now time.Time
 	var source *fakeWeatherSource
 	var marine *fakeMarineSource
-	var m *WeatherMapper
+	var m *MeteoHydroMapper
+
+	// prime runs the evaluation that fetches the observations for the
+	// vessel's position and waits for the request to finish, so the next
+	// tick is served from the cache.
+	//
+	// Whether that first evaluation publishes anything itself is a race
+	// it is not worth writing a spec around: refreshMap starts the
+	// request and reads the cache a few lines later, so a request that
+	// completes in between lands in time to be published and one that
+	// does not, does not. Forgetting that it published keeps the specs
+	// that follow deterministic either way.
+	prime := func(at time.Time) {
+		m.refreshMap(at)
+		Eventually(func() bool {
+			return m.air.idle() && (m.marine == nil || m.marine.idle())
+		}).Should(BeTrue())
+		m.lastPublish = time.Time{}
+	}
 
 	// tick runs a single evaluation and waits for any request it started
 	// to finish, so the next tick sees the result of that request.
@@ -462,7 +480,7 @@ var _ = Describe("WeatherMapper", func() {
 		now = time.Date(2026, time.September, 20, 12, 0, 0, 0, time.UTC)
 		source = &fakeWeatherSource{observation: fullObservation(now)}
 		marine = &fakeMarineSource{observation: fullMarineObservation(now)}
-		m = newWeatherMapper(weatherTestConfig(), source, marine)
+		m = newMeteoHydroMapper(meteoHydroTestConfig(), source, marine)
 	})
 
 	Describe("DoMap", func() {
@@ -523,126 +541,126 @@ var _ = Describe("WeatherMapper", func() {
 
 			result := tick(now.Add(10 * time.Second))
 
-			Expect(result.Context).To(Equal(weatherTestContext))
+			Expect(result.Context).To(Equal(meteoHydroTestContext))
 			Expect(result.Updates).To(HaveLen(1))
-			Expect(result.Updates[0].Source.Type).To(Equal(config.WeatherType))
+			Expect(result.Updates[0].Source.Type).To(Equal(config.MeteoHydroType))
 			values := valuesByPath(result)
-			Expect(values).To(HaveKeyWithValue(weatherPathOutsideTemperature, 283.15))
-			Expect(values).To(HaveKeyWithValue(weatherPathOutsideDewPoint, 278.15))
-			Expect(values).To(HaveKeyWithValue(weatherPathOutsideRelativeHumidity, 0.72))
-			Expect(values).To(HaveKeyWithValue(weatherPathOutsidePressure, 101300.0))
-			Expect(values).To(HaveKeyWithValue(weatherPathWindSpeedOverGround, 10.0))
-			Expect(values).To(HaveKeyWithValue(weatherPathWindDirectionTrue, degrees(45)))
+			Expect(values).To(HaveKeyWithValue(meteoHydroPathOutsideTemperature, 283.15))
+			Expect(values).To(HaveKeyWithValue(meteoHydroPathOutsideDewPoint, 278.15))
+			Expect(values).To(HaveKeyWithValue(meteoHydroPathOutsideRelativeHumidity, 0.72))
+			Expect(values).To(HaveKeyWithValue(meteoHydroPathOutsidePressure, 101300.0))
+			Expect(values).To(HaveKeyWithValue(meteoHydroPathWindSpeedOverGround, 10.0))
+			Expect(values).To(HaveKeyWithValue(meteoHydroPathWindDirectionTrue, degrees(45)))
 		})
 
 		It("skips the apparent values without a heading and without movement", func() {
 			m.DoMap(navigationUpdate(now, positionValue(52.1, 4.2)))
-			tick(now)
+			prime(now)
 
 			values := valuesByPath(tick(now.Add(10 * time.Second)))
 
-			Expect(values).To(HaveKey(weatherPathWindDirectionTrue))
-			Expect(values).ToNot(HaveKey(weatherPathWindAngleApparent))
-			Expect(values).ToNot(HaveKey(weatherPathWindSpeedApparent))
-			Expect(values).ToNot(HaveKey(weatherPathWindAngleTrueGround))
+			Expect(values).To(HaveKey(meteoHydroPathWindDirectionTrue))
+			Expect(values).ToNot(HaveKey(meteoHydroPathWindAngleApparent))
+			Expect(values).ToNot(HaveKey(meteoHydroPathWindSpeedApparent))
+			Expect(values).ToNot(HaveKey(meteoHydroPathWindAngleTrueGround))
 		})
 
 		It("calculates the apparent values against the heading of a vessel that is not moving", func() {
 			m.DoMap(navigationUpdate(now,
 				positionValue(52.1, 4.2),
-				message.NewValue().WithPath(weatherPathHeadingTrue).WithValue(degrees(45)),
-				message.NewValue().WithPath(weatherPathSpeedOverGround).WithValue(0.0),
+				message.NewValue().WithPath(meteoHydroPathHeadingTrue).WithValue(degrees(45)),
+				message.NewValue().WithPath(meteoHydroPathSpeedOverGround).WithValue(0.0),
 				// a course over ground that must be ignored at this speed
-				message.NewValue().WithPath(weatherPathCourseOverGroundTrue).WithValue(degrees(180)),
+				message.NewValue().WithPath(meteoHydroPathCourseOverGroundTrue).WithValue(degrees(180)),
 			))
-			tick(now)
+			prime(now)
 
 			values := valuesByPath(tick(now.Add(10 * time.Second)))
 
 			// the wind comes from dead ahead and the vessel adds nothing
 			// to it
-			Expect(values).To(HaveKeyWithValue(weatherPathWindSpeedApparent, BeNumerically("~", 10, 1e-9)))
-			Expect(values[weatherPathWindAngleApparent]).To(BeNumerically("~", 0, 1e-9))
-			Expect(values[weatherPathWindAngleTrueGround]).To(BeNumerically("~", 0, 1e-9))
+			Expect(values).To(HaveKeyWithValue(meteoHydroPathWindSpeedApparent, BeNumerically("~", 10, 1e-9)))
+			Expect(values[meteoHydroPathWindAngleApparent]).To(BeNumerically("~", 0, 1e-9))
+			Expect(values[meteoHydroPathWindAngleTrueGround]).To(BeNumerically("~", 0, 1e-9))
 		})
 
 		It("adds the movement of the vessel to the apparent wind", func() {
 			m.DoMap(navigationUpdate(now,
 				positionValue(52.1, 4.2),
-				message.NewValue().WithPath(weatherPathHeadingTrue).WithValue(degrees(45)),
-				message.NewValue().WithPath(weatherPathCourseOverGroundTrue).WithValue(degrees(45)),
-				message.NewValue().WithPath(weatherPathSpeedOverGround).WithValue(5.0),
+				message.NewValue().WithPath(meteoHydroPathHeadingTrue).WithValue(degrees(45)),
+				message.NewValue().WithPath(meteoHydroPathCourseOverGroundTrue).WithValue(degrees(45)),
+				message.NewValue().WithPath(meteoHydroPathSpeedOverGround).WithValue(5.0),
 			))
-			tick(now)
+			prime(now)
 
 			values := valuesByPath(tick(now.Add(10 * time.Second)))
 
 			// sailing straight into a 10 m/s wind at 5 m/s
-			Expect(values[weatherPathWindSpeedApparent]).To(BeNumerically("~", 15, 1e-9))
-			Expect(values[weatherPathWindAngleApparent]).To(BeNumerically("~", 0, 1e-9))
+			Expect(values[meteoHydroPathWindSpeedApparent]).To(BeNumerically("~", 15, 1e-9))
+			Expect(values[meteoHydroPathWindAngleApparent]).To(BeNumerically("~", 0, 1e-9))
 		})
 
 		It("publishes the magnetic wind direction when the variation is known", func() {
 			m.DoMap(navigationUpdate(now,
 				positionValue(52.1, 4.2),
-				message.NewValue().WithPath(weatherPathMagneticVariation).WithValue(degrees(5)),
+				message.NewValue().WithPath(meteoHydroPathMagneticVariation).WithValue(degrees(5)),
 			))
-			tick(now)
+			prime(now)
 
 			values := valuesByPath(tick(now.Add(10 * time.Second)))
 
-			Expect(values[weatherPathWindDirectionMagnetic]).To(BeNumerically("~", degrees(40), 1e-9))
+			Expect(values[meteoHydroPathWindDirectionMagnetic]).To(BeNumerically("~", degrees(40), 1e-9))
 
 			// a direction never comes out negative, unlike an angle
 			m.DoMap(navigationUpdate(now.Add(time.Second),
-				message.NewValue().WithPath(weatherPathMagneticVariation).WithValue(degrees(50)),
+				message.NewValue().WithPath(meteoHydroPathMagneticVariation).WithValue(degrees(50)),
 			))
 			values = valuesByPath(tick(now.Add(70 * time.Second)))
-			Expect(values[weatherPathWindDirectionMagnetic]).To(BeNumerically("~", degrees(355), 1e-9))
+			Expect(values[meteoHydroPathWindDirectionMagnetic]).To(BeNumerically("~", degrees(355), 1e-9))
 		})
 
 		It("publishes the wind chill of a cold day", func() {
 			source.observation = &weatherObservation{timestamp: now, temperature: float(273.15), windSpeed: float(10), windDirection: float(0)}
 			m.DoMap(navigationUpdate(now,
 				positionValue(52.1, 4.2),
-				message.NewValue().WithPath(weatherPathHeadingTrue).WithValue(0.0),
-				message.NewValue().WithPath(weatherPathSpeedOverGround).WithValue(5.0),
-				message.NewValue().WithPath(weatherPathCourseOverGroundTrue).WithValue(0.0),
+				message.NewValue().WithPath(meteoHydroPathHeadingTrue).WithValue(0.0),
+				message.NewValue().WithPath(meteoHydroPathSpeedOverGround).WithValue(5.0),
+				message.NewValue().WithPath(meteoHydroPathCourseOverGroundTrue).WithValue(0.0),
 			))
-			tick(now)
+			prime(now)
 
 			values := valuesByPath(tick(now.Add(10 * time.Second)))
 
 			// the theoretical wind chill follows the true wind, the
 			// apparent one the stronger wind the moving vessel feels
-			Expect(values).To(HaveKey(weatherPathOutsideTheoreticalWindChill))
-			Expect(values).To(HaveKey(weatherPathOutsideApparentWindChill))
-			Expect(values[weatherPathOutsideApparentWindChill]).To(BeNumerically("<", values[weatherPathOutsideTheoreticalWindChill]))
+			Expect(values).To(HaveKey(meteoHydroPathOutsideTheoreticalWindChill))
+			Expect(values).To(HaveKey(meteoHydroPathOutsideApparentWindChill))
+			Expect(values[meteoHydroPathOutsideApparentWindChill]).To(BeNumerically("<", values[meteoHydroPathOutsideTheoreticalWindChill]))
 		})
 
 		It("publishes the sea state at sea", func() {
 			m.DoMap(navigationUpdate(now,
 				positionValue(52.5, 3.5),
-				message.NewValue().WithPath(weatherPathHeadingTrue).WithValue(degrees(240)),
-				message.NewValue().WithPath(weatherPathMagneticVariation).WithValue(degrees(2)),
+				message.NewValue().WithPath(meteoHydroPathHeadingTrue).WithValue(degrees(240)),
+				message.NewValue().WithPath(meteoHydroPathMagneticVariation).WithValue(degrees(2)),
 			))
-			tick(now)
+			prime(now)
 
 			result := tick(now.Add(10 * time.Second))
 			values := valuesByPath(result)
 
-			Expect(values).To(HaveKeyWithValue(weatherPathWavesHeight, 1.9))
-			Expect(values[weatherPathWavesDirection]).To(BeNumerically("~", degrees(300), 1e-9))
-			Expect(values).To(HaveKeyWithValue(weatherPathWavesPeriod, 5.5))
-			Expect(values).To(HaveKeyWithValue(weatherPathWindWavesHeight, 1.8))
-			Expect(values).To(HaveKeyWithValue(weatherPathSwellHeight, 0.6))
-			Expect(values[weatherPathSwellDirection]).To(BeNumerically("~", degrees(220), 1e-9))
-			Expect(values).To(HaveKeyWithValue(weatherPathWaterTemperature, 292.45))
+			Expect(values).To(HaveKeyWithValue(meteoHydroPathWavesHeight, 1.9))
+			Expect(values[meteoHydroPathWavesDirection]).To(BeNumerically("~", degrees(300), 1e-9))
+			Expect(values).To(HaveKeyWithValue(meteoHydroPathWavesPeriod, 5.5))
+			Expect(values).To(HaveKeyWithValue(meteoHydroPathWindWavesHeight, 1.8))
+			Expect(values).To(HaveKeyWithValue(meteoHydroPathSwellHeight, 0.6))
+			Expect(values[meteoHydroPathSwellDirection]).To(BeNumerically("~", degrees(220), 1e-9))
+			Expect(values).To(HaveKeyWithValue(meteoHydroPathWaterTemperature, 292.45))
 			// the sea runs 60 degrees off the starboard bow
-			Expect(values[weatherPathWavesAngle]).To(BeNumerically("~", degrees(60), 1e-9))
+			Expect(values[meteoHydroPathWavesAngle]).To(BeNumerically("~", degrees(60), 1e-9))
 
 			// environment.current is an object, not a scalar
-			raw, ok := valueAtPath(result, weatherPathCurrent)
+			raw, ok := valueAtPath(result, meteoHydroPathCurrent)
 			Expect(ok).To(BeTrue())
 			current, ok := raw.(message.Current)
 			Expect(ok).To(BeTrue())
@@ -657,38 +675,38 @@ var _ = Describe("WeatherMapper", func() {
 			marine.observation = &marineObservation{timestamp: now}
 			m.DoMap(navigationUpdate(now,
 				positionValue(51.85, 5.85),
-				message.NewValue().WithPath(weatherPathHeadingTrue).WithValue(degrees(240)),
+				message.NewValue().WithPath(meteoHydroPathHeadingTrue).WithValue(degrees(240)),
 			))
-			tick(now)
+			prime(now)
 
 			values := valuesByPath(tick(now.Add(10 * time.Second)))
 
 			// the atmospheric values are published as usual
-			Expect(values).To(HaveKey(weatherPathOutsideTemperature))
-			Expect(values).To(HaveKey(weatherPathWindSpeedApparent))
+			Expect(values).To(HaveKey(meteoHydroPathOutsideTemperature))
+			Expect(values).To(HaveKey(meteoHydroPathWindSpeedApparent))
 			// but nothing about a sea that is not there
-			Expect(values).ToNot(HaveKey(weatherPathWavesHeight))
-			Expect(values).ToNot(HaveKey(weatherPathWavesAngle))
-			Expect(values).ToNot(HaveKey(weatherPathWaterTemperature))
-			_, ok := valueAtPath(tick(now.Add(30*time.Second)), weatherPathCurrent)
+			Expect(values).ToNot(HaveKey(meteoHydroPathWavesHeight))
+			Expect(values).ToNot(HaveKey(meteoHydroPathWavesAngle))
+			Expect(values).ToNot(HaveKey(meteoHydroPathWaterTemperature))
+			_, ok := valueAtPath(tick(now.Add(30*time.Second)), meteoHydroPathCurrent)
 			Expect(ok).To(BeFalse())
 		})
 
 		It("publishes the gusts and the visibility", func() {
 			m.DoMap(navigationUpdate(now, positionValue(52.1, 4.2)))
-			tick(now)
+			prime(now)
 
 			values := valuesByPath(tick(now.Add(10 * time.Second)))
 
-			Expect(values).To(HaveKeyWithValue(weatherPathWindGust, 17.0))
-			Expect(values).To(HaveKeyWithValue(weatherPathOutsideVisibility, 24000.0))
+			Expect(values).To(HaveKeyWithValue(meteoHydroPathWindGust, 17.0))
+			Expect(values).To(HaveKeyWithValue(meteoHydroPathOutsideVisibility, 24000.0))
 		})
 	})
 
 	Describe("publish interval", func() {
 		JustBeforeEach(func() {
 			m.DoMap(navigationUpdate(now, positionValue(52.1, 4.2)))
-			tick(now)
+			prime(now)
 		})
 
 		It("publishes at most once per minimum publish interval while moving", func() {
@@ -722,12 +740,12 @@ var _ = Describe("WeatherMapper", func() {
 		})
 
 		It("never publishes faster than the minimum allowed interval", func() {
-			c := weatherTestConfig()
+			c := meteoHydroTestConfig()
 			c.MinPublishInterval = time.Second
-			m = newWeatherMapper(c, source, marine)
+			m = newMeteoHydroMapper(c, source, marine)
 			m.DoMap(navigationUpdate(now, positionValue(52.1, 4.2)))
 			m.navigation.speedOverGround.set(6, now)
-			tick(now)
+			prime(now)
 
 			Expect(m.publishInterval(now)).To(BeNumerically(">=", config.MinAllowedPublishInterval))
 		})
@@ -737,7 +755,7 @@ var _ = Describe("WeatherMapper", func() {
 		It("stops asking for a sea state where there is none", func() {
 			marine.observation = &marineObservation{timestamp: now}
 			report(now)
-			tick(now)
+			prime(now)
 			Expect(marine.callCount()).To(Equal(1))
 			Expect(source.callCount()).To(Equal(1))
 
@@ -757,7 +775,7 @@ var _ = Describe("WeatherMapper", func() {
 
 		It("refreshes a real sea state on its own, slower interval", func() {
 			report(now)
-			tick(now)
+			prime(now)
 			Expect(marine.callCount()).To(Equal(1))
 
 			// the weather is refreshed every 10 minutes, the sea state
@@ -775,24 +793,24 @@ var _ = Describe("WeatherMapper", func() {
 		It("keeps publishing the weather when the marine API fails", func() {
 			marine.err = fmt.Errorf("the marine API is down")
 			report(now)
-			tick(now)
+			prime(now)
 
 			values := valuesByPath(tick(now.Add(10 * time.Second)))
 
-			Expect(values).To(HaveKey(weatherPathOutsideTemperature))
-			Expect(values).ToNot(HaveKey(weatherPathWavesHeight))
+			Expect(values).To(HaveKey(meteoHydroPathOutsideTemperature))
+			Expect(values).ToNot(HaveKey(meteoHydroPathWavesHeight))
 		})
 
 		It("never asks at all when the sea state is turned off", func() {
-			m = newWeatherMapper(weatherTestConfig(), source, nil)
+			m = newMeteoHydroMapper(meteoHydroTestConfig(), source, nil)
 			report(now)
-			tick(now)
+			prime(now)
 
 			values := valuesByPath(tick(now.Add(10 * time.Second)))
 
 			Expect(marine.callCount()).To(BeZero())
-			Expect(values).To(HaveKey(weatherPathOutsideTemperature))
-			Expect(values).ToNot(HaveKey(weatherPathWavesHeight))
+			Expect(values).To(HaveKey(meteoHydroPathOutsideTemperature))
+			Expect(values).ToNot(HaveKey(meteoHydroPathWavesHeight))
 		})
 	})
 
@@ -811,7 +829,7 @@ var _ = Describe("WeatherMapper", func() {
 
 		It("asks again once the cached observation needs a refresh", func() {
 			report(now)
-			tick(now)
+			prime(now)
 			Expect(source.callCount()).To(Equal(1))
 
 			report(now.Add(9 * time.Minute))
@@ -825,7 +843,7 @@ var _ = Describe("WeatherMapper", func() {
 
 		It("asks again once the vessel leaves the grid cell", func() {
 			m.DoMap(navigationUpdate(now, positionValue(52.1, 4.2)))
-			tick(now)
+			prime(now)
 			Expect(source.callCount()).To(Equal(1))
 
 			// still the same cell
@@ -841,7 +859,7 @@ var _ = Describe("WeatherMapper", func() {
 
 		It("keeps the minimum interval between two requests", func() {
 			m.DoMap(navigationUpdate(now, positionValue(52.1, 4.2)))
-			tick(now)
+			prime(now)
 			Expect(source.callCount()).To(Equal(1))
 
 			// a vessel crossing cells faster than the minimum request
@@ -859,7 +877,7 @@ var _ = Describe("WeatherMapper", func() {
 			source.fail(fmt.Errorf("the weather API is down"))
 			m.DoMap(navigationUpdate(now, positionValue(52.1, 4.2)))
 
-			tick(now)
+			prime(now)
 			Expect(source.callCount()).To(Equal(1))
 
 			// the first retry is not before the minimum request interval
@@ -875,12 +893,12 @@ var _ = Describe("WeatherMapper", func() {
 		})
 
 		It("keeps publishing the cached observation while the weather API is down", func() {
-			c := weatherTestConfig()
+			c := meteoHydroTestConfig()
 			c.MaxDataAge = 30 * time.Minute
-			m = newWeatherMapper(c, source, marine)
+			m = newMeteoHydroMapper(c, source, marine)
 
 			report(now)
-			tick(now)
+			prime(now)
 			source.fail(fmt.Errorf("the weather API is down"))
 
 			report(now.Add(5 * time.Minute))

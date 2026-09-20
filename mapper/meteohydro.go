@@ -10,7 +10,7 @@ import (
 	"github.com/munnik/gosk/nanomsg"
 )
 
-// Signal K paths the weather mapper publishes. Where the Signal K
+// Signal K paths the meteo/hydro mapper publishes. Where the Signal K
 // specification has a path for a value it is used as is, see
 // https://signalk.org/specification/1.7.0/doc/vesselsBranch.html. The
 // specification has no paths at all for a sea state, and none for gusts
@@ -21,36 +21,36 @@ import (
 // temperatures, Pa for pressure, ratio for humidity, m for heights and
 // distances, s for periods, m/s for speeds and rad for angles.
 const (
-	weatherPathOutsideTemperature          = "environment.outside.temperature"
-	weatherPathOutsideDewPoint             = "environment.outside.dewPointTemperature"
-	weatherPathOutsideRelativeHumidity     = "environment.outside.relativeHumidity"
-	weatherPathOutsidePressure             = "environment.outside.pressure"
-	weatherPathOutsideHeatIndex            = "environment.outside.heatIndexTemperature"
-	weatherPathOutsideApparentWindChill    = "environment.outside.apparentWindChillTemperature"
-	weatherPathOutsideTheoreticalWindChill = "environment.outside.theoreticalWindChillTemperature"
-	weatherPathOutsideVisibility           = "environment.outside.visibility"
-	weatherPathWindSpeedOverGround         = "environment.wind.speedOverGround"
-	weatherPathWindGust                    = "environment.wind.gust"
-	weatherPathWindDirectionTrue           = "environment.wind.directionTrue"
-	weatherPathWindDirectionMagnetic       = "environment.wind.directionMagnetic"
-	weatherPathWindAngleTrueGround         = "environment.wind.angleTrueGround"
-	weatherPathWindSpeedApparent           = "environment.wind.speedApparent"
-	weatherPathWindAngleApparent           = "environment.wind.angleApparent"
-	weatherPathWaterTemperature            = "environment.water.temperature"
-	weatherPathCurrent                     = "environment.current"
-	weatherPathWavesHeight                 = "environment.water.waves.significantHeight"
-	weatherPathWavesDirection              = "environment.water.waves.direction"
-	weatherPathWavesAngle                  = "environment.water.waves.angle"
-	weatherPathWavesPeriod                 = "environment.water.waves.period"
-	weatherPathWindWavesHeight             = "environment.water.waves.windWave.significantHeight"
-	weatherPathWindWavesDirection          = "environment.water.waves.windWave.direction"
-	weatherPathWindWavesPeriod             = "environment.water.waves.windWave.period"
-	weatherPathSwellHeight                 = "environment.water.waves.swell.significantHeight"
-	weatherPathSwellDirection              = "environment.water.waves.swell.direction"
-	weatherPathSwellPeriod                 = "environment.water.waves.swell.period"
+	meteoHydroPathOutsideTemperature          = "environment.outside.temperature"
+	meteoHydroPathOutsideDewPoint             = "environment.outside.dewPointTemperature"
+	meteoHydroPathOutsideRelativeHumidity     = "environment.outside.relativeHumidity"
+	meteoHydroPathOutsidePressure             = "environment.outside.pressure"
+	meteoHydroPathOutsideHeatIndex            = "environment.outside.heatIndexTemperature"
+	meteoHydroPathOutsideApparentWindChill    = "environment.outside.apparentWindChillTemperature"
+	meteoHydroPathOutsideTheoreticalWindChill = "environment.outside.theoreticalWindChillTemperature"
+	meteoHydroPathOutsideVisibility           = "environment.outside.visibility"
+	meteoHydroPathWindSpeedOverGround         = "environment.wind.speedOverGround"
+	meteoHydroPathWindGust                    = "environment.wind.gust"
+	meteoHydroPathWindDirectionTrue           = "environment.wind.directionTrue"
+	meteoHydroPathWindDirectionMagnetic       = "environment.wind.directionMagnetic"
+	meteoHydroPathWindAngleTrueGround         = "environment.wind.angleTrueGround"
+	meteoHydroPathWindSpeedApparent           = "environment.wind.speedApparent"
+	meteoHydroPathWindAngleApparent           = "environment.wind.angleApparent"
+	meteoHydroPathWaterTemperature            = "environment.water.temperature"
+	meteoHydroPathCurrent                     = "environment.current"
+	meteoHydroPathWavesHeight                 = "environment.water.waves.significantHeight"
+	meteoHydroPathWavesDirection              = "environment.water.waves.direction"
+	meteoHydroPathWavesAngle                  = "environment.water.waves.angle"
+	meteoHydroPathWavesPeriod                 = "environment.water.waves.period"
+	meteoHydroPathWindWavesHeight             = "environment.water.waves.windWave.significantHeight"
+	meteoHydroPathWindWavesDirection          = "environment.water.waves.windWave.direction"
+	meteoHydroPathWindWavesPeriod             = "environment.water.waves.windWave.period"
+	meteoHydroPathSwellHeight                 = "environment.water.waves.swell.significantHeight"
+	meteoHydroPathSwellDirection              = "environment.water.waves.swell.direction"
+	meteoHydroPathSwellPeriod                 = "environment.water.waves.swell.period"
 )
 
-// WeatherMapper fills in the environment branch of a vessel from public
+// MeteoHydroMapper fills in the environment branch of a vessel from public
 // weather APIs, using the vessel's own position to decide what weather to
 // ask for.
 //
@@ -77,8 +77,8 @@ const (
 // rather than by incoming data, so the rate the environment branch is
 // published at is decided by this mapper alone and never follows the rate
 // a GPS happens to produce positions at.
-type WeatherMapper struct {
-	config config.WeatherMapperConfig
+type MeteoHydroMapper struct {
+	config config.MeteoHydroMapperConfig
 	air    *sourceFetcher[*weatherObservation]
 	// marine is nil when no marine URL is configured, which turns the sea
 	// state off entirely for a fleet that only ever sails inland.
@@ -90,7 +90,7 @@ type WeatherMapper struct {
 	lastPublish time.Time
 }
 
-func NewWeatherMapper(c config.WeatherMapperConfig) (*WeatherMapper, error) {
+func NewMeteoHydroMapper(c config.MeteoHydroMapperConfig) (*MeteoHydroMapper, error) {
 	if c.URL == "" {
 		return nil, fmt.Errorf("no url configured for the weather API")
 	}
@@ -107,18 +107,18 @@ func NewWeatherMapper(c config.WeatherMapperConfig) (*WeatherMapper, error) {
 		marine = newOpenMeteoMarineSource(c.MarineURL, c.MarineModels, c.RequestTimeout)
 	}
 
-	return newWeatherMapper(c, air, marine), nil
+	return newMeteoHydroMapper(c, air, marine), nil
 }
 
-// newWeatherMapper builds the mapper around its sources. It repeats the
-// few bounds config.WeatherMapperConfig's own verify applies, so a
+// newMeteoHydroMapper builds the mapper around its sources. It repeats the
+// few bounds config.MeteoHydroMapperConfig's own verify applies, so a
 // configuration built in code rather than read from a configuration file
 // can not end up with a publish rate below the minimum allowed one or with
 // a cache that is unable to hold anything.
 //
 // marine may be nil, the sea state is then never fetched nor published.
-func newWeatherMapper(c config.WeatherMapperConfig, air source[*weatherObservation], marine source[*marineObservation]) *WeatherMapper {
-	defaults := config.DefaultWeatherMapperConfig()
+func newMeteoHydroMapper(c config.MeteoHydroMapperConfig, air source[*weatherObservation], marine source[*marineObservation]) *MeteoHydroMapper {
+	defaults := config.DefaultMeteoHydroMapperConfig()
 	if c.MinPublishInterval < config.MinAllowedPublishInterval {
 		c.MinPublishInterval = config.MinAllowedPublishInterval
 	}
@@ -138,12 +138,12 @@ func newWeatherMapper(c config.WeatherMapperConfig, air source[*weatherObservati
 		c.InlandRetryInterval = defaults.InlandRetryInterval
 	}
 
-	m := &WeatherMapper{
+	m := &MeteoHydroMapper{
 		config: c,
 		air: newSourceFetcher(
 			"weather",
 			air,
-			newWeatherCache[*weatherObservation](c.GridResolution, c.MaxDataAge, c.CacheSize),
+			newObservationCache[*weatherObservation](c.GridResolution, c.MaxDataAge, c.CacheSize),
 			c.RefreshInterval,
 			// an empty answer from the forecast API is reported as a
 			// failed request, not cached, so this never applies to it
@@ -161,7 +161,7 @@ func newWeatherMapper(c config.WeatherMapperConfig, air source[*weatherObservati
 			// an atmospheric observation: a vessel that stays inland has
 			// to remember that its grid cell has no sea state for longer
 			// than it would ever keep a temperature
-			newWeatherCache[*marineObservation](c.GridResolution, maxDuration(c.MaxDataAge, c.InlandRetryInterval), c.CacheSize),
+			newObservationCache[*marineObservation](c.GridResolution, maxDuration(c.MaxDataAge, c.InlandRetryInterval), c.CacheSize),
 			c.MarineRefreshInterval,
 			c.InlandRetryInterval,
 			c.MinRequestInterval,
@@ -189,7 +189,7 @@ func maxDuration(a time.Duration, b time.Duration) time.Duration {
 // to the interval the configuration asks for: a tick exactly as long as
 // the interval would round every publish up to the next tick, turning a 12
 // second interval into a 20 second one.
-func (m *WeatherMapper) GetTickerInterval() time.Duration {
+func (m *MeteoHydroMapper) GetTickerInterval() time.Duration {
 	if m.config.Interval > 0 {
 		return m.config.Interval
 	}
@@ -200,7 +200,7 @@ func (m *WeatherMapper) GetTickerInterval() time.Duration {
 	return interval
 }
 
-func (m *WeatherMapper) Map(subscriber *nanomsg.Subscriber[message.Mapped], publisher *nanomsg.Publisher[message.Mapped]) {
+func (m *MeteoHydroMapper) Map(subscriber *nanomsg.Subscriber[message.Mapped], publisher *nanomsg.Publisher[message.Mapped]) {
 	// empty updates are expected here, see DoMap, and are not worth a
 	// warning for every single navigation message received
 	process(subscriber, publisher, m, true)
@@ -210,7 +210,7 @@ func (m *WeatherMapper) Map(subscriber *nanomsg.Subscriber[message.Mapped], publ
 // configured for and publishes nothing: the environment branch is built
 // and published by refreshMap on the ticker instead, see the type's doc
 // comment.
-func (m *WeatherMapper) DoMap(input *message.Mapped) (*message.Mapped, error) {
+func (m *MeteoHydroMapper) DoMap(input *message.Mapped) (*message.Mapped, error) {
 	result := message.NewMapped().WithContext(m.config.Context).WithOrigin(m.config.Context)
 	if input.Context != m.config.Context && input.Context != "vessels.self" {
 		// another vessel's navigation data says nothing about the weather
@@ -235,7 +235,7 @@ func (m *WeatherMapper) DoMap(input *message.Mapped) (*message.Mapped, error) {
 // that aged past MaxDataAge is dropped from the cache instead of being
 // published, so a vessel that loses its internet connection goes silent
 // rather than reporting this morning's weather as if it were current.
-func (m *WeatherMapper) refreshMap(now time.Time) *message.Mapped {
+func (m *MeteoHydroMapper) refreshMap(now time.Time) *message.Mapped {
 	result := message.NewMapped().WithContext(m.config.Context).WithOrigin(m.config.Context)
 
 	latitude, longitude, ok := m.navigation.position(now, m.config.NavigationTimeout)
@@ -277,7 +277,7 @@ func (m *WeatherMapper) refreshMap(now time.Time) *message.Mapped {
 // StationaryPublishInterval while the vessel is not moving: a vessel that
 // does not move stays in the same weather, and the apparent wind it feels
 // stops changing with it.
-func (m *WeatherMapper) publishInterval(now time.Time) time.Duration {
+func (m *MeteoHydroMapper) publishInterval(now time.Time) time.Duration {
 	interval := m.config.MinPublishInterval
 	if m.navigation.interval > interval {
 		interval = m.navigation.interval
@@ -301,9 +301,9 @@ func (m *WeatherMapper) publishInterval(now time.Time) time.Duration {
 // as it is now, and a weather model that publishes on the quarter hour
 // would otherwise have every value in the pipeline look up to fifteen
 // minutes old.
-func (m *WeatherMapper) buildUpdate(observation *weatherObservation, marine *marineObservation, now time.Time) *message.Update {
+func (m *MeteoHydroMapper) buildUpdate(observation *weatherObservation, marine *marineObservation, now time.Time) *message.Update {
 	update := message.NewUpdate().
-		WithSource(*message.NewSource().WithLabel("weather").WithType(config.WeatherType)).
+		WithSource(*message.NewSource().WithLabel("meteohydro").WithType(config.MeteoHydroType)).
 		WithTimestamp(now)
 	add := func(path string, value interface{}) {
 		update.AddValue(message.NewValue().WithPath(path).WithValue(value))
@@ -314,22 +314,22 @@ func (m *WeatherMapper) buildUpdate(observation *weatherObservation, marine *mar
 		}
 	}
 
-	addOptional(weatherPathOutsideTemperature, observation.temperature)
-	addOptional(weatherPathOutsideDewPoint, observation.dewPoint)
-	addOptional(weatherPathOutsideRelativeHumidity, observation.relativeHumidity)
-	addOptional(weatherPathOutsidePressure, observation.pressure)
-	addOptional(weatherPathOutsideVisibility, observation.visibility)
-	addOptional(weatherPathWindSpeedOverGround, observation.windSpeed)
-	addOptional(weatherPathWindGust, observation.windGust)
-	addOptional(weatherPathWindDirectionTrue, observation.windDirection)
+	addOptional(meteoHydroPathOutsideTemperature, observation.temperature)
+	addOptional(meteoHydroPathOutsideDewPoint, observation.dewPoint)
+	addOptional(meteoHydroPathOutsideRelativeHumidity, observation.relativeHumidity)
+	addOptional(meteoHydroPathOutsidePressure, observation.pressure)
+	addOptional(meteoHydroPathOutsideVisibility, observation.visibility)
+	addOptional(meteoHydroPathWindSpeedOverGround, observation.windSpeed)
+	addOptional(meteoHydroPathWindGust, observation.windGust)
+	addOptional(meteoHydroPathWindDirectionTrue, observation.windDirection)
 
 	variation, hasVariation := m.navigation.magneticVariation.get(now, m.config.NavigationTimeout)
 	if observation.windDirection != nil && hasVariation {
-		add(weatherPathWindDirectionMagnetic, normalizeDirection(*observation.windDirection-variation))
+		add(meteoHydroPathWindDirectionMagnetic, normalizeDirection(*observation.windDirection-variation))
 	}
 	if observation.temperature != nil && observation.relativeHumidity != nil {
 		if index, ok := heatIndex(*observation.temperature, *observation.relativeHumidity); ok {
-			add(weatherPathOutsideHeatIndex, index)
+			add(meteoHydroPathOutsideHeatIndex, index)
 		}
 	}
 	if observation.temperature != nil && observation.windSpeed != nil {
@@ -337,7 +337,7 @@ func (m *WeatherMapper) buildUpdate(observation *weatherObservation, marine *mar
 		// apparent one below additionally accounts for the vessel's own
 		// movement through the air
 		if chill, ok := windChill(*observation.temperature, *observation.windSpeed); ok {
-			add(weatherPathOutsideTheoreticalWindChill, chill)
+			add(meteoHydroPathOutsideTheoreticalWindChill, chill)
 		}
 	}
 
@@ -346,13 +346,13 @@ func (m *WeatherMapper) buildUpdate(observation *weatherObservation, marine *mar
 	frame, hasFrame := m.navigation.windFrame(now, m.config.NavigationTimeout, m.config.MinSpeedOverGround)
 
 	if observation.windDirection != nil && observation.windSpeed != nil && hasFrame {
-		add(weatherPathWindAngleTrueGround, normalizeAngle(*observation.windDirection-frame.reference))
+		add(meteoHydroPathWindAngleTrueGround, normalizeAngle(*observation.windDirection-frame.reference))
 		speedApparent, angleApparent := apparentWind(*observation.windDirection, *observation.windSpeed, frame)
-		add(weatherPathWindSpeedApparent, speedApparent)
-		add(weatherPathWindAngleApparent, angleApparent)
+		add(meteoHydroPathWindSpeedApparent, speedApparent)
+		add(meteoHydroPathWindAngleApparent, angleApparent)
 		if observation.temperature != nil {
 			if chill, ok := windChill(*observation.temperature, speedApparent); ok {
-				add(weatherPathOutsideApparentWindChill, chill)
+				add(meteoHydroPathOutsideApparentWindChill, chill)
 			}
 		}
 	}
@@ -361,22 +361,22 @@ func (m *WeatherMapper) buildUpdate(observation *weatherObservation, marine *mar
 		return update
 	}
 
-	addOptional(weatherPathWaterTemperature, marine.seaSurfaceTemperature)
-	addOptional(weatherPathWavesHeight, marine.waveHeight)
-	addOptional(weatherPathWavesDirection, marine.waveDirection)
-	addOptional(weatherPathWavesPeriod, marine.wavePeriod)
-	addOptional(weatherPathWindWavesHeight, marine.windWaveHeight)
-	addOptional(weatherPathWindWavesDirection, marine.windWaveDirection)
-	addOptional(weatherPathWindWavesPeriod, marine.windWavePeriod)
-	addOptional(weatherPathSwellHeight, marine.swellHeight)
-	addOptional(weatherPathSwellDirection, marine.swellDirection)
-	addOptional(weatherPathSwellPeriod, marine.swellPeriod)
+	addOptional(meteoHydroPathWaterTemperature, marine.seaSurfaceTemperature)
+	addOptional(meteoHydroPathWavesHeight, marine.waveHeight)
+	addOptional(meteoHydroPathWavesDirection, marine.waveDirection)
+	addOptional(meteoHydroPathWavesPeriod, marine.wavePeriod)
+	addOptional(meteoHydroPathWindWavesHeight, marine.windWaveHeight)
+	addOptional(meteoHydroPathWindWavesDirection, marine.windWaveDirection)
+	addOptional(meteoHydroPathWindWavesPeriod, marine.windWavePeriod)
+	addOptional(meteoHydroPathSwellHeight, marine.swellHeight)
+	addOptional(meteoHydroPathSwellDirection, marine.swellDirection)
+	addOptional(meteoHydroPathSwellPeriod, marine.swellPeriod)
 
 	// the angle the sea runs at relative to the vessel, which is what
 	// decides whether it rolls, pitches or slams, measured from the same
 	// reference as the wind angles
 	if marine.waveDirection != nil && hasFrame {
-		add(weatherPathWavesAngle, normalizeAngle(*marine.waveDirection-frame.reference))
+		add(meteoHydroPathWavesAngle, normalizeAngle(*marine.waveDirection-frame.reference))
 	}
 
 	// environment.current is one of the few object valued paths in the
@@ -387,7 +387,7 @@ func (m *WeatherMapper) buildUpdate(observation *weatherObservation, marine *mar
 			setMagnetic := normalizeDirection(*marine.currentDirection - variation)
 			current.SetMagnetic = &setMagnetic
 		}
-		add(weatherPathCurrent, current)
+		add(meteoHydroPathCurrent, current)
 	}
 
 	return update

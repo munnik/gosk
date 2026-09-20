@@ -181,7 +181,7 @@ func doMap(cmd *cobra.Command, args []string) {
 			)
 		}
 		m.Map(subscriber, publisher)
-	case config.WeatherType:
+	case config.MeteoHydroType:
 		subscriber, err := nanomsg.NewSubscriber[message.Mapped](subscribeURL, []byte{})
 		if err != nil {
 			logger.GetLogger().Fatal(
@@ -190,8 +190,8 @@ func doMap(cmd *cobra.Command, args []string) {
 				zap.String("Error", err.Error()),
 			)
 		}
-		wmc := config.NewWeatherMapperConfig(cfgFile)
-		m, err := mapper.NewWeatherMapper(wmc)
+		wmc := config.NewMeteoHydroMapperConfig(cfgFile)
+		m, err := mapper.NewMeteoHydroMapper(wmc)
 		if err != nil {
 			logger.GetLogger().Fatal(
 				"Error while creating the mapper",

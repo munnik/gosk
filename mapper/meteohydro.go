@@ -50,6 +50,39 @@ const (
 	meteoHydroPathSwellPeriod                 = "environment.water.waves.swell.period"
 )
 
+// meteoHydroPaths is every path this mapper can publish, and so every
+// path on which a real instrument's data has to take precedence over the
+// model, see hasLiveData.
+var meteoHydroPaths = []string{
+	meteoHydroPathOutsideTemperature,
+	meteoHydroPathOutsideDewPoint,
+	meteoHydroPathOutsideRelativeHumidity,
+	meteoHydroPathOutsidePressure,
+	meteoHydroPathOutsideHeatIndex,
+	meteoHydroPathOutsideApparentWindChill,
+	meteoHydroPathOutsideTheoreticalWindChill,
+	meteoHydroPathOutsideVisibility,
+	meteoHydroPathWindSpeedOverGround,
+	meteoHydroPathWindGust,
+	meteoHydroPathWindDirectionTrue,
+	meteoHydroPathWindDirectionMagnetic,
+	meteoHydroPathWindAngleTrueGround,
+	meteoHydroPathWindSpeedApparent,
+	meteoHydroPathWindAngleApparent,
+	meteoHydroPathWaterTemperature,
+	meteoHydroPathCurrent,
+	meteoHydroPathWavesHeight,
+	meteoHydroPathWavesDirection,
+	meteoHydroPathWavesAngle,
+	meteoHydroPathWavesPeriod,
+	meteoHydroPathWindWavesHeight,
+	meteoHydroPathWindWavesDirection,
+	meteoHydroPathWindWavesPeriod,
+	meteoHydroPathSwellHeight,
+	meteoHydroPathSwellDirection,
+	meteoHydroPathSwellPeriod,
+}
+
 // MeteoHydroMapper fills in the environment branch of a vessel from public
 // weather APIs, using the vessel's own position to decide what weather to
 // ask for.
@@ -77,6 +110,16 @@ const (
 // rather than by incoming data, so the rate the environment branch is
 // published at is decided by this mapper alone and never follows the rate
 // a GPS happens to produce positions at.
+//
+// A modelled value is never as good as an instrument on the vessel
+// itself, so any path another source is currently publishing is left
+// alone entirely, per path and for as long as that source keeps
+// reporting - see hasLiveData. That is what lets this mapper run on a
+// vessel that does have a wind sensor: it fills in the temperature, the
+// pressure and the sea state, stays out of the way of the anemometer,
+// and takes the wind over by itself if the anemometer ever goes quiet.
+// It therefore wants to see every other mapper on the vessel, not only
+// the navigation ones - see subscribeTo in the nix configuration.
 type MeteoHydroMapper struct {
 	config config.MeteoHydroMapperConfig
 	air    *sourceFetcher[*weatherObservation]
@@ -84,9 +127,12 @@ type MeteoHydroMapper struct {
 	// state off entirely for a fleet that only ever sails inland.
 	marine *sourceFetcher[*marineObservation]
 
-	// navigation and lastPublish are only touched from DoMap and
-	// refreshMap, which both run on process's single goroutine.
-	navigation  navigationState
+	// navigation, liveData and lastPublish are only touched from DoMap
+	// and refreshMap, which both run on process's single goroutine.
+	navigation navigationState
+	// liveData records, per path this mapper can publish, when another
+	// source last published a value for it.
+	liveData    map[string]time.Time
 	lastPublish time.Time
 }
 
@@ -137,9 +183,13 @@ func newMeteoHydroMapper(c config.MeteoHydroMapperConfig, air source[*weatherObs
 	if c.InlandRetryInterval <= 0 {
 		c.InlandRetryInterval = defaults.InlandRetryInterval
 	}
+	if c.LiveDataTimeout <= 0 {
+		c.LiveDataTimeout = defaults.LiveDataTimeout
+	}
 
 	m := &MeteoHydroMapper{
-		config: c,
+		config:   c,
+		liveData: make(map[string]time.Time, len(meteoHydroPaths)),
 		air: newSourceFetcher(
 			"weather",
 			air,
@@ -152,6 +202,9 @@ func newMeteoHydroMapper(c config.MeteoHydroMapperConfig, air source[*weatherObs
 			c.MaxRequestInterval,
 			c.RequestTimeout,
 		),
+	}
+	for _, path := range meteoHydroPaths {
+		m.liveData[path] = time.Time{}
 	}
 	if marine != nil {
 		m.marine = newSourceFetcher(
@@ -219,10 +272,31 @@ func (m *MeteoHydroMapper) DoMap(input *message.Mapped) (*message.Mapped, error)
 	}
 
 	for _, svm := range input.ToSingleValueMapped() {
+		if svm.Source.Type == config.MeteoHydroType {
+			// this mapper's own output, coming back because it
+			// subscribes to every mapper on the vessel (itself
+			// excluded in the configuration, but a second instance,
+			// or a value that travelled around some other way, would
+			// otherwise have it forever defer to itself)
+			continue
+		}
 		m.navigation.update(svm)
+		if _, ok := m.liveData[svm.Path]; ok {
+			m.liveData[svm.Path] = svm.Timestamp
+		}
 	}
 
 	return result, nil
+}
+
+// hasLiveData reports whether another source published this path recently
+// enough to still be trusted over the model. A source that goes quiet for
+// LiveDataTimeout - an instrument that fails, or a connector that loses
+// its serial port - hands the path back to this mapper rather than
+// leaving it empty.
+func (m *MeteoHydroMapper) hasLiveData(path string, now time.Time) bool {
+	last, seen := m.liveData[path]
+	return seen && !last.IsZero() && now.Sub(last) <= m.config.LiveDataTimeout
 }
 
 // refreshMap publishes the environment branch, at most once per
@@ -306,6 +380,11 @@ func (m *MeteoHydroMapper) buildUpdate(observation *weatherObservation, marine *
 		WithSource(*message.NewSource().WithLabel("meteohydro").WithType(config.MeteoHydroType)).
 		WithTimestamp(now)
 	add := func(path string, value interface{}) {
+		if m.hasLiveData(path, now) {
+			// an instrument on board is reporting this path, its
+			// value is the real one - see the type's doc comment
+			return
+		}
 		update.AddValue(message.NewValue().WithPath(path).WithValue(value))
 	}
 	addOptional := func(path string, value *float64) {

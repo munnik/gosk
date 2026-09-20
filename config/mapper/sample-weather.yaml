@@ -1,0 +1,81 @@
+---
+# The weather mapper subscribes to the mapped data of the mapper that
+# publishes this vessel's navigation branch (navigation.position and,
+# optionally, navigation.speedOverGround, navigation.headingTrue,
+# navigation.courseOverGroundTrue, their magnetic variants and
+# navigation.magneticVariation) and publishes the environment branch for
+# the same vessel. It does not pass its input through, merge its output
+# with the rest of the pipeline using a proxy:
+#
+#   gosk map -s "tcp://127.0.0.1:6011" -p "tcp://127.0.0.1:6013" \
+#     --config "config/mapper/sample-weather.yaml"
+#
+context: "vessels.urn:mrn:imo:mmsi:123456789"
+protocol: "weather"
+
+# Base url of an Open-Meteo compatible forecast API, the query parameters
+# are added by the mapper. Defaults to the public API, which needs no
+# account and no API key. Point this at a self hosted instance to stop
+# depending on a third party [optional]
+url: "https://api.open-meteo.com/v1/forecast"
+
+# How often the decision to publish is taken, defaults to half the minimum
+# publish interval. This is not the publish interval itself [optional]
+# interval: 5s
+
+# The environment branch is published at most this often. Values below 10s
+# are raised to 10s: weather over a single grid cell does not change faster
+# than that [optional, defaults to 10s]
+minPublishInterval: 10s
+
+# ... and at most this often while the vessel is not moving. A vessel that
+# does not move stays in the same weather and the apparent wind it feels
+# stops changing with it [optional, defaults to 1m]
+stationaryPublishInterval: 1m
+
+# The publish interval additionally follows the rate at which positions
+# arrive, a vessel reporting its position once a minute gets its weather
+# published once a minute even though the intervals above are shorter.
+
+# Speed over ground, in m/s, below which the vessel counts as not moving.
+# Its course over ground is derived from noise at (almost) zero speed, so
+# below this speed the course is neither used as the reference direction
+# for the wind angles nor as the vessel's motion vector. With no heading
+# available either, no apparent values are published at all
+# [optional, defaults to 0.5]
+minSpeedOverGround: 0.5
+
+# A fetched observation is reused for the whole of this interval, and for
+# every position inside the same grid cell [optional, defaults to 10m]
+refreshInterval: 10m
+
+# Size of a grid cell in degrees, 0.1 is roughly 11 km of latitude and is
+# well inside the resolution of the models behind the public weather APIs
+# [optional, defaults to 0.1]
+gridResolution: 0.1
+
+# Number of grid cells kept in the cache [optional, defaults to 64]
+cacheSize: 64
+
+# Hard floor between two requests to the weather API regardless of
+# position, and the first delay of the exponential backoff after a failed
+# request [optional, defaults to 1m]
+minRequestInterval: 1m
+
+# Upper bound of that backoff, an API that is down or rate limiting us is
+# retried at most this slowly [optional, defaults to 30m]
+maxRequestInterval: 30m
+
+# Timeout of a single request to the weather API [optional, defaults to 15s]
+requestTimeout: 15s
+
+# An observation older than this is not published at all, a vessel that
+# loses its internet connection goes silent instead of reporting this
+# morning's weather as if it were current [optional, defaults to 3h]
+maxDataAge: 3h
+
+# How long a navigation value stays usable after it was last received. A
+# position older than this stops the mapper from publishing anything, a
+# stale heading, course or speed is treated as absent
+# [optional, defaults to 5m]
+navigationTimeout: 5m

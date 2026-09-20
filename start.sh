@@ -13,15 +13,10 @@ sleep 1
 
 sleep 1
 
-./gosk proxy -p "tcp://127.0.0.1:6000" -s "tcp://127.0.0.1:6001" -s "tcp://127.0.0.1:6002" &
-./gosk proxy -p "tcp://127.0.0.1:6010" -s "tcp://127.0.0.1:6011" -s "tcp://127.0.0.1:6012" &
+./gosk write database raw -s "tcp://127.0.0.1:6001" -s "tcp://127.0.0.1:6002" --config "config/writer/postgresql.yaml" &
+./gosk write database mapped -s "tcp://127.0.0.1:6011" -s "tcp://127.0.0.1:6012" --config "config/writer/postgresql.yaml" &
 
-sleep 1
-
-./gosk write database raw -s "tcp://127.0.0.1:6000" --config "config/writer/postgresql.yaml" &
-./gosk write database mapped -s "tcp://127.0.0.1:6010" --config "config/writer/postgresql.yaml" &
-
-./gosk write mqtt -s "tcp://127.0.0.1:6010" --config "config/writer/mqtt.yaml" &
+./gosk write mqtt -s "tcp://127.0.0.1:6011" -s "tcp://127.0.0.1:6012" --config "config/writer/mqtt.yaml" &
 ./gosk read mqtt -p "tcp://127.0.0.1:6020" --config "config/reader/mqtt.yaml" &
 
 sleep 1

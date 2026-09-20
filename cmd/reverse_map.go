@@ -35,8 +35,8 @@ var reverseMapCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(reverseMapCmd)
-	reverseMapCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
-	reverseMapCmd.MarkFlagRequired("subscribeURL")
+	reverseMapCmd.Flags().StringSliceVarP(&subscribeURLs, "subscribeURLs", "s", []string{}, "Nanomsg URL, the URL is used to listen for subscribed data. May be repeated to subscribe to several publishers at once.")
+	reverseMapCmd.MarkFlagRequired("subscribeURLs")
 	reverseMapCmd.Flags().StringVarP(&publishURL, "publishURL", "p", "", "Nanomsg URL, the URL is used to publish the data on. It listens for connections.")
 	reverseMapCmd.MarkFlagRequired("publishURL")
 }
@@ -47,11 +47,11 @@ func doReverseMap(cmd *cobra.Command, args []string) {
 	c := config.NewMapperConfig(cfgFile)
 	switch c.Protocol {
 	case config.ModbusType:
-		subscriber, err := nanomsg.NewSubscriber[message.Mapped](subscribeURL, []byte{})
+		subscriber, err := nanomsg.NewSubscriber[message.Mapped](subscribeURLs, []byte{})
 		if err != nil {
 			logger.GetLogger().Fatal(
 				"Could not subscribe",
-				zap.String("URL", subscribeURL),
+				zap.Strings("URLs", subscribeURLs),
 				zap.String("Error", err.Error()),
 			)
 		}

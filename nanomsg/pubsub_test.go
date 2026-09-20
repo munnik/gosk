@@ -1,6 +1,7 @@
 package nanomsg
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -18,7 +19,7 @@ import (
 func TestPubSubMsgpRoundTrip(t *testing.T) {
 	url := "inproc://test-pubsub-msgp"
 	pub := NewPublisher[message.Raw](url)
-	sub, err := NewSubscriber[message.Raw](url, []byte{})
+	sub, err := NewSubscriber[message.Raw]([]string{url}, []byte{})
 	if err != nil {
 		t.Fatalf("NewSubscriber: %v", err)
 	}
@@ -61,7 +62,7 @@ func TestPubSubMsgpRoundTrip(t *testing.T) {
 func TestPubSubPreservesOrder(t *testing.T) {
 	url := "inproc://test-pubsub-order"
 	pub := NewPublisher[message.Raw](url)
-	sub, err := NewSubscriber[message.Raw](url, []byte{})
+	sub, err := NewSubscriber[message.Raw]([]string{url}, []byte{})
 	if err != nil {
 		t.Fatalf("NewSubscriber: %v", err)
 	}
@@ -114,5 +115,86 @@ warmedUp:
 	}
 	if received == 0 {
 		t.Fatal("received no messages at all")
+	}
+}
+
+// TestSubscriberReceivesFromEveryPublisher is the behaviour that replaced
+// the proxy process: one subscriber dialling several publishers gets every
+// publisher's messages on the same stream. Before this, a subscriber held a
+// single url and a separate `gosk proxy` process existed for the sole
+// purpose of fanning several publishers into one - so a processor could
+// never name more than one upstream itself, and repeating --subscribeURL
+// silently kept only the last one.
+func TestSubscriberReceivesFromEveryPublisher(t *testing.T) {
+	urls := []string{
+		"inproc://test-pubsub-fan-in-1",
+		"inproc://test-pubsub-fan-in-2",
+		"inproc://test-pubsub-fan-in-3",
+	}
+	publishers := make([]chan *message.Raw, len(urls))
+	for i, url := range urls {
+		pub := NewPublisher[message.Raw](url)
+		publishers[i] = make(chan *message.Raw, 4)
+		go pub.Send(publishers[i])
+	}
+
+	sub, err := NewSubscriber[message.Raw](urls, []byte{})
+	if err != nil {
+		t.Fatalf("NewSubscriber: %v", err)
+	}
+	recvCh := make(chan *message.Raw, 16)
+	go sub.Receive(recvCh)
+
+	time.Sleep(100 * time.Millisecond)
+
+	for i, ch := range publishers {
+		ch <- &message.Raw{
+			Connector: fmt.Sprintf("connector-%d", i),
+			Timestamp: time.Now(),
+			Type:      "manner_ethernet",
+			Uuid:      uuid.New(),
+			Value:     []byte{byte(i)},
+		}
+	}
+
+	// every publisher must be heard from, in whatever order they arrive
+	seen := make(map[string]bool, len(urls))
+	deadline := time.After(5 * time.Second)
+	for len(seen) < len(urls) {
+		select {
+		case got := <-recvCh:
+			seen[got.Connector] = true
+		case <-deadline:
+			t.Fatalf("timed out, only received from %v of %d publishers: %v", len(seen), len(urls), seen)
+		}
+	}
+}
+
+// TestNewSubscriberWithoutUrls rejects a subscription to nothing outright,
+// rather than starting a processor that can never receive anything.
+func TestNewSubscriberWithoutUrls(t *testing.T) {
+	if _, err := NewSubscriber[message.Raw](nil, []byte{}); err == nil {
+		t.Fatal("expected an error when subscribing to no url at all")
+	}
+}
+
+// TestNewSubscriberDoesNotWaitForThePublisher covers the other half of the
+// change: a publisher that is not listening yet must not stop the
+// subscriber from being created, or one dead upstream would keep a
+// processor from ever reading the upstreams next to it.
+func TestNewSubscriberDoesNotWaitForThePublisher(t *testing.T) {
+	done := make(chan error, 1)
+	go func() {
+		_, err := NewSubscriber[message.Raw]([]string{"tcp://127.0.0.1:1"}, []byte{})
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("NewSubscriber: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("NewSubscriber blocked on a publisher that is not listening")
 	}
 }

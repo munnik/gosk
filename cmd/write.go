@@ -108,43 +108,43 @@ func init() {
 
 	writeCmd.AddCommand(writeDatabaseCmd)
 	writeDatabaseCmd.AddCommand(writeDatabaseRawCmd)
-	writeDatabaseRawCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
-	writeDatabaseRawCmd.MarkFlagRequired("subscribeURL")
+	writeDatabaseRawCmd.Flags().StringSliceVarP(&subscribeURLs, "subscribeURLs", "s", []string{}, "Nanomsg URL, the URL is used to listen for subscribed data. May be repeated to subscribe to several publishers at once.")
+	writeDatabaseRawCmd.MarkFlagRequired("subscribeURLs")
 	writeDatabaseCmd.AddCommand(writeDatabaseMappedCmd)
-	writeDatabaseMappedCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
-	writeDatabaseMappedCmd.MarkFlagRequired("subscribeURL")
+	writeDatabaseMappedCmd.Flags().StringSliceVarP(&subscribeURLs, "subscribeURLs", "s", []string{}, "Nanomsg URL, the URL is used to listen for subscribed data. May be repeated to subscribe to several publishers at once.")
+	writeDatabaseMappedCmd.MarkFlagRequired("subscribeURLs")
 
 	writeCmd.AddCommand(writeMQTTCmd)
-	writeMQTTCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
-	writeMQTTCmd.MarkFlagRequired("subscribeURL")
+	writeMQTTCmd.Flags().StringSliceVarP(&subscribeURLs, "subscribeURLs", "s", []string{}, "Nanomsg URL, the URL is used to listen for subscribed data. May be repeated to subscribe to several publishers at once.")
+	writeMQTTCmd.MarkFlagRequired("subscribeURLs")
 
 	writeCmd.AddCommand(writeSignalKCmd)
-	writeSignalKCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
-	writeSignalKCmd.MarkFlagRequired("subscribeURL")
+	writeSignalKCmd.Flags().StringSliceVarP(&subscribeURLs, "subscribeURLs", "s", []string{}, "Nanomsg URL, the URL is used to listen for subscribed data. May be repeated to subscribe to several publishers at once.")
+	writeSignalKCmd.MarkFlagRequired("subscribeURLs")
 
 	writeCmd.AddCommand(writeStdOutCmd)
 	writeStdOutCmd.AddCommand(writeStdOutRawCmd)
-	writeStdOutRawCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
-	writeStdOutRawCmd.MarkFlagRequired("subscribeURL")
+	writeStdOutRawCmd.Flags().StringSliceVarP(&subscribeURLs, "subscribeURLs", "s", []string{}, "Nanomsg URL, the URL is used to listen for subscribed data. May be repeated to subscribe to several publishers at once.")
+	writeStdOutRawCmd.MarkFlagRequired("subscribeURLs")
 	writeStdOutCmd.AddCommand(writeStdOutRawStringCmd)
-	writeStdOutRawStringCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
-	writeStdOutRawStringCmd.MarkFlagRequired("subscribeURL")
+	writeStdOutRawStringCmd.Flags().StringSliceVarP(&subscribeURLs, "subscribeURLs", "s", []string{}, "Nanomsg URL, the URL is used to listen for subscribed data. May be repeated to subscribe to several publishers at once.")
+	writeStdOutRawStringCmd.MarkFlagRequired("subscribeURLs")
 	writeStdOutCmd.AddCommand(writeStdOutMappedCmd)
-	writeStdOutMappedCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
-	writeStdOutMappedCmd.MarkFlagRequired("subscribeURL")
+	writeStdOutMappedCmd.Flags().StringSliceVarP(&subscribeURLs, "subscribeURLs", "s", []string{}, "Nanomsg URL, the URL is used to listen for subscribed data. May be repeated to subscribe to several publishers at once.")
+	writeStdOutMappedCmd.MarkFlagRequired("subscribeURLs")
 
 	writeCmd.AddCommand(writeLWECmd)
-	writeLWECmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
-	writeLWECmd.MarkFlagRequired("subscribeURL")
+	writeLWECmd.Flags().StringSliceVarP(&subscribeURLs, "subscribeURLs", "s", []string{}, "Nanomsg URL, the URL is used to listen for subscribed data. May be repeated to subscribe to several publishers at once.")
+	writeLWECmd.MarkFlagRequired("subscribeURLs")
 
 	writeCmd.AddCommand(writeGrafanaCmd)
-	writeGrafanaCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
-	writeGrafanaCmd.MarkFlagRequired("subscribeURL")
+	writeGrafanaCmd.Flags().StringSliceVarP(&subscribeURLs, "subscribeURLs", "s", []string{}, "Nanomsg URL, the URL is used to listen for subscribed data. May be repeated to subscribe to several publishers at once.")
+	writeGrafanaCmd.MarkFlagRequired("subscribeURLs")
 }
 
 func doWriteDatabaseRaw(cmd *cobra.Command, args []string) {
 	subscriber, err := nanomsg.NewSubscriber[message.Raw](
-		subscribeURL,
+		subscribeURLs,
 		[]byte{},
 		nanomsg.WithSubscriberReceivedCounter[message.Raw](promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_messages_received_total", Help: "total number of received nano messages"})),
 		nanomsg.WithSubscriberUnmarshalledCounter[message.Raw](promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_messages_unmarshalled_total", Help: "total number of unmarshalled nano messages"})),
@@ -153,7 +153,7 @@ func doWriteDatabaseRaw(cmd *cobra.Command, args []string) {
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the URL",
-			zap.String("URL", subscribeURL),
+			zap.Strings("URLs", subscribeURLs),
 			zap.String("Error", err.Error()),
 		)
 	}
@@ -165,7 +165,7 @@ func doWriteDatabaseRaw(cmd *cobra.Command, args []string) {
 
 func doWriteDatabaseMapped(cmd *cobra.Command, args []string) {
 	subscriber, err := nanomsg.NewSubscriber[message.Mapped](
-		subscribeURL,
+		subscribeURLs,
 		[]byte{},
 		nanomsg.WithSubscriberReceivedCounter[message.Mapped](promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_messages_received_total", Help: "total number of received nano messages"})),
 		nanomsg.WithSubscriberUnmarshalledCounter[message.Mapped](promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_messages_unmarshalled_total", Help: "total number of unmarshalled nano messages"})),
@@ -174,7 +174,7 @@ func doWriteDatabaseMapped(cmd *cobra.Command, args []string) {
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the URL",
-			zap.String("URL", subscribeURL),
+			zap.Strings("URLs", subscribeURLs),
 			zap.String("Error", err.Error()),
 		)
 	}
@@ -186,7 +186,7 @@ func doWriteDatabaseMapped(cmd *cobra.Command, args []string) {
 
 func doWriteMQTT(cmd *cobra.Command, args []string) {
 	subscriber, err := nanomsg.NewSubscriber[message.Mapped](
-		subscribeURL,
+		subscribeURLs,
 		[]byte{},
 		nanomsg.WithSubscriberReceivedCounter[message.Mapped](promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_mqtt_messages_received_total", Help: "total number of received nano messages"})),
 		nanomsg.WithSubscriberUnmarshalledCounter[message.Mapped](promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_mqtt_messages_unmarshalled_total", Help: "total number of unmarshalled nano messages"})),
@@ -195,7 +195,7 @@ func doWriteMQTT(cmd *cobra.Command, args []string) {
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the URL",
-			zap.String("URL", subscribeURL),
+			zap.Strings("URLs", subscribeURLs),
 			zap.String("Error", err.Error()),
 		)
 	}
@@ -207,7 +207,7 @@ func doWriteMQTT(cmd *cobra.Command, args []string) {
 
 func doWriteSignalK(cmd *cobra.Command, args []string) {
 	subscriber, err := nanomsg.NewSubscriber[message.Mapped](
-		subscribeURL,
+		subscribeURLs,
 		[]byte{},
 		nanomsg.WithSubscriberReceivedCounter[message.Mapped](promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_signalk_messages_received_total", Help: "total number of received nano messages"})),
 		nanomsg.WithSubscriberUnmarshalledCounter[message.Mapped](promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_signalk_messages_unmarshalled_total", Help: "total number of unmarshalled nano messages"})),
@@ -216,7 +216,7 @@ func doWriteSignalK(cmd *cobra.Command, args []string) {
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the URL",
-			zap.String("URL", subscribeURL),
+			zap.Strings("URLs", subscribeURLs),
 			zap.String("Error", err.Error()),
 		)
 	}
@@ -228,7 +228,7 @@ func doWriteSignalK(cmd *cobra.Command, args []string) {
 
 func doWriteLWE(cmd *cobra.Command, args []string) {
 	subscriber, err := nanomsg.NewSubscriber[message.Raw](
-		subscribeURL,
+		subscribeURLs,
 		[]byte{},
 		nanomsg.WithSubscriberReceivedCounter[message.Raw](promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_lwe_messages_received_total", Help: "total number of received nano messages"})),
 		nanomsg.WithSubscriberUnmarshalledCounter[message.Raw](promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_lwe_messages_unmarshalled_total", Help: "total number of unmarshalled nano messages"})),
@@ -237,7 +237,7 @@ func doWriteLWE(cmd *cobra.Command, args []string) {
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the URL",
-			zap.String("URL", subscribeURL),
+			zap.Strings("URLs", subscribeURLs),
 			zap.String("Error", err.Error()),
 		)
 	}
@@ -248,11 +248,11 @@ func doWriteLWE(cmd *cobra.Command, args []string) {
 }
 
 func doWriteStdOutMapped(cmd *cobra.Command, args []string) {
-	subscriber, err := nanomsg.NewSubscriber[message.Mapped](subscribeURL, []byte{})
+	subscriber, err := nanomsg.NewSubscriber[message.Mapped](subscribeURLs, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the URL",
-			zap.String("URL", subscribeURL),
+			zap.Strings("URLs", subscribeURLs),
 			zap.String("Error", err.Error()),
 		)
 	}
@@ -262,11 +262,11 @@ func doWriteStdOutMapped(cmd *cobra.Command, args []string) {
 }
 
 func doWriteStdOutRaw(cmd *cobra.Command, args []string) {
-	subscriber, err := nanomsg.NewSubscriber[message.Raw](subscribeURL, []byte{})
+	subscriber, err := nanomsg.NewSubscriber[message.Raw](subscribeURLs, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the URL",
-			zap.String("URL", subscribeURL),
+			zap.Strings("URLs", subscribeURLs),
 			zap.String("Error", err.Error()),
 		)
 	}
@@ -276,11 +276,11 @@ func doWriteStdOutRaw(cmd *cobra.Command, args []string) {
 }
 
 func doWriteStdOutRawString(cmd *cobra.Command, args []string) {
-	subscriber, err := nanomsg.NewSubscriber[message.Raw](subscribeURL, []byte{})
+	subscriber, err := nanomsg.NewSubscriber[message.Raw](subscribeURLs, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the URL",
-			zap.String("URL", subscribeURL),
+			zap.Strings("URLs", subscribeURLs),
 			zap.String("Error", err.Error()),
 		)
 	}
@@ -291,7 +291,7 @@ func doWriteStdOutRawString(cmd *cobra.Command, args []string) {
 
 func doWriteGrafana(cmd *cobra.Command, args []string) {
 	subscriber, err := nanomsg.NewSubscriber[message.Mapped](
-		subscribeURL,
+		subscribeURLs,
 		[]byte{},
 		nanomsg.WithSubscriberReceivedCounter[message.Mapped](promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_grafana_messages_received_total", Help: "total number of received nano messages"})),
 		nanomsg.WithSubscriberUnmarshalledCounter[message.Mapped](promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_grafana_messages_unmarshalled_total", Help: "total number of unmarshalled nano messages"})),
@@ -300,7 +300,7 @@ func doWriteGrafana(cmd *cobra.Command, args []string) {
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe to the URL",
-			zap.String("URL", subscribeURL),
+			zap.Strings("URLs", subscribeURLs),
 			zap.String("Error", err.Error()),
 		)
 	}

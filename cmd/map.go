@@ -36,8 +36,8 @@ var mapCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(mapCmd)
-	mapCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
-	mapCmd.MarkFlagRequired("subscribeURL")
+	mapCmd.Flags().StringSliceVarP(&subscribeURLs, "subscribeURLs", "s", []string{}, "Nanomsg URL, the URL is used to listen for subscribed data. May be repeated to subscribe to several publishers at once.")
+	mapCmd.MarkFlagRequired("subscribeURLs")
 	mapCmd.Flags().StringVarP(&publishURL, "publishURL", "p", "", "Nanomsg URL, the URL is used to publish the data on. It listens for connections.")
 	mapCmd.MarkFlagRequired("publishURL")
 }
@@ -48,11 +48,11 @@ func doMap(cmd *cobra.Command, args []string) {
 	c := config.NewMapperConfig(cfgFile)
 	switch c.Protocol {
 	case config.CSVType:
-		subscriber, err := nanomsg.NewSubscriber[message.Raw](subscribeURL, []byte{})
+		subscriber, err := nanomsg.NewSubscriber[message.Raw](subscribeURLs, []byte{})
 		if err != nil {
 			logger.GetLogger().Fatal(
 				"Could not subscribe",
-				zap.String("URL", subscribeURL),
+				zap.Strings("URLs", subscribeURLs),
 				zap.String("Error", err.Error()),
 			)
 		}
@@ -68,11 +68,11 @@ func doMap(cmd *cobra.Command, args []string) {
 		}
 		m.Map(subscriber, publisher)
 	case config.JSONType:
-		subscriber, err := nanomsg.NewSubscriber[message.Raw](subscribeURL, []byte{})
+		subscriber, err := nanomsg.NewSubscriber[message.Raw](subscribeURLs, []byte{})
 		if err != nil {
 			logger.GetLogger().Fatal(
 				"Could not subscribe",
-				zap.String("URL", subscribeURL),
+				zap.Strings("URLs", subscribeURLs),
 				zap.String("Error", err.Error()),
 			)
 		}
@@ -87,11 +87,11 @@ func doMap(cmd *cobra.Command, args []string) {
 		}
 		m.Map(subscriber, publisher)
 	case config.ModbusType:
-		subscriber, err := nanomsg.NewSubscriber[message.Raw](subscribeURL, []byte{})
+		subscriber, err := nanomsg.NewSubscriber[message.Raw](subscribeURLs, []byte{})
 		if err != nil {
 			logger.GetLogger().Fatal(
 				"Could not subscribe",
-				zap.String("URL", subscribeURL),
+				zap.Strings("URLs", subscribeURLs),
 				zap.String("Error", err.Error()),
 			)
 		}
@@ -106,11 +106,11 @@ func doMap(cmd *cobra.Command, args []string) {
 		}
 		m.Map(subscriber, publisher)
 	case config.NMEA0183Type:
-		subscriber, err := nanomsg.NewSubscriber[message.Raw](subscribeURL, []byte{})
+		subscriber, err := nanomsg.NewSubscriber[message.Raw](subscribeURLs, []byte{})
 		if err != nil {
 			logger.GetLogger().Fatal(
 				"Could not subscribe",
-				zap.String("URL", subscribeURL),
+				zap.Strings("URLs", subscribeURLs),
 				zap.String("Error", err.Error()),
 			)
 		}
@@ -124,11 +124,11 @@ func doMap(cmd *cobra.Command, args []string) {
 		}
 		m.Map(subscriber, publisher)
 	case config.CanBusType:
-		subscriber, err := nanomsg.NewSubscriber[message.Raw](subscribeURL, []byte{})
+		subscriber, err := nanomsg.NewSubscriber[message.Raw](subscribeURLs, []byte{})
 		if err != nil {
 			logger.GetLogger().Fatal(
 				"Could not subscribe",
-				zap.String("URL", subscribeURL),
+				zap.Strings("URLs", subscribeURLs),
 				zap.String("Error", err.Error()),
 			)
 		}
@@ -144,11 +144,11 @@ func doMap(cmd *cobra.Command, args []string) {
 		}
 		m.Map(subscriber, publisher)
 	case config.SignalKType:
-		subscriber, err := nanomsg.NewSubscriber[message.Mapped](subscribeURL, []byte{})
+		subscriber, err := nanomsg.NewSubscriber[message.Mapped](subscribeURLs, []byte{})
 		if err != nil {
 			logger.GetLogger().Fatal(
 				"Could not subscribe",
-				zap.String("URL", subscribeURL),
+				zap.Strings("URLs", subscribeURLs),
 				zap.String("Error", err.Error()),
 			)
 		}
@@ -163,11 +163,11 @@ func doMap(cmd *cobra.Command, args []string) {
 		}
 		m.Map(subscriber, publisher)
 	case config.FftType:
-		subscriber, err := nanomsg.NewSubscriber[message.Mapped](subscribeURL, []byte{})
+		subscriber, err := nanomsg.NewSubscriber[message.Mapped](subscribeURLs, []byte{})
 		if err != nil {
 			logger.GetLogger().Fatal(
 				"Could not subscribe",
-				zap.String("URL", subscribeURL),
+				zap.Strings("URLs", subscribeURLs),
 				zap.String("Error", err.Error()),
 			)
 		}
@@ -182,11 +182,11 @@ func doMap(cmd *cobra.Command, args []string) {
 		}
 		m.Map(subscriber, publisher)
 	case config.MeteoHydroType:
-		subscriber, err := nanomsg.NewSubscriber[message.Mapped](subscribeURL, []byte{})
+		subscriber, err := nanomsg.NewSubscriber[message.Mapped](subscribeURLs, []byte{})
 		if err != nil {
 			logger.GetLogger().Fatal(
 				"Could not subscribe",
-				zap.String("URL", subscribeURL),
+				zap.Strings("URLs", subscribeURLs),
 				zap.String("Error", err.Error()),
 			)
 		}
@@ -201,11 +201,11 @@ func doMap(cmd *cobra.Command, args []string) {
 		}
 		m.Map(subscriber, publisher)
 	case config.BinaryType:
-		subscriber, err := nanomsg.NewSubscriber[message.Raw](subscribeURL, []byte{})
+		subscriber, err := nanomsg.NewSubscriber[message.Raw](subscribeURLs, []byte{})
 		if err != nil {
 			logger.GetLogger().Fatal(
 				"Could not subscribe",
-				zap.String("URL", subscribeURL),
+				zap.Strings("URLs", subscribeURLs),
 				zap.String("Error", err.Error()),
 			)
 		}

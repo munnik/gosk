@@ -19,18 +19,18 @@ var rateLimitCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(rateLimitCmd)
-	rateLimitCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
-	rateLimitCmd.MarkFlagRequired("subscribeURL")
+	rateLimitCmd.Flags().StringSliceVarP(&subscribeURLs, "subscribeURLs", "s", []string{}, "Nanomsg URL, the URL is used to listen for subscribed data. May be repeated to subscribe to several publishers at once.")
+	rateLimitCmd.MarkFlagRequired("subscribeURLs")
 	rateLimitCmd.Flags().StringVarP(&publishURL, "publishURL", "p", "", "Nanomsg URL, the URL is used to publish the data on. It listens for connections.")
 	rateLimitCmd.MarkFlagRequired("publishURL")
 }
 
 func doRateLimit(cmd *cobra.Command, args []string) {
-	subscriber, err := nanomsg.NewSubscriber[message.Mapped](subscribeURL, []byte{})
+	subscriber, err := nanomsg.NewSubscriber[message.Mapped](subscribeURLs, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe",
-			zap.String("URL", subscribeURL),
+			zap.Strings("URLs", subscribeURLs),
 			zap.String("Error", err.Error()),
 		)
 	}

@@ -1,9 +1,8 @@
 package nanomsg
 
 import (
-	"time"
+	"fmt"
 
-	"github.com/jpillora/backoff"
 	"github.com/munnik/gosk/logger"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/tinylib/msgp/msgp"
@@ -42,34 +41,39 @@ func WithSubscriberBufferSizeGauge[T Message](g prometheus.Gauge) SubscriberOpti
 	}
 }
 
-func NewSubscriber[T Message](url string, topic []byte, opts ...SubscriberOption[T]) (*Subscriber[T], error) {
+// NewSubscriber subscribes to every publisher in urls at once. A single
+// nanomsg sub socket can dial any number of endpoints and multiplexes all
+// of them into one Recv stream, which is exactly what the separate proxy
+// process used to do by hand: fan several publishers into one subscriber.
+// Doing it here instead means a processor names the processors it reads
+// from directly, with no extra process, no extra hop and no extra copy of
+// every message in between.
+//
+// The endpoints are dialled asynchronously, so a publisher that is not
+// listening yet - or not any more - neither fails the subscription nor
+// holds up the endpoints next to it, mangos keeps retrying it in the
+// background and redials it when it comes back. This replaces the retry
+// loop that used to sit here: with one url it blocked until that
+// publisher was up, which is exactly the wrong behaviour once there are
+// several, where one publisher being down would otherwise stop the
+// subscriber from ever reading the others.
+func NewSubscriber[T Message](urls []string, topic []byte, opts ...SubscriberOption[T]) (*Subscriber[T], error) {
+	if len(urls) == 0 {
+		return nil, fmt.Errorf("no url to subscribe to")
+	}
+
 	socket, err := sub.NewSocket()
 	if err != nil {
 		return nil, err
 	}
 
-	b := &backoff.Backoff{
-		//These are the defaults
-		Min:    1 * time.Millisecond,
-		Max:    5 * time.Minute,
-		Factor: 1.5,
-		Jitter: false,
-	}
-	var d time.Duration
-
-	for {
-		err := socket.Dial(url)
-		if err == nil {
-			break
+	for _, url := range urls {
+		// an error here is the url itself being unusable (malformed, or
+		// an unknown transport), not the publisher being unreachable,
+		// so it is worth failing on rather than retrying
+		if err := socket.DialOptions(url, map[string]interface{}{mangos.OptionDialAsynch: true}); err != nil {
+			return nil, fmt.Errorf("could not dial the publisher %v: %w", url, err)
 		}
-		d = b.Duration()
-		logger.GetLogger().Warn(
-			"Could not dial the publisher, will retry",
-			zap.String("URL", url),
-			zap.String("Error", err.Error()),
-			zap.Duration("Back off time", d),
-		)
-		time.Sleep(d)
 	}
 	if err := socket.SetOption(mangos.OptionSubscribe, topic); err != nil {
 		return nil, err

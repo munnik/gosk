@@ -35,8 +35,8 @@ var reverseMapCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(reverseMapCmd)
-	reverseMapCmd.Flags().StringSliceVarP(&subscribeURLs, "subscribeURLs", "s", []string{}, "Nanomsg URL, the URL is used to listen for subscribed data. May be repeated to subscribe to several publishers at once.")
-	reverseMapCmd.MarkFlagRequired("subscribeURLs")
+	reverseMapCmd.Flags().StringSliceVarP(&subscribeURLs, "subscribeURL", "s", []string{}, "Nanomsg URL, the URL is used to listen for subscribed data. May be repeated to subscribe to several publishers at once.")
+	reverseMapCmd.MarkFlagRequired("subscribeURL")
 	reverseMapCmd.Flags().StringVarP(&publishURL, "publishURL", "p", "", "Nanomsg URL, the URL is used to publish the data on. It listens for connections.")
 	reverseMapCmd.MarkFlagRequired("publishURL")
 }

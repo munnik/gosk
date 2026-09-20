@@ -46,6 +46,27 @@ func (f *fakeWeatherSource) fail(err error) {
 	f.err = err
 }
 
+// fakeMarineSource is the fakeWeatherSource of the marine endpoint.
+type fakeMarineSource struct {
+	mutex       sync.Mutex
+	calls       int
+	observation *marineObservation
+	err         error
+}
+
+func (f *fakeMarineSource) fetch(_ context.Context, _ float64, _ float64) (*marineObservation, error) {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	f.calls++
+	return f.observation, f.err
+}
+
+func (f *fakeMarineSource) callCount() int {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	return f.calls
+}
+
 func float(value float64) *float64 {
 	return &value
 }
@@ -72,7 +93,29 @@ func fullObservation(timestamp time.Time) *weatherObservation {
 		relativeHumidity: float(0.72),
 		pressure:         float(101300),
 		windSpeed:        float(10),
+		windGust:         float(17),
 		windDirection:    float(degrees(45)),
+		visibility:       float(24000),
+	}
+}
+
+// fullMarineObservation is a moderate sea from the north west with a bit
+// of swell running in from the south west.
+func fullMarineObservation(timestamp time.Time) *marineObservation {
+	return &marineObservation{
+		timestamp:             timestamp,
+		waveHeight:            float(1.9),
+		waveDirection:         float(degrees(300)),
+		wavePeriod:            float(5.5),
+		windWaveHeight:        float(1.8),
+		windWaveDirection:     float(degrees(298)),
+		windWavePeriod:        float(4.9),
+		swellHeight:           float(0.6),
+		swellDirection:        float(degrees(220)),
+		swellPeriod:           float(4.7),
+		seaSurfaceTemperature: float(292.45),
+		currentSpeed:          float(0.35),
+		currentDirection:      float(degrees(90)),
 	}
 }
 
@@ -88,16 +131,32 @@ func positionValue(latitude float64, longitude float64) *message.Value {
 	return message.NewValue().WithPath(weatherPathPosition).WithValue(message.Position{Latitude: &latitude, Longitude: &longitude})
 }
 
-// valuesByPath collapses an update into a path to value map, every value
-// this mapper publishes is a float64 on a unique path.
+// valuesByPath collapses an update into a path to value map. Every value
+// this mapper publishes is a float64 on a unique path, except
+// environment.current, which is left out here and checked on its own.
 func valuesByPath(mapped *message.Mapped) map[string]float64 {
 	result := make(map[string]float64)
 	for _, update := range mapped.Updates {
 		for _, value := range update.Values {
-			result[value.Path] = value.Value.(float64)
+			if f, ok := value.Value.(float64); ok {
+				result[value.Path] = f
+			}
 		}
 	}
 	return result
+}
+
+// valueAtPath returns the raw value published on path, for the paths that
+// are not a plain float64.
+func valueAtPath(mapped *message.Mapped, path string) (interface{}, bool) {
+	for _, update := range mapped.Updates {
+		for _, value := range update.Values {
+			if value.Path == path {
+				return value.Value, true
+			}
+		}
+	}
+	return nil, false
 }
 
 var _ = Describe("normalizeAngle", func() {
@@ -107,6 +166,15 @@ var _ = Describe("normalizeAngle", func() {
 		Expect(normalizeAngle(degrees(270))).To(BeNumerically("~", degrees(-90), 1e-9))
 		Expect(normalizeAngle(degrees(-270))).To(BeNumerically("~", degrees(90), 1e-9))
 		Expect(normalizeAngle(degrees(720 + 10))).To(BeNumerically("~", degrees(10), 1e-9))
+	})
+})
+
+var _ = Describe("normalizeDirection", func() {
+	It("folds an angle into [0, 2pi), the range a compass direction uses", func() {
+		Expect(normalizeDirection(0)).To(BeNumerically("~", 0, 1e-9))
+		Expect(normalizeDirection(degrees(301))).To(BeNumerically("~", degrees(301), 1e-9))
+		Expect(normalizeDirection(degrees(-61))).To(BeNumerically("~", degrees(299), 1e-9))
+		Expect(normalizeDirection(degrees(370))).To(BeNumerically("~", degrees(10), 1e-9))
 	})
 })
 
@@ -331,7 +399,7 @@ var _ = Describe("weatherCache", func() {
 	})
 
 	It("serves every position within the same grid cell", func() {
-		cache := newWeatherCache(0.1, time.Hour, 10)
+		cache := newWeatherCache[*weatherObservation](0.1, time.Hour, 10)
 		cache.put(52.01, 4.01, now, fullObservation(now))
 
 		_, ok := cache.get(52.02, 4.02, now)
@@ -342,7 +410,7 @@ var _ = Describe("weatherCache", func() {
 	})
 
 	It("does not serve an observation that aged past the maximum age", func() {
-		cache := newWeatherCache(0.1, time.Hour, 10)
+		cache := newWeatherCache[*weatherObservation](0.1, time.Hour, 10)
 		cache.put(52, 4, now, fullObservation(now))
 
 		_, ok := cache.get(52, 4, now.Add(59*time.Minute))
@@ -353,7 +421,7 @@ var _ = Describe("weatherCache", func() {
 	})
 
 	It("keeps at most the configured number of cells, dropping the oldest", func() {
-		cache := newWeatherCache(0.1, time.Hour, 2)
+		cache := newWeatherCache[*weatherObservation](0.1, time.Hour, 2)
 		cache.put(52, 4, now, fullObservation(now))
 		cache.put(53, 4, now.Add(time.Minute), fullObservation(now))
 		cache.put(54, 4, now.Add(2*time.Minute), fullObservation(now))
@@ -369,19 +437,16 @@ var _ = Describe("weatherCache", func() {
 var _ = Describe("WeatherMapper", func() {
 	var now time.Time
 	var source *fakeWeatherSource
+	var marine *fakeMarineSource
 	var m *WeatherMapper
 
 	// tick runs a single evaluation and waits for any request it started
 	// to finish, so the next tick sees the result of that request.
 	tick := func(at time.Time) *message.Mapped {
-		before := source.callCount()
 		result := m.refreshMap(at)
 		Eventually(func() bool {
-			m.fetchMutex.Lock()
-			defer m.fetchMutex.Unlock()
-			return !m.fetching
+			return m.air.idle() && (m.marine == nil || m.marine.idle())
 		}).Should(BeTrue())
-		Expect(source.callCount()).To(BeNumerically(">=", before))
 		return result
 	}
 
@@ -396,7 +461,8 @@ var _ = Describe("WeatherMapper", func() {
 	BeforeEach(func() {
 		now = time.Date(2026, time.September, 20, 12, 0, 0, 0, time.UTC)
 		source = &fakeWeatherSource{observation: fullObservation(now)}
-		m = newWeatherMapper(weatherTestConfig(), source)
+		marine = &fakeMarineSource{observation: fullMarineObservation(now)}
+		m = newWeatherMapper(weatherTestConfig(), source, marine)
 	})
 
 	Describe("DoMap", func() {
@@ -526,6 +592,13 @@ var _ = Describe("WeatherMapper", func() {
 			values := valuesByPath(tick(now.Add(10 * time.Second)))
 
 			Expect(values[weatherPathWindDirectionMagnetic]).To(BeNumerically("~", degrees(40), 1e-9))
+
+			// a direction never comes out negative, unlike an angle
+			m.DoMap(navigationUpdate(now.Add(time.Second),
+				message.NewValue().WithPath(weatherPathMagneticVariation).WithValue(degrees(50)),
+			))
+			values = valuesByPath(tick(now.Add(70 * time.Second)))
+			Expect(values[weatherPathWindDirectionMagnetic]).To(BeNumerically("~", degrees(355), 1e-9))
 		})
 
 		It("publishes the wind chill of a cold day", func() {
@@ -545,6 +618,70 @@ var _ = Describe("WeatherMapper", func() {
 			Expect(values).To(HaveKey(weatherPathOutsideTheoreticalWindChill))
 			Expect(values).To(HaveKey(weatherPathOutsideApparentWindChill))
 			Expect(values[weatherPathOutsideApparentWindChill]).To(BeNumerically("<", values[weatherPathOutsideTheoreticalWindChill]))
+		})
+
+		It("publishes the sea state at sea", func() {
+			m.DoMap(navigationUpdate(now,
+				positionValue(52.5, 3.5),
+				message.NewValue().WithPath(weatherPathHeadingTrue).WithValue(degrees(240)),
+				message.NewValue().WithPath(weatherPathMagneticVariation).WithValue(degrees(2)),
+			))
+			tick(now)
+
+			result := tick(now.Add(10 * time.Second))
+			values := valuesByPath(result)
+
+			Expect(values).To(HaveKeyWithValue(weatherPathWavesHeight, 1.9))
+			Expect(values[weatherPathWavesDirection]).To(BeNumerically("~", degrees(300), 1e-9))
+			Expect(values).To(HaveKeyWithValue(weatherPathWavesPeriod, 5.5))
+			Expect(values).To(HaveKeyWithValue(weatherPathWindWavesHeight, 1.8))
+			Expect(values).To(HaveKeyWithValue(weatherPathSwellHeight, 0.6))
+			Expect(values[weatherPathSwellDirection]).To(BeNumerically("~", degrees(220), 1e-9))
+			Expect(values).To(HaveKeyWithValue(weatherPathWaterTemperature, 292.45))
+			// the sea runs 60 degrees off the starboard bow
+			Expect(values[weatherPathWavesAngle]).To(BeNumerically("~", degrees(60), 1e-9))
+
+			// environment.current is an object, not a scalar
+			raw, ok := valueAtPath(result, weatherPathCurrent)
+			Expect(ok).To(BeTrue())
+			current, ok := raw.(message.Current)
+			Expect(ok).To(BeTrue())
+			Expect(*current.Drift).To(BeNumerically("~", 0.35, 1e-9))
+			Expect(*current.SetTrue).To(BeNumerically("~", degrees(90), 1e-9))
+			Expect(*current.SetMagnetic).To(BeNumerically("~", degrees(88), 1e-9))
+		})
+
+		It("publishes no sea state where there is none", func() {
+			// what the marine API answers for an inland waterway: a value
+			// for nothing at all
+			marine.observation = &marineObservation{timestamp: now}
+			m.DoMap(navigationUpdate(now,
+				positionValue(51.85, 5.85),
+				message.NewValue().WithPath(weatherPathHeadingTrue).WithValue(degrees(240)),
+			))
+			tick(now)
+
+			values := valuesByPath(tick(now.Add(10 * time.Second)))
+
+			// the atmospheric values are published as usual
+			Expect(values).To(HaveKey(weatherPathOutsideTemperature))
+			Expect(values).To(HaveKey(weatherPathWindSpeedApparent))
+			// but nothing about a sea that is not there
+			Expect(values).ToNot(HaveKey(weatherPathWavesHeight))
+			Expect(values).ToNot(HaveKey(weatherPathWavesAngle))
+			Expect(values).ToNot(HaveKey(weatherPathWaterTemperature))
+			_, ok := valueAtPath(tick(now.Add(30*time.Second)), weatherPathCurrent)
+			Expect(ok).To(BeFalse())
+		})
+
+		It("publishes the gusts and the visibility", func() {
+			m.DoMap(navigationUpdate(now, positionValue(52.1, 4.2)))
+			tick(now)
+
+			values := valuesByPath(tick(now.Add(10 * time.Second)))
+
+			Expect(values).To(HaveKeyWithValue(weatherPathWindGust, 17.0))
+			Expect(values).To(HaveKeyWithValue(weatherPathOutsideVisibility, 24000.0))
 		})
 	})
 
@@ -587,12 +724,75 @@ var _ = Describe("WeatherMapper", func() {
 		It("never publishes faster than the minimum allowed interval", func() {
 			c := weatherTestConfig()
 			c.MinPublishInterval = time.Second
-			m = newWeatherMapper(c, source)
+			m = newWeatherMapper(c, source, marine)
 			m.DoMap(navigationUpdate(now, positionValue(52.1, 4.2)))
 			m.navigation.speedOverGround.set(6, now)
 			tick(now)
 
 			Expect(m.publishInterval(now)).To(BeNumerically(">=", config.MinAllowedPublishInterval))
+		})
+	})
+
+	Describe("requests to the marine API", func() {
+		It("stops asking for a sea state where there is none", func() {
+			marine.observation = &marineObservation{timestamp: now}
+			report(now)
+			tick(now)
+			Expect(marine.callCount()).To(Equal(1))
+			Expect(source.callCount()).To(Equal(1))
+
+			// an hour later the weather is refreshed, the sea state that
+			// does not exist is not asked for again
+			report(now.Add(time.Hour))
+			tick(now.Add(time.Hour))
+			Expect(source.callCount()).To(Equal(2))
+			Expect(marine.callCount()).To(Equal(1))
+
+			// only after the inland retry interval is it checked again,
+			// a vessel could have moved from a canal onto open water
+			report(now.Add(25 * time.Hour))
+			tick(now.Add(25 * time.Hour))
+			Expect(marine.callCount()).To(Equal(2))
+		})
+
+		It("refreshes a real sea state on its own, slower interval", func() {
+			report(now)
+			tick(now)
+			Expect(marine.callCount()).To(Equal(1))
+
+			// the weather is refreshed every 10 minutes, the sea state
+			// every 30
+			report(now.Add(11 * time.Minute))
+			tick(now.Add(11 * time.Minute))
+			Expect(source.callCount()).To(Equal(2))
+			Expect(marine.callCount()).To(Equal(1))
+
+			report(now.Add(31 * time.Minute))
+			tick(now.Add(31 * time.Minute))
+			Expect(marine.callCount()).To(Equal(2))
+		})
+
+		It("keeps publishing the weather when the marine API fails", func() {
+			marine.err = fmt.Errorf("the marine API is down")
+			report(now)
+			tick(now)
+
+			values := valuesByPath(tick(now.Add(10 * time.Second)))
+
+			Expect(values).To(HaveKey(weatherPathOutsideTemperature))
+			Expect(values).ToNot(HaveKey(weatherPathWavesHeight))
+		})
+
+		It("never asks at all when the sea state is turned off", func() {
+			m = newWeatherMapper(weatherTestConfig(), source, nil)
+			report(now)
+			tick(now)
+
+			values := valuesByPath(tick(now.Add(10 * time.Second)))
+
+			Expect(marine.callCount()).To(BeZero())
+			Expect(values).To(HaveKey(weatherPathOutsideTemperature))
+			Expect(values).ToNot(HaveKey(weatherPathWavesHeight))
 		})
 	})
 
@@ -677,7 +877,7 @@ var _ = Describe("WeatherMapper", func() {
 		It("keeps publishing the cached observation while the weather API is down", func() {
 			c := weatherTestConfig()
 			c.MaxDataAge = 30 * time.Minute
-			m = newWeatherMapper(c, source)
+			m = newWeatherMapper(c, source, marine)
 
 			report(now)
 			tick(now)
@@ -711,14 +911,16 @@ var _ = Describe("openMeteoSource", func() {
 					"dew_point_2m": 9.3,
 					"surface_pressure": 1011.2,
 					"pressure_msl": 1013.4,
+					"visibility": 26720.0,
 					"wind_speed_10m": 7.5,
-					"wind_direction_10m": 225
+					"wind_direction_10m": 225,
+					"wind_gusts_10m": 14.2
 				}
 			}`)
 		}))
 		defer server.Close()
 
-		observation, err := newOpenMeteoSource(server.URL, time.Second).fetch(context.Background(), 52.1, 4.2)
+		observation, err := newOpenMeteoSource(server.URL, "", time.Second).fetch(context.Background(), 52.1, 4.2)
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(requested).To(ContainSubstring("latitude=52.1000"))
@@ -730,6 +932,8 @@ var _ = Describe("openMeteoSource", func() {
 		// the pressure at the vessel, not the one at sea level
 		Expect(*observation.pressure).To(BeNumerically("~", 101120, 1e-6))
 		Expect(*observation.windSpeed).To(BeNumerically("~", 7.5, 1e-9))
+		Expect(*observation.windGust).To(BeNumerically("~", 14.2, 1e-9))
+		Expect(*observation.visibility).To(BeNumerically("~", 26720, 1e-9))
 		Expect(*observation.windDirection).To(BeNumerically("~", degrees(225), 1e-9))
 		Expect(observation.timestamp).To(Equal(time.Unix(1789000200, 0).UTC()))
 	})
@@ -740,7 +944,7 @@ var _ = Describe("openMeteoSource", func() {
 		}))
 		defer server.Close()
 
-		observation, err := newOpenMeteoSource(server.URL, time.Second).fetch(context.Background(), 52.1, 4.2)
+		observation, err := newOpenMeteoSource(server.URL, "", time.Second).fetch(context.Background(), 52.1, 4.2)
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(*observation.pressure).To(BeNumerically("~", 101340, 1e-6))
@@ -753,10 +957,24 @@ var _ = Describe("openMeteoSource", func() {
 		}))
 		defer server.Close()
 
-		_, err := newOpenMeteoSource(server.URL, time.Second).fetch(context.Background(), 152.1, 4.2)
+		_, err := newOpenMeteoSource(server.URL, "", time.Second).fetch(context.Background(), 152.1, 4.2)
 
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("Latitude must be in range"))
+	})
+
+	It("passes a configured model through to the API", func() {
+		var requested string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requested = r.URL.RawQuery
+			fmt.Fprint(w, `{"current": {"time": 1789000200, "temperature_2m": 12.4}}`)
+		}))
+		defer server.Close()
+
+		_, err := newOpenMeteoSource(server.URL, "knmi_seamless", time.Second).fetch(context.Background(), 52.1, 4.2)
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(requested).To(ContainSubstring("models=knmi_seamless"))
 	})
 
 	It("treats a response without any usable value as a failed request", func() {
@@ -765,8 +983,80 @@ var _ = Describe("openMeteoSource", func() {
 		}))
 		defer server.Close()
 
-		_, err := newOpenMeteoSource(server.URL, time.Second).fetch(context.Background(), 52.1, 4.2)
+		_, err := newOpenMeteoSource(server.URL, "", time.Second).fetch(context.Background(), 52.1, 4.2)
 
 		Expect(err).To(HaveOccurred())
+	})
+})
+
+var _ = Describe("openMeteoMarineSource", func() {
+	It("requests the sea state and converts it to Signal K units", func() {
+		var requested string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requested = r.URL.RawQuery
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{
+				"latitude": 52.5, "longitude": 3.5, "elevation": 0.0,
+				"current": {
+					"time": 1789000200,
+					"wave_height": 1.92,
+					"wave_direction": 294,
+					"wave_period": 5.55,
+					"wind_wave_height": 1.80,
+					"wind_wave_direction": 298,
+					"wind_wave_period": 4.95,
+					"swell_wave_height": 0.58,
+					"swell_wave_direction": 221,
+					"swell_wave_period": 4.70,
+					"sea_surface_temperature": 19.3,
+					"ocean_current_velocity": 0.72,
+					"ocean_current_direction": 90
+				}
+			}`)
+		}))
+		defer server.Close()
+
+		observation, err := newOpenMeteoMarineSource(server.URL, "", time.Second).fetch(context.Background(), 52.5, 3.5)
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(requested).To(ContainSubstring("latitude=52.5000"))
+		Expect(observation.isEmpty()).To(BeFalse())
+		Expect(*observation.waveHeight).To(BeNumerically("~", 1.92, 1e-9))
+		Expect(*observation.waveDirection).To(BeNumerically("~", degrees(294), 1e-9))
+		Expect(*observation.wavePeriod).To(BeNumerically("~", 5.55, 1e-9))
+		Expect(*observation.windWaveDirection).To(BeNumerically("~", degrees(298), 1e-9))
+		Expect(*observation.swellHeight).To(BeNumerically("~", 0.58, 1e-9))
+		Expect(*observation.seaSurfaceTemperature).To(BeNumerically("~", 292.45, 1e-9))
+		// the marine API ignores a velocity unit and always answers in
+		// km/h, 0.72 km/h is 0.2 m/s
+		Expect(*observation.currentSpeed).To(BeNumerically("~", 0.2, 1e-9))
+		Expect(*observation.currentDirection).To(BeNumerically("~", degrees(90), 1e-9))
+	})
+
+	It("returns an empty observation, not an error, away from the sea", func() {
+		// what the API answers for a position on an inland waterway
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprint(w, `{"latitude": 51.875, "longitude": 5.875, "elevation": 11.0,
+				"current": {"time": 1789000200, "wave_height": null, "sea_surface_temperature": null}}`)
+		}))
+		defer server.Close()
+
+		observation, err := newOpenMeteoMarineSource(server.URL, "", time.Second).fetch(context.Background(), 51.85, 5.85)
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(observation.isEmpty()).To(BeTrue())
+	})
+
+	It("reports the reason a request was rejected", func() {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error": true, "reason": "Cannot initialize WeatherVariable from invalid String value"}`)
+		}))
+		defer server.Close()
+
+		_, err := newOpenMeteoMarineSource(server.URL, "", time.Second).fetch(context.Background(), 52.5, 3.5)
+
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("Cannot initialize WeatherVariable"))
 	})
 })

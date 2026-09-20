@@ -44,6 +44,7 @@ func TestValueMsgpRoundTrip(t *testing.T) {
 			Coefficients:      []Coefficient{{Magnitude: 1.0, Phase: 0.5}, {Magnitude: 2.0, Phase: 1.5}},
 		}}},
 		{name: "Vector3D", v: Value{Path: "some.vector.path", Value: Vector3D{X: 1, Y: 2, Z: 3}}},
+		{name: "Current", v: Value{Path: "environment.current", Value: Current{Drift: float64Ptr(0.35), SetTrue: float64Ptr(1.57)}}},
 		// exercises the fallback branch itself: value_msgp.go has no case
 		// for map[string]interface{} (this is what an expr literal like
 		// mapper/modbus_test.yaml's '{"state": ..., "message": ...}'

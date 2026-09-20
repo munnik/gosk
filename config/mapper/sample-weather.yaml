@@ -15,9 +15,31 @@ protocol: "weather"
 
 # Base url of an Open-Meteo compatible forecast API, the query parameters
 # are added by the mapper. Defaults to the public API, which needs no
-# account and no API key. Point this at a self hosted instance to stop
-# depending on a third party [optional]
+# account and no API key - note that the public API is licensed for
+# non-commercial use only, a commercial fleet needs either a paid plan or
+# a self hosted instance (the server is AGPLv3). Point this at that
+# instance to stop depending on a third party and to lose the rate limits
+# [optional]
 url: "https://api.open-meteo.com/v1/forecast"
+
+# Base url of the matching marine API, a separate endpoint that provides
+# the sea state. Leave it empty to turn the sea state off entirely, which
+# is what a fleet that never leaves the inland waterways wants
+# [optional, defaults to the public marine API]
+marineUrl: "https://marine-api.open-meteo.com/v1/marine"
+
+# Weather model to use. Empty (the default) lets the API pick the highest
+# resolution model that covers the vessel's position, which is what a
+# fleet spread over several countries wants: KNMI Harmonie (2 km) in the
+# Netherlands and Belgium, Meteo-France AROME (1-2.5 km) in France and
+# DWD ICON-D2 (2 km) in Germany. Set it to pin one model everywhere, e.g.
+# knmi_seamless, arome_france, icon_d2 or ecmwf_ifs025 [optional]
+# models: ""
+
+# The same for the marine API, e.g. ewam for the DWD European wave model
+# (0.05 degrees, the highest resolution one for the North Sea), mfwam for
+# Meteo-France (0.08 degrees) or ecmwf_wam (9 km) [optional]
+# marineModels: ""
 
 # How often the decision to publish is taken, defaults to half the minimum
 # publish interval. This is not the publish interval itself [optional]
@@ -48,6 +70,20 @@ minSpeedOverGround: 0.5
 # A fetched observation is reused for the whole of this interval, and for
 # every position inside the same grid cell [optional, defaults to 10m]
 refreshInterval: 10m
+
+# The same for the sea state, which changes slower than the weather does
+# [optional, defaults to 30m]
+marineRefreshInterval: 30m
+
+# How long a position with no sea state at all is remembered as such. The
+# marine API answers with nulls everywhere for a position on an inland
+# waterway, and a canal does not grow a sea state in ten minutes, so that
+# answer is kept far longer than a real one - a barge on the Rhine would
+# otherwise spend a request per refresh interval, for its whole working
+# life, confirming that the Rhine still has no swell. It is checked again
+# after this interval because a vessel can leave the canal for open water
+# [optional, defaults to 24h]
+inlandRetryInterval: 24h
 
 # Size of a grid cell in degrees, 0.1 is roughly 11 km of latitude and is
 # well inside the resolution of the models behind the public weather APIs

@@ -604,6 +604,15 @@ func NewTestDataConfig(configFilePath string) *TestDataConfig {
 // publishing anything, and a stale heading/course/speed is treated as
 // absent when deciding what can be calculated.
 //
+// LiveDataTimeout is how long a value from another source keeps this
+// mapper off that path. A modelled value is never as good as an
+// instrument on the vessel itself, so any path another source is
+// currently publishing is left alone entirely - which is what lets the
+// mapper run on a vessel that does have a wind sensor. A source that goes
+// quiet for LiveDataTimeout hands the path back rather than leaving it
+// empty. For that to work the mapper has to see every other mapper on the
+// vessel, see subscribeTo in the nix configuration.
+//
 // MinSpeedOverGround is the speed under which the vessel counts as not
 // moving: its course over ground is meaningless at (almost) zero speed,
 // so it is neither used as the reference direction for wind angles nor
@@ -624,6 +633,7 @@ type MeteoHydroMapperConfig struct {
 	RequestTimeout            time.Duration `mapstructure:"requestTimeout"`
 	MaxDataAge                time.Duration `mapstructure:"maxDataAge"`
 	NavigationTimeout         time.Duration `mapstructure:"navigationTimeout"`
+	LiveDataTimeout           time.Duration `mapstructure:"liveDataTimeout"`
 	GridResolution            float64       `mapstructure:"gridResolution"`
 	CacheSize                 int           `mapstructure:"cacheSize"`
 	MinSpeedOverGround        float64       `mapstructure:"minSpeedOverGround"`
@@ -660,6 +670,7 @@ func DefaultMeteoHydroMapperConfig() MeteoHydroMapperConfig {
 		RequestTimeout:            15 * time.Second,
 		MaxDataAge:                3 * time.Hour,
 		NavigationTimeout:         5 * time.Minute,
+		LiveDataTimeout:           2 * time.Minute,
 		GridResolution:            defaultGridResolution,
 		CacheSize:                 64,
 		MinSpeedOverGround:        0.5,

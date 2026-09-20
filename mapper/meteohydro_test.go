@@ -703,6 +703,87 @@ var _ = Describe("MeteoHydroMapper", func() {
 		})
 	})
 
+	Describe("live sensor data", func() {
+		// what a real instrument's value looks like on the wire: the
+		// same path this mapper publishes, from somebody else's source
+		sensorUpdate := func(at time.Time, path string, value float64) *message.Mapped {
+			update := message.NewUpdate().
+				WithSource(*message.NewSource().WithLabel("Wind").WithType("nmea0183")).
+				WithTimestamp(at).
+				AddValue(message.NewValue().WithPath(path).WithValue(value))
+			return message.NewMapped().WithContext(meteoHydroTestContext).AddUpdate(update)
+		}
+
+		BeforeEach(func() {
+			report(now)
+			prime(now)
+		})
+
+		It("leaves a path an instrument is publishing alone", func() {
+			m.DoMap(sensorUpdate(now, meteoHydroPathWindSpeedOverGround, 7.3))
+
+			values := valuesByPath(tick(now.Add(10 * time.Second)))
+
+			Expect(values).ToNot(HaveKey(meteoHydroPathWindSpeedOverGround))
+			// only that path, everything the instrument does not
+			// report is still filled in
+			Expect(values).To(HaveKey(meteoHydroPathOutsideTemperature))
+			Expect(values).To(HaveKey(meteoHydroPathWindDirectionTrue))
+		})
+
+		It("takes the path back once the instrument goes quiet", func() {
+			m.DoMap(sensorUpdate(now, meteoHydroPathWindSpeedOverGround, 7.3))
+			Expect(valuesByPath(tick(now.Add(10 * time.Second)))).ToNot(HaveKey(meteoHydroPathWindSpeedOverGround))
+
+			// still quiet, but not long enough to be given up on
+			report(now.Add(time.Minute))
+			Expect(valuesByPath(tick(now.Add(time.Minute)))).ToNot(HaveKey(meteoHydroPathWindSpeedOverGround))
+
+			// gone for longer than the timeout, the model takes over
+			report(now.Add(3 * time.Minute))
+			Expect(valuesByPath(tick(now.Add(3 * time.Minute)))).To(HaveKeyWithValue(meteoHydroPathWindSpeedOverGround, 10.0))
+		})
+
+		It("defers again as soon as the instrument comes back", func() {
+			report(now.Add(3 * time.Minute))
+			Expect(valuesByPath(tick(now.Add(3 * time.Minute)))).To(HaveKey(meteoHydroPathWindSpeedOverGround))
+
+			m.DoMap(sensorUpdate(now.Add(4*time.Minute), meteoHydroPathWindSpeedOverGround, 7.3))
+			report(now.Add(4 * time.Minute))
+			Expect(valuesByPath(tick(now.Add(4 * time.Minute)))).ToNot(HaveKey(meteoHydroPathWindSpeedOverGround))
+		})
+
+		It("does not defer to its own output coming back", func() {
+			// what this mapper published a moment ago, returning to it
+			// because it subscribes to every mapper on the vessel
+			own := message.NewUpdate().
+				WithSource(*message.NewSource().WithLabel("meteohydro").WithType(config.MeteoHydroType)).
+				WithTimestamp(now).
+				AddValue(message.NewValue().WithPath(meteoHydroPathWindSpeedOverGround).WithValue(10.0))
+			m.DoMap(message.NewMapped().WithContext(meteoHydroTestContext).AddUpdate(own))
+
+			values := valuesByPath(tick(now.Add(10 * time.Second)))
+
+			Expect(values).To(HaveKeyWithValue(meteoHydroPathWindSpeedOverGround, 10.0))
+		})
+
+		It("keeps using an instrument's navigation data while deferring", func() {
+			// the wind sensor of a vessel that also reports its heading
+			// over the same connector: the heading is an input, not an
+			// output, so it is used rather than deferred to
+			m.DoMap(sensorUpdate(now, meteoHydroPathWindDirectionTrue, degrees(200)))
+			m.DoMap(navigationUpdate(now, message.NewValue().WithPath(meteoHydroPathHeadingTrue).WithValue(degrees(45))))
+
+			values := valuesByPath(tick(now.Add(10 * time.Second)))
+
+			Expect(values).ToNot(HaveKey(meteoHydroPathWindDirectionTrue))
+			// the apparent wind is this mapper's own path and is still
+			// calculated, from the model's wind and the vessel heading
+			Expect(values).To(HaveKey(meteoHydroPathWindSpeedApparent))
+			Expect(values[meteoHydroPathWindAngleApparent]).To(BeNumerically("~", 0, 1e-9))
+		})
+	})
+
 	Describe("publish interval", func() {
 		JustBeforeEach(func() {
 			m.DoMap(navigationUpdate(now, positionValue(52.1, 4.2)))

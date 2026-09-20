@@ -110,6 +110,17 @@ requestTimeout: 15s
 # morning's weather as if it were current [optional, defaults to 3h]
 maxDataAge: 3h
 
+# How long a value from another source keeps this mapper off that path. A
+# modelled value is never as good as an instrument on the vessel itself,
+# so any path another source is currently publishing is left alone
+# entirely - which is what lets this mapper run on a vessel that does have
+# a wind sensor: it fills in the temperature, the pressure and the sea
+# state, stays out of the way of the anemometer, and takes the wind over
+# by itself if the anemometer goes quiet for this long. For that to work
+# the mapper has to see every other mapper on the vessel, not only the
+# navigation ones [optional, defaults to 2m]
+liveDataTimeout: 2m
+
 # How long a navigation value stays usable after it was last received. A
 # position older than this stops the mapper from publishing anything, a
 # stale heading, course or speed is treated as absent

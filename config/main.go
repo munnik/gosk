@@ -36,6 +36,8 @@ const (
 
 	FftType = "fft"
 
+	WeatherType = "weather"
+
 	ParityMap string = "NOE" // None, Odd, Even
 )
 
@@ -550,4 +552,127 @@ func NewTestDataConfig(configFilePath string) *TestDataConfig {
 	readConfigFile(result, configFilePath)
 
 	return result
+}
+
+// WeatherMapperConfig configures the weather mapper, see
+// mapper.WeatherMapper. Every duration and threshold has a sane default,
+// a configuration that only sets context and protocol is enough to run it
+// against the public Open-Meteo API.
+//
+// URL is the base URL of an Open-Meteo compatible forecast endpoint, the
+// query parameters are added by the mapper itself. It defaults to the
+// public API, point it at a self hosted instance to avoid depending on
+// (and being rate limited by) a third party.
+//
+// The publish rate is max(MinPublishInterval, the rate at which navigation
+// data arrives) and, while the vessel is not moving, at least
+// StationaryPublishInterval. MinPublishInterval is floored at
+// MinAllowedPublishInterval: weather over a single grid cell simply does
+// not change faster than that, and publishing quicker only adds noise to
+// every downstream sink.
+//
+// The weather API itself is polled far less often than the mapper
+// publishes: an observation is reused from the cache for the whole of
+// RefreshInterval, and only a vessel that leaves its grid cell (see
+// GridResolution) causes an earlier request. MinRequestInterval is the
+// hard floor between two requests regardless of position, failed requests
+// back off exponentially from it. A cached observation older than
+// MaxDataAge is not published at all, a vessel that loses internet
+// connectivity goes silent instead of reporting hours old weather as if
+// it were current.
+//
+// NavigationTimeout is how long a navigation value stays usable after it
+// was last received, a position older than this stops the mapper from
+// publishing anything, and a stale heading/course/speed is treated as
+// absent when deciding what can be calculated.
+//
+// MinSpeedOverGround is the speed under which the vessel counts as not
+// moving: its course over ground is meaningless at (almost) zero speed,
+// so it is neither used as the reference direction for wind angles nor
+// as the vessel's motion vector below this speed.
+type WeatherMapperConfig struct {
+	MapperConfig              `mapstructure:",squash"`
+	URL                       string        `mapstructure:"url"`
+	MinPublishInterval        time.Duration `mapstructure:"minPublishInterval"`
+	StationaryPublishInterval time.Duration `mapstructure:"stationaryPublishInterval"`
+	RefreshInterval           time.Duration `mapstructure:"refreshInterval"`
+	MinRequestInterval        time.Duration `mapstructure:"minRequestInterval"`
+	MaxRequestInterval        time.Duration `mapstructure:"maxRequestInterval"`
+	RequestTimeout            time.Duration `mapstructure:"requestTimeout"`
+	MaxDataAge                time.Duration `mapstructure:"maxDataAge"`
+	NavigationTimeout         time.Duration `mapstructure:"navigationTimeout"`
+	GridResolution            float64       `mapstructure:"gridResolution"`
+	CacheSize                 int           `mapstructure:"cacheSize"`
+	MinSpeedOverGround        float64       `mapstructure:"minSpeedOverGround"`
+}
+
+const (
+	// MinAllowedPublishInterval is the lowest publish interval the weather
+	// mapper accepts, a smaller configured MinPublishInterval is raised to
+	// this.
+	MinAllowedPublishInterval = 10 * time.Second
+	// DefaultWeatherURL is the public Open-Meteo forecast API.
+	DefaultWeatherURL = "https://api.open-meteo.com/v1/forecast"
+	// defaultGridResolution is the size, in degrees, of the cell a single
+	// fetched observation is cached for, roughly 11 km of latitude.
+	defaultGridResolution = 0.1
+)
+
+// DefaultWeatherMapperConfig is the configuration the weather mapper runs
+// with when the configuration file only sets context and protocol.
+func DefaultWeatherMapperConfig() WeatherMapperConfig {
+	return WeatherMapperConfig{
+		URL:                       DefaultWeatherURL,
+		MinPublishInterval:        MinAllowedPublishInterval,
+		StationaryPublishInterval: 60 * time.Second,
+		RefreshInterval:           10 * time.Minute,
+		MinRequestInterval:        time.Minute,
+		MaxRequestInterval:        30 * time.Minute,
+		RequestTimeout:            15 * time.Second,
+		MaxDataAge:                3 * time.Hour,
+		NavigationTimeout:         5 * time.Minute,
+		GridResolution:            defaultGridResolution,
+		CacheSize:                 64,
+		MinSpeedOverGround:        0.5,
+	}
+}
+
+func NewWeatherMapperConfig(configFilePath string) WeatherMapperConfig {
+	result := DefaultWeatherMapperConfig()
+	readConfigFile(&result, configFilePath)
+	result.verify()
+
+	return result
+}
+
+func (w *WeatherMapperConfig) verify() {
+	if w.MinPublishInterval < MinAllowedPublishInterval {
+		logger.GetLogger().Warn(
+			"The configured minimum publish interval is too short, using the minimum allowed interval instead",
+			zap.Duration("Configured", w.MinPublishInterval),
+			zap.Duration("Used", MinAllowedPublishInterval),
+		)
+		w.MinPublishInterval = MinAllowedPublishInterval
+	}
+	if w.MinRequestInterval > w.RefreshInterval {
+		logger.GetLogger().Warn(
+			"The minimum interval between two weather API requests is longer than the refresh interval, the refresh interval is effectively the minimum request interval",
+			zap.Duration("Minimum request interval", w.MinRequestInterval),
+			zap.Duration("Refresh interval", w.RefreshInterval),
+		)
+	}
+	if w.MaxRequestInterval < w.MinRequestInterval {
+		w.MaxRequestInterval = w.MinRequestInterval
+	}
+	if w.GridResolution <= 0 {
+		logger.GetLogger().Warn(
+			"The grid resolution must be positive, using the default instead",
+			zap.Float64("Configured", w.GridResolution),
+			zap.Float64("Used", defaultGridResolution),
+		)
+		w.GridResolution = defaultGridResolution
+	}
+	if w.CacheSize < 1 {
+		w.CacheSize = 1
+	}
 }

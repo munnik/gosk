@@ -19,18 +19,18 @@ var notifyCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(notifyCmd)
-	notifyCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
-	notifyCmd.MarkFlagRequired("subscribeURL")
+	notifyCmd.Flags().StringSliceVarP(&subscribeURLs, "subscribeURLs", "s", []string{}, "Nanomsg URL, the URL is used to listen for subscribed data. May be repeated to subscribe to several publishers at once.")
+	notifyCmd.MarkFlagRequired("subscribeURLs")
 	notifyCmd.Flags().StringVarP(&publishURL, "publishURL", "p", "", "Nanomsg URL, the URL is used to publish the data on. It listens for connections.")
 	notifyCmd.MarkFlagRequired("publishURL")
 }
 
 func doNotify(cmd *cobra.Command, args []string) {
-	subscriber, err := nanomsg.NewSubscriber[message.Mapped](subscribeURL, []byte{})
+	subscriber, err := nanomsg.NewSubscriber[message.Mapped](subscribeURLs, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe",
-			zap.String("URL", subscribeURL),
+			zap.Strings("URLs", subscribeURLs),
 			zap.String("Error", err.Error()),
 		)
 	}

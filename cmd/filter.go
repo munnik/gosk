@@ -19,18 +19,18 @@ var filterCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(filterCmd)
-	filterCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
-	filterCmd.MarkFlagRequired("subscribeURL")
+	filterCmd.Flags().StringSliceVarP(&subscribeURLs, "subscribeURLs", "s", []string{}, "Nanomsg URL, the URL is used to listen for subscribed data. May be repeated to subscribe to several publishers at once.")
+	filterCmd.MarkFlagRequired("subscribeURLs")
 	filterCmd.Flags().StringVarP(&publishURL, "publishURL", "p", "", "Nanomsg URL, the URL is used to publish the data on. It listens for connections.")
 	filterCmd.MarkFlagRequired("publishURL")
 }
 
 func doFilter(cmd *cobra.Command, args []string) {
-	subscriber, err := nanomsg.NewSubscriber[message.Mapped](subscribeURL, []byte{})
+	subscriber, err := nanomsg.NewSubscriber[message.Mapped](subscribeURLs, []byte{})
 	if err != nil {
 		logger.GetLogger().Fatal(
 			"Could not subscribe",
-			zap.String("URL", subscribeURL),
+			zap.Strings("URLs", subscribeURLs),
 			zap.String("Error", err.Error()),
 		)
 	}

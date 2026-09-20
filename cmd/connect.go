@@ -44,7 +44,7 @@ var (
 
 func init() {
 	rootCmd.AddCommand(connectCmd)
-	connectCmd.Flags().StringVarP(&subscribeURL, "subscribeURL", "s", "", "Nanomsg URL, the URL is used to listen for subscribed data.")
+	connectCmd.Flags().StringSliceVarP(&subscribeURLs, "subscribeURLs", "s", []string{}, "Nanomsg URL, the URL is used to listen for subscribed data. May be repeated to subscribe to several publishers at once.")
 	connectCmd.Flags().StringVarP(&publishURL, "publishURL", "p", "", "Nanomsg URL, the URL is used to publish the data on. It listens for connections.")
 	connectCmd.MarkFlagRequired("publishURL")
 }
@@ -86,12 +86,12 @@ func doConnect(cmd *cobra.Command, args []string) {
 	}
 
 	go func() {
-		if subscribeURL == "" {
+		if len(subscribeURLs) == 0 {
 			return // nothing to subscribe to
 		}
 		for {
 			subscriber, err := nanomsg.NewSubscriber[message.Raw](
-				subscribeURL,
+				subscribeURLs,
 				[]byte{},
 			)
 			if err == nil {
@@ -101,7 +101,7 @@ func doConnect(cmd *cobra.Command, args []string) {
 
 			logger.GetLogger().Warn(
 				"Could not subscribe, sleeping",
-				zap.String("URL", subscribeURL),
+				zap.Strings("URLs", subscribeURLs),
 				zap.String("Error", err.Error()),
 			)
 			time.Sleep(RETRY_SUBSCRIPTION_SLEEP * time.Second)

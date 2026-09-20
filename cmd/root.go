@@ -35,7 +35,7 @@ import (
 var (
 	cfgFile                 string
 	profilingAndMetricsPort string
-	subscribeURL            string
+	subscribeURLs           []string
 	publishURL              string
 	gosk_info_gauge         prometheus.Gauge
 )

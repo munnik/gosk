@@ -18,7 +18,7 @@ import (
 func TestProcessPublishesConnectorStatus(t *testing.T) {
 	url := "inproc://test-process-connector-status"
 	pub := nanomsg.NewPublisher[message.Raw](url)
-	sub, err := nanomsg.NewSubscriber[message.Raw](url, []byte{})
+	sub, err := nanomsg.NewSubscriber[message.Raw]([]string{url}, []byte{})
 	if err != nil {
 		t.Fatalf("NewSubscriber: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestProcessPublishesConnectorStatus(t *testing.T) {
 func TestProcessRepeatsDisconnectedStatus(t *testing.T) {
 	url := "inproc://test-process-connector-status-repeats"
 	pub := nanomsg.NewPublisher[message.Raw](url)
-	sub, err := nanomsg.NewSubscriber[message.Raw](url, []byte{})
+	sub, err := nanomsg.NewSubscriber[message.Raw]([]string{url}, []byte{})
 	if err != nil {
 		t.Fatalf("NewSubscriber: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestProcessRepeatsDisconnectedStatus(t *testing.T) {
 func TestProcessPublishesConnectedThenData(t *testing.T) {
 	url := "inproc://test-process-connector-status-connected"
 	pub := nanomsg.NewPublisher[message.Raw](url)
-	sub, err := nanomsg.NewSubscriber[message.Raw](url, []byte{})
+	sub, err := nanomsg.NewSubscriber[message.Raw]([]string{url}, []byte{})
 	if err != nil {
 		t.Fatalf("NewSubscriber: %v", err)
 	}

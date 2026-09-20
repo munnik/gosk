@@ -19,8 +19,8 @@ var rateLimitCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(rateLimitCmd)
-	rateLimitCmd.Flags().StringSliceVarP(&subscribeURLs, "subscribeURLs", "s", []string{}, "Nanomsg URL, the URL is used to listen for subscribed data. May be repeated to subscribe to several publishers at once.")
-	rateLimitCmd.MarkFlagRequired("subscribeURLs")
+	rateLimitCmd.Flags().StringSliceVarP(&subscribeURLs, "subscribeURL", "s", []string{}, "Nanomsg URL, the URL is used to listen for subscribed data. May be repeated to subscribe to several publishers at once.")
+	rateLimitCmd.MarkFlagRequired("subscribeURL")
 	rateLimitCmd.Flags().StringVarP(&publishURL, "publishURL", "p", "", "Nanomsg URL, the URL is used to publish the data on. It listens for connections.")
 	rateLimitCmd.MarkFlagRequired("publishURL")
 }

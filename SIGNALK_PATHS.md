@@ -190,3 +190,46 @@ Current SignalK specs don't have paths for events. GOSK uses the following paths
 - `/vessels/<RegExp>/event/bunkering/delta` _(new)_
   - Description: Amount of fuel that has been bunkered, positive value for loaded fuel and negative value for unloaded fuel
   - Units: m3 (Cubic meter)
+
+## 4. Weather and sea state
+
+The weather mapper (see `mapper/weather.go`) fills in the environment branch from a public weather API using the vessel's own position. Most of what it publishes uses existing SignalK paths, `environment/outside/temperature`, `dewPointTemperature`, `relativeHumidity`, `pressure`, `heatIndexTemperature`, `apparentWindChillTemperature` and `theoreticalWindChillTemperature`, `environment/wind/speedOverGround`, `directionTrue`, `directionMagnetic`, `angleTrueGround`, `speedApparent` and `angleApparent`, `environment/water/temperature` and `environment/current`.
+
+Current SignalK specs have no paths at all for a sea state, and none for gusts or visibility either. GOSK uses the following paths for those:
+
+- `/vessels/<RegExp>/environment/wind/gust` _(new)_
+  - Description: Maximum wind speed over ground of the gusts in the last hour
+  - Units: m/s (Meters per second)
+- `/vessels/<RegExp>/environment/outside/visibility` _(new)_
+  - Description: Horizontal visibility
+  - Units: m (Meter)
+- `/vessels/<RegExp>/environment/water/waves/significantHeight` _(new)_
+  - Description: Significant height of the combined wind waves and swell, the mean height of the highest third of the waves
+  - Units: m (Meter)
+- `/vessels/<RegExp>/environment/water/waves/direction` _(new)_
+  - Description: The direction the waves are coming from, relative to true north. This is the same convention `environment/wind/directionTrue` uses
+  - Units: rad (Radian)
+- `/vessels/<RegExp>/environment/water/waves/angle` _(new)_
+  - Description: The direction the waves are coming from, relative to the bow of the vessel, negative to port. This is the same convention `environment/wind/angleTrueGround` uses, and is measured against the same reference: the heading when there is one, the course over ground when there is not and the vessel is moving. It is not published at all for a stopped vessel without a heading, there is nothing to measure an angle from then
+  - Units: rad (Radian)
+- `/vessels/<RegExp>/environment/water/waves/period` _(new)_
+  - Description: Mean period of the combined wind waves and swell
+  - Units: s (Second)
+- `/vessels/<RegExp>/environment/water/waves/windWave/significantHeight` _(new)_
+  - Description: Significant height of the part of the sea that is driven by the local wind
+  - Units: m (Meter)
+- `/vessels/<RegExp>/environment/water/waves/windWave/direction` _(new)_
+  - Description: The direction the wind waves are coming from, relative to true north
+  - Units: rad (Radian)
+- `/vessels/<RegExp>/environment/water/waves/windWave/period` _(new)_
+  - Description: Mean period of the wind waves
+  - Units: s (Second)
+- `/vessels/<RegExp>/environment/water/waves/swell/significantHeight` _(new)_
+  - Description: Significant height of the part of the sea that travelled in from elsewhere
+  - Units: m (Meter)
+- `/vessels/<RegExp>/environment/water/waves/swell/direction` _(new)_
+  - Description: The direction the swell is coming from, relative to true north
+  - Units: rad (Radian)
+- `/vessels/<RegExp>/environment/water/waves/swell/period` _(new)_
+  - Description: Mean period of the swell
+  - Units: s (Second)

@@ -40,6 +40,14 @@ const (
 	// Value used exclusively before this file existed - never a hard
 	// failure, just not the fast path.
 	valueTagJSONFallback
+	// Tags added after the ones above go here, at the end: the tag byte
+	// is on the wire between gosk processes, and between a vessel and the
+	// cloud, which are not necessarily running the same version at the
+	// same moment. Appending keeps every previously assigned tag pointing
+	// at the same type, so only a value of a genuinely new type - one an
+	// older reader could not have decoded anyway - is affected by that
+	// version skew.
+	valueTagCurrent
 )
 
 // marshalValueMsg appends v's msgpack encoding to b (the usual
@@ -88,6 +96,8 @@ func marshalValueMsg(v Value, b []byte) ([]byte, error) {
 		return val.MarshalMsg(msgp.AppendByte(b, byte(valueTagSpectrum)))
 	case Vector3D:
 		return val.MarshalMsg(msgp.AppendByte(b, byte(valueTagVector3D)))
+	case Current:
+		return val.MarshalMsg(msgp.AppendByte(b, byte(valueTagCurrent)))
 	default:
 		blob, err := json.Marshal(v.Value)
 		if err != nil {
@@ -175,6 +185,10 @@ func unmarshalValueMsg(bts []byte) (Value, []byte, error) {
 		var vec Vector3D
 		bts, err = vec.UnmarshalMsg(bts)
 		v.Value = vec
+	case valueTagCurrent:
+		var c Current
+		bts, err = c.UnmarshalMsg(bts)
+		v.Value = c
 	case valueTagJSONFallback:
 		var blob []byte
 		blob, bts, err = msgp.ReadBytesBytes(bts, nil)

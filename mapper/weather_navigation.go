@@ -287,6 +287,19 @@ func normalizeAngle(angle float64) float64 {
 	return angle
 }
 
+// normalizeDirection folds an angle into [0, 2pi), the range Signal K
+// uses for a compass direction. This is deliberately not the same range
+// as normalizeAngle's: a direction is where something is relative to
+// north and is never negative, an angle is relative to the vessel and is
+// negative to port.
+func normalizeDirection(angle float64) float64 {
+	angle = math.Mod(angle, 2*math.Pi)
+	if angle < 0 {
+		angle += 2 * math.Pi
+	}
+	return angle
+}
+
 // windChill is the wind chill temperature in K for a temperature in K and
 // a wind speed in m/s, using the formula behind the North American wind
 // chill index. It is only defined for temperatures at or below 10 degrees

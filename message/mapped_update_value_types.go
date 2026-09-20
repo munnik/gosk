@@ -158,6 +158,33 @@ func (left Draft) Merge(right Merger) (Merger, error) {
 	return left, err
 }
 
+// Current is the set and drift of the current affecting the vessel, see
+// environment.current in the Signal K specification. SetTrue and
+// SetMagnetic are in rad, Drift in m/s.
+type Current struct {
+	Drift       *float64 `json:"drift,omitempty"`
+	SetTrue     *float64 `json:"setTrue,omitempty"`
+	SetMagnetic *float64 `json:"setMagnetic,omitempty"`
+}
+
+func (left Current) Merge(right Merger) (Merger, error) {
+	var err error
+	if right, ok := right.(Current); !ok {
+		err = fmt.Errorf("right has type %T but should be type %T", right, left)
+	} else {
+		if right.Drift != nil {
+			left.Drift = right.Drift
+		}
+		if right.SetTrue != nil {
+			left.SetTrue = right.SetTrue
+		}
+		if right.SetMagnetic != nil {
+			left.SetMagnetic = right.SetMagnetic
+		}
+	}
+	return left, err
+}
+
 type Coefficient struct {
 	Magnitude float64 `json:"magnitude"`
 	Phase     float64 `json:"phase"`
@@ -239,6 +266,12 @@ func Decode(input interface{}) (interface{}, error) {
 	metadata = mapstructure.Metadata{}
 	if err := mapstructure.DecodeMetadata(input, &d, &metadata); err == nil && len(metadata.Unused) == 0 {
 		return d, nil
+	}
+
+	c := Current{}
+	metadata = mapstructure.Metadata{}
+	if err := mapstructure.DecodeMetadata(input, &c, &metadata); err == nil && len(metadata.Unused) == 0 {
+		return c, nil
 	}
 
 	s := Spectrum{}

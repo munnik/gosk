@@ -559,10 +559,19 @@ func NewTestDataConfig(configFilePath string) *TestDataConfig {
 // a configuration that only sets context and protocol is enough to run it
 // against the public Open-Meteo API.
 //
-// URL is the base URL of an Open-Meteo compatible forecast endpoint, the
-// query parameters are added by the mapper itself. It defaults to the
-// public API, point it at a self hosted instance to avoid depending on
-// (and being rate limited by) a third party.
+// URL is the base URL of an Open-Meteo compatible forecast endpoint and
+// MarineURL that of the matching marine endpoint, the query parameters
+// are added by the mapper itself. Both default to the public API, point
+// them at a self hosted instance to avoid depending on (and being rate
+// limited by) a third party - note that the public API is licensed for
+// non-commercial use only. An empty MarineURL turns the sea state off
+// entirely, which is what a fleet that never leaves the inland waterways
+// wants.
+//
+// Models and MarineModels select the weather model to use, empty (the
+// default) lets the API pick the highest resolution model that covers the
+// vessel's position, which across north western Europe means KNMI
+// Harmonie, Meteo-France AROME or DWD ICON-D2 depending on the country.
 //
 // The publish rate is max(MinPublishInterval, the rate at which navigation
 // data arrives) and, while the vessel is not moving, at least
@@ -571,10 +580,19 @@ func NewTestDataConfig(configFilePath string) *TestDataConfig {
 // not change faster than that, and publishing quicker only adds noise to
 // every downstream sink.
 //
-// The weather API itself is polled far less often than the mapper
+// The weather APIs themselves are polled far less often than the mapper
 // publishes: an observation is reused from the cache for the whole of
-// RefreshInterval, and only a vessel that leaves its grid cell (see
-// GridResolution) causes an earlier request. MinRequestInterval is the
+// RefreshInterval (MarineRefreshInterval for the sea state, which changes
+// slower still and defaults to RefreshInterval), and only a vessel that
+// leaves its grid cell (see GridResolution) causes an earlier request.
+//
+// InlandRetryInterval is how long a position with no sea state at all is
+// remembered as such. The marine API answers with nulls everywhere for a
+// position on an inland waterway, and a canal does not grow a sea state
+// in ten minutes, so that answer is kept far longer than a real one - a
+// barge on the Rhine would otherwise spend a request per refresh
+// interval, for its whole working life, confirming that the Rhine still
+// has no swell. MinRequestInterval is the
 // hard floor between two requests regardless of position, failed requests
 // back off exponentially from it. A cached observation older than
 // MaxDataAge is not published at all, a vessel that loses internet
@@ -593,9 +611,14 @@ func NewTestDataConfig(configFilePath string) *TestDataConfig {
 type WeatherMapperConfig struct {
 	MapperConfig              `mapstructure:",squash"`
 	URL                       string        `mapstructure:"url"`
+	MarineURL                 string        `mapstructure:"marineUrl"`
+	Models                    string        `mapstructure:"models"`
+	MarineModels              string        `mapstructure:"marineModels"`
 	MinPublishInterval        time.Duration `mapstructure:"minPublishInterval"`
 	StationaryPublishInterval time.Duration `mapstructure:"stationaryPublishInterval"`
 	RefreshInterval           time.Duration `mapstructure:"refreshInterval"`
+	MarineRefreshInterval     time.Duration `mapstructure:"marineRefreshInterval"`
+	InlandRetryInterval       time.Duration `mapstructure:"inlandRetryInterval"`
 	MinRequestInterval        time.Duration `mapstructure:"minRequestInterval"`
 	MaxRequestInterval        time.Duration `mapstructure:"maxRequestInterval"`
 	RequestTimeout            time.Duration `mapstructure:"requestTimeout"`
@@ -613,6 +636,9 @@ const (
 	MinAllowedPublishInterval = 10 * time.Second
 	// DefaultWeatherURL is the public Open-Meteo forecast API.
 	DefaultWeatherURL = "https://api.open-meteo.com/v1/forecast"
+	// DefaultMarineWeatherURL is the public Open-Meteo marine API, a
+	// separate endpoint from the forecast API.
+	DefaultMarineWeatherURL = "https://marine-api.open-meteo.com/v1/marine"
 	// defaultGridResolution is the size, in degrees, of the cell a single
 	// fetched observation is cached for, roughly 11 km of latitude.
 	defaultGridResolution = 0.1
@@ -623,9 +649,12 @@ const (
 func DefaultWeatherMapperConfig() WeatherMapperConfig {
 	return WeatherMapperConfig{
 		URL:                       DefaultWeatherURL,
+		MarineURL:                 DefaultMarineWeatherURL,
 		MinPublishInterval:        MinAllowedPublishInterval,
 		StationaryPublishInterval: 60 * time.Second,
 		RefreshInterval:           10 * time.Minute,
+		MarineRefreshInterval:     30 * time.Minute,
+		InlandRetryInterval:       24 * time.Hour,
 		MinRequestInterval:        time.Minute,
 		MaxRequestInterval:        30 * time.Minute,
 		RequestTimeout:            15 * time.Second,
@@ -653,6 +682,9 @@ func (w *WeatherMapperConfig) verify() {
 			zap.Duration("Used", MinAllowedPublishInterval),
 		)
 		w.MinPublishInterval = MinAllowedPublishInterval
+	}
+	if w.MarineRefreshInterval <= 0 {
+		w.MarineRefreshInterval = w.RefreshInterval
 	}
 	if w.MinRequestInterval > w.RefreshInterval {
 		logger.GetLogger().Warn(

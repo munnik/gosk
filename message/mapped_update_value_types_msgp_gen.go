@@ -135,6 +135,278 @@ func (z Coefficient) Msgsize() (s int) {
 }
 
 // DecodeMsg implements msgp.Decodable
+func (z *Current) DecodeMsg(dc *msgp.Reader) (err error) {
+	var field []byte
+	_ = field
+	var zb0001 uint32
+	zb0001, err = dc.ReadMapHeader()
+	if err != nil {
+		err = msgp.WrapError(err)
+		return
+	}
+	for zb0001 > 0 {
+		zb0001--
+		field, err = dc.ReadMapKeyPtr()
+		if err != nil {
+			err = msgp.WrapError(err)
+			return
+		}
+		switch msgp.UnsafeString(field) {
+		case "Drift":
+			if dc.IsNil() {
+				err = dc.ReadNil()
+				if err != nil {
+					err = msgp.WrapError(err, "Drift")
+					return
+				}
+				z.Drift = nil
+			} else {
+				if z.Drift == nil {
+					z.Drift = new(float64)
+				}
+				*z.Drift, err = dc.ReadFloat64()
+				if err != nil {
+					err = msgp.WrapError(err, "Drift")
+					return
+				}
+			}
+		case "SetTrue":
+			if dc.IsNil() {
+				err = dc.ReadNil()
+				if err != nil {
+					err = msgp.WrapError(err, "SetTrue")
+					return
+				}
+				z.SetTrue = nil
+			} else {
+				if z.SetTrue == nil {
+					z.SetTrue = new(float64)
+				}
+				*z.SetTrue, err = dc.ReadFloat64()
+				if err != nil {
+					err = msgp.WrapError(err, "SetTrue")
+					return
+				}
+			}
+		case "SetMagnetic":
+			if dc.IsNil() {
+				err = dc.ReadNil()
+				if err != nil {
+					err = msgp.WrapError(err, "SetMagnetic")
+					return
+				}
+				z.SetMagnetic = nil
+			} else {
+				if z.SetMagnetic == nil {
+					z.SetMagnetic = new(float64)
+				}
+				*z.SetMagnetic, err = dc.ReadFloat64()
+				if err != nil {
+					err = msgp.WrapError(err, "SetMagnetic")
+					return
+				}
+			}
+		default:
+			err = dc.Skip()
+			if err != nil {
+				err = msgp.WrapError(err)
+				return
+			}
+		}
+	}
+	return
+}
+
+// EncodeMsg implements msgp.Encodable
+func (z *Current) EncodeMsg(en *msgp.Writer) (err error) {
+	// map header, size 3
+	// write "Drift"
+	err = en.Append(0x83, 0xa5, 0x44, 0x72, 0x69, 0x66, 0x74)
+	if err != nil {
+		return
+	}
+	if z.Drift == nil {
+		err = en.WriteNil()
+		if err != nil {
+			return
+		}
+	} else {
+		err = en.WriteFloat64(*z.Drift)
+		if err != nil {
+			err = msgp.WrapError(err, "Drift")
+			return
+		}
+	}
+	// write "SetTrue"
+	err = en.Append(0xa7, 0x53, 0x65, 0x74, 0x54, 0x72, 0x75, 0x65)
+	if err != nil {
+		return
+	}
+	if z.SetTrue == nil {
+		err = en.WriteNil()
+		if err != nil {
+			return
+		}
+	} else {
+		err = en.WriteFloat64(*z.SetTrue)
+		if err != nil {
+			err = msgp.WrapError(err, "SetTrue")
+			return
+		}
+	}
+	// write "SetMagnetic"
+	err = en.Append(0xab, 0x53, 0x65, 0x74, 0x4d, 0x61, 0x67, 0x6e, 0x65, 0x74, 0x69, 0x63)
+	if err != nil {
+		return
+	}
+	if z.SetMagnetic == nil {
+		err = en.WriteNil()
+		if err != nil {
+			return
+		}
+	} else {
+		err = en.WriteFloat64(*z.SetMagnetic)
+		if err != nil {
+			err = msgp.WrapError(err, "SetMagnetic")
+			return
+		}
+	}
+	return
+}
+
+// MarshalMsg implements msgp.Marshaler
+func (z *Current) MarshalMsg(b []byte) (o []byte, err error) {
+	o = msgp.Require(b, z.Msgsize())
+	// map header, size 3
+	// string "Drift"
+	o = append(o, 0x83, 0xa5, 0x44, 0x72, 0x69, 0x66, 0x74)
+	if z.Drift == nil {
+		o = msgp.AppendNil(o)
+	} else {
+		o = msgp.AppendFloat64(o, *z.Drift)
+	}
+	// string "SetTrue"
+	o = append(o, 0xa7, 0x53, 0x65, 0x74, 0x54, 0x72, 0x75, 0x65)
+	if z.SetTrue == nil {
+		o = msgp.AppendNil(o)
+	} else {
+		o = msgp.AppendFloat64(o, *z.SetTrue)
+	}
+	// string "SetMagnetic"
+	o = append(o, 0xab, 0x53, 0x65, 0x74, 0x4d, 0x61, 0x67, 0x6e, 0x65, 0x74, 0x69, 0x63)
+	if z.SetMagnetic == nil {
+		o = msgp.AppendNil(o)
+	} else {
+		o = msgp.AppendFloat64(o, *z.SetMagnetic)
+	}
+	return
+}
+
+// UnmarshalMsg implements msgp.Unmarshaler
+func (z *Current) UnmarshalMsg(bts []byte) (o []byte, err error) {
+	var field []byte
+	_ = field
+	var zb0001 uint32
+	zb0001, bts, err = msgp.ReadMapHeaderBytes(bts)
+	if err != nil {
+		err = msgp.WrapError(err)
+		return
+	}
+	for zb0001 > 0 {
+		zb0001--
+		field, bts, err = msgp.ReadMapKeyZC(bts)
+		if err != nil {
+			err = msgp.WrapError(err)
+			return
+		}
+		switch msgp.UnsafeString(field) {
+		case "Drift":
+			if msgp.IsNil(bts) {
+				bts, err = msgp.ReadNilBytes(bts)
+				if err != nil {
+					return
+				}
+				z.Drift = nil
+			} else {
+				if z.Drift == nil {
+					z.Drift = new(float64)
+				}
+				*z.Drift, bts, err = msgp.ReadFloat64Bytes(bts)
+				if err != nil {
+					err = msgp.WrapError(err, "Drift")
+					return
+				}
+			}
+		case "SetTrue":
+			if msgp.IsNil(bts) {
+				bts, err = msgp.ReadNilBytes(bts)
+				if err != nil {
+					return
+				}
+				z.SetTrue = nil
+			} else {
+				if z.SetTrue == nil {
+					z.SetTrue = new(float64)
+				}
+				*z.SetTrue, bts, err = msgp.ReadFloat64Bytes(bts)
+				if err != nil {
+					err = msgp.WrapError(err, "SetTrue")
+					return
+				}
+			}
+		case "SetMagnetic":
+			if msgp.IsNil(bts) {
+				bts, err = msgp.ReadNilBytes(bts)
+				if err != nil {
+					return
+				}
+				z.SetMagnetic = nil
+			} else {
+				if z.SetMagnetic == nil {
+					z.SetMagnetic = new(float64)
+				}
+				*z.SetMagnetic, bts, err = msgp.ReadFloat64Bytes(bts)
+				if err != nil {
+					err = msgp.WrapError(err, "SetMagnetic")
+					return
+				}
+			}
+		default:
+			bts, err = msgp.Skip(bts)
+			if err != nil {
+				err = msgp.WrapError(err)
+				return
+			}
+		}
+	}
+	o = bts
+	return
+}
+
+// Msgsize returns an upper bound estimate of the number of bytes occupied by the serialized message
+func (z *Current) Msgsize() (s int) {
+	s = 1 + 6
+	if z.Drift == nil {
+		s += msgp.NilSize
+	} else {
+		s += msgp.Float64Size
+	}
+	s += 8
+	if z.SetTrue == nil {
+		s += msgp.NilSize
+	} else {
+		s += msgp.Float64Size
+	}
+	s += 12
+	if z.SetMagnetic == nil {
+		s += msgp.NilSize
+	} else {
+		s += msgp.Float64Size
+	}
+	return
+}
+
+// DecodeMsg implements msgp.Decodable
 func (z *Draft) DecodeMsg(dc *msgp.Reader) (err error) {
 	var field []byte
 	_ = field

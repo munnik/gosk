@@ -295,3 +295,35 @@ var _ = Describe("Mapped", func() {
 		})
 	})
 })
+
+var _ = Describe("Decoding a value this version does not know", func() {
+	// The failure this guards against was not theoretical: a value of a
+	// type added on the vessels but not yet on the cloud side made the
+	// cloud's mqtt reader (see reader/mqtt.go, which unmarshals a batch
+	// of hundreds of messages in one call) discard every message in the
+	// batch, for three vessels at once, silently.
+	It("keeps the value instead of failing the message it travels in", func() {
+		batch := []byte(`[
+			{"context":"vessels.urn:mrn:imo:mmsi:245231000","origin":"vessels.urn:mrn:imo:mmsi:245231000","updates":[
+				{"source":{"label":"a","type":"nmea0183","uuid":"00000000-0000-0000-0000-000000000000","transferUuid":"00000000-0000-0000-0000-000000000000"},
+				 "timestamp":"2026-09-20T13:39:51.818949364Z",
+				 "values":[{"path":"environment.somethingNew","value":{"aPropertyNoVersionKnows":1.5,"another":"x"}}]}]},
+			{"context":"vessels.urn:mrn:imo:mmsi:245231000","origin":"vessels.urn:mrn:imo:mmsi:245231000","updates":[
+				{"source":{"label":"b","type":"nmea0183","uuid":"00000000-0000-0000-0000-000000000000","transferUuid":"00000000-0000-0000-0000-000000000000"},
+				 "timestamp":"2026-09-20T13:39:51.818949364Z",
+				 "values":[{"path":"propulsion.mainEngine.drive.revolutions","value":12.5}]}]}
+		]`)
+
+		var messages []*Mapped
+		err := json.Unmarshal(batch, &messages)
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(messages).To(HaveLen(2))
+		// the unknown value survives as what arrived ...
+		Expect(messages[0].Updates[0].Values[0].Path).To(Equal("environment.somethingNew"))
+		Expect(messages[0].Updates[0].Values[0].Value).ToNot(BeNil())
+		// ... and, the point of all this, the message next to it is
+		// still there
+		Expect(messages[1].Updates[0].Values[0].Value).To(Equal(12.5))
+	})
+})

@@ -459,8 +459,9 @@ func (m *MeteoHydroMapper) buildUpdate(observation *weatherObservation, marine *
 	}
 
 	// environment.current is one of the few object valued paths in the
-	// Signal K specification, see message.Current
-	if marine.currentSpeed != nil || marine.currentDirection != nil {
+	// Signal K specification, see message.Current, and is off unless
+	// asked for - see PublishCurrent for why
+	if m.config.PublishCurrent && (marine.currentSpeed != nil || marine.currentDirection != nil) {
 		current := message.Current{Drift: marine.currentSpeed, SetTrue: marine.currentDirection}
 		if marine.currentDirection != nil && hasVariation {
 			setMagnetic := normalizeDirection(*marine.currentDirection - variation)

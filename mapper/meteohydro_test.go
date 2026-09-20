@@ -659,6 +659,24 @@ var _ = Describe("MeteoHydroMapper", func() {
 			// the sea runs 60 degrees off the starboard bow
 			Expect(values[meteoHydroPathWavesAngle]).To(BeNumerically("~", degrees(60), 1e-9))
 
+			// the ocean current is off unless asked for, see
+			// PublishCurrent
+			_, ok := valueAtPath(result, meteoHydroPathCurrent)
+			Expect(ok).To(BeFalse())
+		})
+
+		It("publishes the ocean current when it is asked for", func() {
+			c := meteoHydroTestConfig()
+			c.PublishCurrent = true
+			m = newMeteoHydroMapper(c, source, marine)
+			m.DoMap(navigationUpdate(now,
+				positionValue(52.5, 3.5),
+				message.NewValue().WithPath(meteoHydroPathMagneticVariation).WithValue(degrees(2)),
+			))
+			prime(now)
+
+			result := tick(now.Add(10 * time.Second))
+
 			// environment.current is an object, not a scalar
 			raw, ok := valueAtPath(result, meteoHydroPathCurrent)
 			Expect(ok).To(BeTrue())

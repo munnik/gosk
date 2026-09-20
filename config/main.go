@@ -604,6 +604,15 @@ func NewTestDataConfig(configFilePath string) *TestDataConfig {
 // publishing anything, and a stale heading/course/speed is treated as
 // absent when deciding what can be calculated.
 //
+// PublishCurrent turns the ocean current on environment.current on. It
+// is off by default for two reasons. It is the only object valued path
+// this mapper publishes, and a gosk older than message.Current cannot
+// decode it - which, until every reader in the pipeline is new enough,
+// makes it drop the whole batch the value travels in, not just the value
+// (see message.Value's UnmarshalJSON). And the current itself comes from
+// a global ocean model, which in the North Sea and the estuaries, where
+// tidal streams dominate, is not worth navigating on anyway.
+//
 // LiveDataTimeout is how long a value from another source keeps this
 // mapper off that path. A modelled value is never as good as an
 // instrument on the vessel itself, so any path another source is
@@ -634,6 +643,7 @@ type MeteoHydroMapperConfig struct {
 	MaxDataAge                time.Duration `mapstructure:"maxDataAge"`
 	NavigationTimeout         time.Duration `mapstructure:"navigationTimeout"`
 	LiveDataTimeout           time.Duration `mapstructure:"liveDataTimeout"`
+	PublishCurrent            bool          `mapstructure:"publishCurrent"`
 	GridResolution            float64       `mapstructure:"gridResolution"`
 	CacheSize                 int           `mapstructure:"cacheSize"`
 	MinSpeedOverGround        float64       `mapstructure:"minSpeedOverGround"`

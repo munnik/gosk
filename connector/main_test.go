@@ -1,12 +1,24 @@
 package connector
 
 import (
+	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
 )
+
+var inprocSeq atomic.Uint64
+
+// uniqueInprocURL returns a nanomsg url nothing in this process has
+// listened on yet. A url spelled out as a constant only works once per
+// test binary; see nanomsg's own uniqueInprocURL for why.
+func uniqueInprocURL(t *testing.T) string {
+	t.Helper()
+	return fmt.Sprintf("inproc://%s-%d", t.Name(), inprocSeq.Add(1))
+}
 
 // TestProcessPublishesConnectorStatus exercises process's timeout
 // handling end-to-end over a real nanomsg socket: a connector whose
@@ -16,7 +28,7 @@ import (
 // connector exiting makes a merely-offline sensor indistinguishable, from
 // deploy-rs/nixos-rebuild switch's point of view, from a real crash).
 func TestProcessPublishesConnectorStatus(t *testing.T) {
-	url := "inproc://test-process-connector-status"
+	url := uniqueInprocURL(t)
 	pub := nanomsg.NewPublisher[message.Raw](url)
 	sub, err := nanomsg.NewSubscriber[message.Raw]([]string{url}, []byte{})
 	if err != nil {
@@ -50,7 +62,7 @@ func TestProcessPublishesConnectorStatus(t *testing.T) {
 // TimeoutStartSec only ever sees the *next* report after it starts
 // waiting, not the first one that happened to fire.
 func TestProcessRepeatsDisconnectedStatus(t *testing.T) {
-	url := "inproc://test-process-connector-status-repeats"
+	url := uniqueInprocURL(t)
 	pub := nanomsg.NewPublisher[message.Raw](url)
 	sub, err := nanomsg.NewSubscriber[message.Raw]([]string{url}, []byte{})
 	if err != nil {
@@ -78,7 +90,7 @@ func TestProcessRepeatsDisconnectedStatus(t *testing.T) {
 // arriving after (or without) a prior timeout is preceded by a
 // ConnectedAndData report before the real message.
 func TestProcessPublishesConnectedThenData(t *testing.T) {
-	url := "inproc://test-process-connector-status-connected"
+	url := uniqueInprocURL(t)
 	pub := nanomsg.NewPublisher[message.Raw](url)
 	sub, err := nanomsg.NewSubscriber[message.Raw]([]string{url}, []byte{})
 	if err != nil {

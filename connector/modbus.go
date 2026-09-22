@@ -3,6 +3,7 @@ package connector
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
@@ -17,8 +18,7 @@ import (
 type ModbusConnector struct {
 	config               *config.ConnectorConfig
 	registerGroupsConfig []config.RegisterGroupConfig
-	realClient           *modbus.Client
-	lock                 *sync.Mutex
+	connection           *protocol.ModbusConnection
 }
 
 func NewModbusConnector(c *config.ConnectorConfig, rgcs []config.RegisterGroupConfig) (*ModbusConnector, error) {
@@ -91,8 +91,7 @@ func NewModbusConnector(c *config.ConnectorConfig, rgcs []config.RegisterGroupCo
 	return &ModbusConnector{
 		config:               c,
 		registerGroupsConfig: rgcs,
-		realClient:           realClient,
-		lock:                 &sync.Mutex{},
+		connection:           protocol.NewModbusConnection(realClient),
 	}, nil
 }
 
@@ -116,11 +115,10 @@ func (m *ModbusConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
 func (m *ModbusConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw]) {
 	go func() {
 		client := protocol.NewModbusClient(
-			m.realClient,
+			m.connection,
 			nil, // no need to set this because it will not be used in the Write([]byte) function
 			nil,
 			nil,
-			m.lock,
 		)
 		receiveBuffer := make(chan *message.Raw, bufferCapacity)
 		go subscriber.Receive(receiveBuffer)
@@ -146,12 +144,14 @@ func (m *ModbusConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw])
 // while the other groups were still polling, so the next one to fail
 // panicked the process with a send on a closed channel, and the restart
 // added a second full set of pollers on top of the ones still running -
-// each generation contending harder for the shared modbus lock than the
-// last. Neither is reachable today only because ModbusClient.Poll has no
-// path that returns at all (it logs a failed read and keeps polling; see
-// its "how to handle failed reads" TODO), so the error plumbing here has
-// never actually run. That makes this latent rather than live - and it
-// stays latent instead of becoming a crash the day that TODO is answered.
+// each generation contending harder for the shared modbus connection
+// than the last. Neither is reachable today only because
+// ModbusClient.Poll has no path that returns at all: it logs a failed
+// read and tries again on the next tick, over a connection
+// protocol.ModbusConnection redials for it when the failure means the
+// connection itself is gone. So the error plumbing here has never
+// actually run. That makes this latent rather than live - and it stays
+// latent instead of becoming a crash the day Poll does return.
 func (m *ModbusConnector) receive(stream chan<- []byte) error {
 	// A connector with no register groups configured at all - a
 	// misconfiguration (see NewModbusConnector's warning), not a
@@ -177,15 +177,30 @@ func (m *ModbusConnector) receive(stream chan<- []byte) error {
 	wg.Add(len(m.registerGroupsConfig))
 
 	// start a go routine for each register group, if an error occurs send it on the error channel
-	for _, rgc := range m.registerGroupsConfig {
-		go func(rgc config.RegisterGroupConfig) {
+	for i, rgc := range m.registerGroupsConfig {
+		go func(i int, rgc config.RegisterGroupConfig) {
 			defer wg.Done()
+
+			// Spread the register groups evenly over the polling
+			// interval instead of letting them all start at once. They
+			// share one connection and one lock, so a round that all
+			// starts at the same instant is a round that runs entirely
+			// back to back - harmless while the slave answers in
+			// milliseconds, but once it starts timing out, each group
+			// waits out the full request timeout while holding the lock
+			// and the whole connector collapses to one request per
+			// timeout. That is what the ComAp failures on
+			// node-marinesolarenergy-test look like in the journal just
+			// before the controller resets the connection: seven
+			// register groups taking turns, one error per second, none
+			// of them anywhere near their 5 second interval.
+			time.Sleep(time.Duration(i) * rgc.PollingInterval / time.Duration(len(m.registerGroupsConfig)))
+
 			client := protocol.NewModbusClient(
-				m.realClient,
+				m.connection,
 				rgc.ExtractModbusHeader(),
 				rgc.ExtractWriteModbusHeader(), //TODO make sure this is nil when not configured
 				&rgc.WriteBeforeRead.Values,
-				m.lock,
 			)
 			logger.GetLogger().Info("Created a new modbus cient",
 				zap.Uint8("slave", rgc.Slave),
@@ -200,7 +215,7 @@ func (m *ModbusConnector) receive(stream chan<- []byte) error {
 				)
 				errors <- err
 			}
-		}(rgc)
+		}(i, rgc)
 	}
 
 	wg.Wait()

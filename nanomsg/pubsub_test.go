@@ -2,12 +2,31 @@ package nanomsg
 
 import (
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/munnik/gosk/message"
 )
+
+var inprocSeq atomic.Uint64
+
+// uniqueInprocURL returns a nanomsg url that no other test, and no
+// earlier run of this one, has listened on.
+//
+// mangos keeps its inproc listeners in a process-wide table and
+// NewPublisher never takes one back out of it, so a url spelled out as a
+// constant only works once per test binary. Run the package twice in one
+// process - `go test -count=2`, or the same package listed twice on one
+// command line - and the second NewPublisher fails with "address in
+// use", which is Fatal: it takes the whole binary down rather than
+// failing the one test, so every later test in the package disappears
+// with it.
+func uniqueInprocURL(t *testing.T) string {
+	t.Helper()
+	return fmt.Sprintf("inproc://%s-%d", t.Name(), inprocSeq.Add(1))
+}
 
 // TestPubSubMsgpRoundTrip exercises Publisher.Send/Subscriber.Receive over
 // a real nanomsg socket end-to-end, the one place that reaches
@@ -17,7 +36,7 @@ import (
 // message package's own tests cover MarshalMsg/UnmarshalMsg correctness in
 // isolation, but not that this wiring actually works.
 func TestPubSubMsgpRoundTrip(t *testing.T) {
-	url := "inproc://test-pubsub-msgp"
+	url := uniqueInprocURL(t)
 	pub := NewPublisher[message.Raw](url)
 	sub, err := NewSubscriber[message.Raw]([]string{url}, []byte{})
 	if err != nil {
@@ -60,7 +79,7 @@ func TestPubSubMsgpRoundTrip(t *testing.T) {
 // is lossy by design - mangos drops when a pipe's send queue is full - so
 // the test must not depend on every message being delivered.
 func TestPubSubPreservesOrder(t *testing.T) {
-	url := "inproc://test-pubsub-order"
+	url := uniqueInprocURL(t)
 	pub := NewPublisher[message.Raw](url)
 	sub, err := NewSubscriber[message.Raw]([]string{url}, []byte{})
 	if err != nil {
@@ -127,9 +146,9 @@ warmedUp:
 // silently kept only the last one.
 func TestSubscriberReceivesFromEveryPublisher(t *testing.T) {
 	urls := []string{
-		"inproc://test-pubsub-fan-in-1",
-		"inproc://test-pubsub-fan-in-2",
-		"inproc://test-pubsub-fan-in-3",
+		uniqueInprocURL(t),
+		uniqueInprocURL(t),
+		uniqueInprocURL(t),
 	}
 	publishers := make([]chan *message.Raw, len(urls))
 	for i, url := range urls {

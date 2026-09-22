@@ -122,6 +122,58 @@ func TestProcessPublishesConnectedThenData(t *testing.T) {
 	}
 }
 
+// TestProcessReconnectsAfterATimeout covers the transition the timeout
+// used to be able to corrupt: a connector that has been reported
+// DisconnectedOrNoData must report ConnectedAndData again as soon as data
+// arrives. process tracked that with a bool shared between this loop and
+// an AfterFunc callback on the timer's goroutine, and a timeout landing
+// between the loop's read of it and its write left the loop believing it
+// had already announced a connection it never announced - so the
+// connector stayed reported as offline, every timeout, for as long as the
+// process lived, while data flowed the whole time. See process.
+func TestProcessReconnectsAfterATimeout(t *testing.T) {
+	url := uniqueInprocURL(t)
+	pub := nanomsg.NewPublisher[message.Raw](url)
+	sub, err := nanomsg.NewSubscriber[message.Raw]([]string{url}, []byte{})
+	if err != nil {
+		t.Fatalf("NewSubscriber: %v", err)
+	}
+
+	recvCh := make(chan *message.Raw, 8)
+	go sub.Receive(recvCh)
+	warmUpPubSub(t, pub, recvCh)
+
+	stream := make(chan []byte, 1)
+	defer close(stream)
+	go process(stream, "Ampero modules", "modbus", pub, 50*time.Millisecond)
+
+	first := receiveWithTimeout(t, recvCh)
+	if first.Type != message.ConnectorStatusType || string(first.Value) != message.ConnectorStatusDisconnectedOrNoData {
+		t.Fatalf("first message = %+v, want a DisconnectedOrNoData status report", first)
+	}
+
+	stream <- []byte{0x01, 0x02, 0x03}
+
+	// The stream stays quiet until this point, so more disconnected
+	// reports may be in flight ahead of the value; the connector coming
+	// back is what has to follow them.
+	for {
+		got := receiveWithTimeout(t, recvCh)
+		if got.Type == message.ConnectorStatusType && string(got.Value) == message.ConnectorStatusDisconnectedOrNoData {
+			continue
+		}
+		if got.Type != message.ConnectorStatusType || string(got.Value) != message.ConnectorStatusConnectedAndData {
+			t.Fatalf("got %+v, want a ConnectedAndData status report once data arrived", got)
+		}
+		break
+	}
+
+	data := receiveWithTimeout(t, recvCh)
+	if data.Type != "modbus" || string(data.Value) != "\x01\x02\x03" {
+		t.Fatalf("got %+v, want the real value after the ConnectedAndData report", data)
+	}
+}
+
 // warmUpPubSub blocks until a throwaway message sent on pub is actually
 // received on recvCh, proving the subscriber's pipe is fully connected
 // before the real test traffic starts. nanomsg pub/sub is lossy by

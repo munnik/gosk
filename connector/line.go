@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/munnik/gosk/config"
@@ -18,18 +19,38 @@ import (
 
 // LineConnector reads lines from the connection and sends it on the mangos socket
 type LineConnector struct {
-	config     *config.ConnectorConfig
+	config *config.ConnectorConfig
+
+	lock       sync.Mutex
 	connection io.ReadWriter
 }
 
+// NewLineConnector checks that the url is one this connector can handle, but
+// deliberately does not open it.
+//
+// Opening it here used to be what made a sensor that is not there stall a
+// deploy. createConnection retries every 5 seconds until it succeeds, so with
+// nothing on the other end the constructor never returned, Publish was never
+// reached, and process - the only thing that ever publishes anything - never
+// ran. These units are Type=notify and gosk signals readiness from its first
+// published message (see nanomsg.Publisher.send), so the unit sat in
+// "activating" for as long as the process lived. systemd keeps the start job
+// open, switch-to-configuration waits on that job, and the whole activation
+// stops: on node-rct-keizersgracht that held the system profile lock for 28
+// hours and failed every deploy to that vessel, and it timed out the
+// confirmation on node-rct-westlandgracht and node-shipit-maasdam.
+//
+// The connection is opened from receive instead, which runs in the goroutine
+// Publish starts, so process is already running and reports
+// DisconnectedOrNoData - accurate, and enough to make the unit ready - while
+// the sensor is still missing.
 func NewLineConnector(c *config.ConnectorConfig) (*LineConnector, error) {
-	var err error
-	l := &LineConnector{config: c}
-	l.connection, err = l.createConnection()
-	if err != nil {
-		return nil, err
+	switch c.URL.Scheme {
+	case "tcp", "udp", "file":
+	default:
+		return nil, fmt.Errorf("unsupported connection scheme %v", c.URL.Scheme)
 	}
-	return l, nil
+	return &LineConnector{config: c}, nil
 }
 
 func (r *LineConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
@@ -55,49 +76,85 @@ func (r *LineConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw]) {
 		go subscriber.Receive(receiveBuffer)
 
 		for raw := range receiveBuffer {
-			r.connection.Write(append(raw.Value, '\r', '\n'))
+			connection := r.currentConnection()
+			if connection == nil {
+				// Nothing is connected yet, or the connection just died and
+				// receive is redialling. Dropping the write beats panicking
+				// on a nil connection, which is what this did before the
+				// connection became something that comes and goes.
+				logger.GetLogger().Warn(
+					"Not connected, dropping the data to write",
+					zap.String("URL", r.config.URL.String()),
+				)
+				continue
+			}
+			connection.Write(append(raw.Value, '\r', '\n'))
 		}
 	}()
 }
 
 func (l *LineConnector) receive(stream chan<- []byte) error {
-	return l.scan(l.connection, stream)
+	connection := l.createConnection()
+	l.setConnection(connection)
+	// Whatever ends the scan ends this connection with it, so the next call
+	// dials a fresh one rather than scanning a socket the peer has gone away
+	// from.
+	defer l.setConnection(nil)
+	return l.scan(connection, stream)
 }
 
-func (l LineConnector) createConnection() (io.ReadWriter, error) {
-	var connection io.ReadWriter
-	var err error
+func (l *LineConnector) setConnection(connection io.ReadWriter) {
+	l.lock.Lock()
+	defer l.lock.Unlock()
+	l.connection = connection
+}
+
+func (l *LineConnector) currentConnection() io.ReadWriter {
+	l.lock.Lock()
+	defer l.lock.Unlock()
+	return l.connection
+}
+
+// createConnection returns a connection, retrying until it has one. The url
+// scheme is checked by NewLineConnector, so the only way this fails is the
+// sensor not being there, which is not a reason to give up on it.
+//
+// It blocks, and is called from Publish's goroutine rather than from the
+// constructor for exactly that reason - see NewLineConnector.
+func (l *LineConnector) createConnection() io.ReadWriter {
+	var lastError string
 	for {
-		if l.config.URL.Scheme == "tcp" || l.config.URL.Scheme == "udp" {
-			connection, err = l.createNetworkConnection()
-			if err == nil {
-				break
-			}
-			logger.GetLogger().Warn(
-				"Unable to create a connection, retrying in 5 seconds",
-				zap.String("URL", l.config.URL.String()),
-				zap.String("Error", err.Error()),
-			)
-			time.Sleep(5 * time.Second)
-		} else if l.config.URL.Scheme == "file" {
+		var connection io.ReadWriter
+		var err error
+		if l.config.URL.Scheme == "file" {
 			connection, err = l.createFileConnection()
-			if err == nil {
-				break
-			}
+		} else {
+			connection, err = l.createNetworkConnection()
+		}
+		if err == nil {
+			return connection
+		}
+		// A sensor that is absent fails identically every 5 seconds, so only
+		// say so when the reason changes; the repeats go to debug.
+		if err.Error() == lastError {
+			logger.GetLogger().Debug(
+				"Unable to create a connection, retrying in 5 seconds",
+				zap.String("URL", l.config.URL.String()),
+				zap.String("Error", err.Error()),
+			)
+		} else {
 			logger.GetLogger().Warn(
 				"Unable to create a connection, retrying in 5 seconds",
 				zap.String("URL", l.config.URL.String()),
 				zap.String("Error", err.Error()),
 			)
-			time.Sleep(5 * time.Second)
-		} else {
-			return nil, fmt.Errorf("unsupported connection scheme %v", l.config.URL.Scheme)
+			lastError = err.Error()
 		}
+		time.Sleep(5 * time.Second)
 	}
-	return connection, nil
 }
 
-func (l LineConnector) createNetworkConnection() (io.ReadWriter, error) {
+func (l *LineConnector) createNetworkConnection() (io.ReadWriter, error) {
 	if l.config.Listen {
 		if l.config.URL.Scheme == "tcp" {
 			listener, err := net.Listen(l.config.URL.Scheme, net.JoinHostPort(l.config.URL.Hostname(), l.config.URL.Port()))
@@ -127,7 +184,7 @@ func (l LineConnector) createNetworkConnection() (io.ReadWriter, error) {
 	return nil, nil
 }
 
-func (l LineConnector) createFileConnection() (io.ReadWriter, error) {
+func (l *LineConnector) createFileConnection() (io.ReadWriter, error) {
 	fi, err := os.Stat(l.config.URL.Path)
 	if err != nil {
 		return nil, fmt.Errorf("unable to stat the file %v, the error that occurred was %v", l.config.URL.Path, err)
@@ -175,7 +232,7 @@ func (l LineConnector) createFileConnection() (io.ReadWriter, error) {
 	return connection, nil
 }
 
-func (l LineConnector) scan(reader io.Reader, stream chan<- []byte) error {
+func (l *LineConnector) scan(reader io.Reader, stream chan<- []byte) error {
 	scanner := bufio.NewScanner(reader)
 	for scanner.Scan() {
 		// scanner.Bytes() aliases the scanner's own internal buffer, which

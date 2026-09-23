@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/munnik/gosk/config"
@@ -25,18 +26,30 @@ const warmupTimeoutExtension = 15 * time.Second
 
 // MannerEthernetConnector reads from a socket and extracts the induvidual dataframes and sends it on the mangos socket
 type MannerEthernetConnector struct {
-	config     *config.ConnectorConfig
+	config *config.ConnectorConfig
+
+	lock       sync.Mutex
 	connection io.ReadWriter
 }
 
+// NewMannerEthernetConnector checks the url scheme but does not open the
+// connection - readToChannel does, from the goroutine it starts.
+//
+// Opening it here stalled deploys whenever the meter was not reachable:
+// createConnection retries every 5 seconds until it succeeds, so the
+// constructor never returned, Publish never ran, and nothing was ever
+// published - which is what a Type=notify gosk unit signals readiness from.
+// The unit stayed in "activating", holding systemd's start job open and with
+// it switch-to-configuration. See NewLineConnector, which had the same bug;
+// between them they blocked node-rct-keizersgracht, node-rct-westlandgracht
+// and node-shipit-maasdam.
 func NewMannerEthernetConnector(c *config.ConnectorConfig) (*MannerEthernetConnector, error) {
-	var err error
-	l := &MannerEthernetConnector{config: c}
-	l.connection, err = l.createConnection()
-	if err != nil {
-		return nil, err
+	switch c.URL.Scheme {
+	case "tcp", "udp":
+	default:
+		return nil, fmt.Errorf("unsupported connection scheme %v", c.URL.Scheme)
 	}
-	return l, nil
+	return &MannerEthernetConnector{config: c}, nil
 }
 
 func (r *MannerEthernetConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
@@ -79,15 +92,29 @@ func (r *MannerEthernetConnector) Subscribe(subscriber *nanomsg.Subscriber[messa
 		go subscriber.Receive(receiveBuffer)
 
 		for raw := range receiveBuffer {
-			r.connection.Write(append(raw.Value, '\r', '\n'))
+			connection := r.currentConnection()
+			if connection == nil {
+				logger.GetLogger().Warn(
+					"Not connected, dropping the data to write",
+					zap.String("URL", r.config.URL.String()),
+				)
+				continue
+			}
+			connection.Write(append(raw.Value, '\r', '\n'))
 		}
 	}()
 }
-func (r MannerEthernetConnector) readToChannel(streamBuffer chan byte) {
+func (r *MannerEthernetConnector) readToChannel(streamBuffer chan byte) {
 	go func() {
+		// Blocks until the meter answers. process is already running by
+		// then, so the unit becomes ready - reporting DisconnectedOrNoData -
+		// instead of hanging here; see NewMannerEthernetConnector.
+		connection := r.createConnection()
+		r.setConnection(connection)
+
 		buffer := make([]byte, 1024)
 		for {
-			n, err := r.connection.Read(buffer)
+			n, err := connection.Read(buffer)
 			if err != nil {
 				logger.GetLogger().Error("Error reading from the network stream", zap.Error(err))
 			}
@@ -119,29 +146,49 @@ func (r MannerEthernetConnector) readToChannel(streamBuffer chan byte) {
 	}()
 }
 
-func (r MannerEthernetConnector) createConnection() (io.ReadWriter, error) {
-	var connection io.ReadWriter
-	var err error
+// createConnection returns a connection, retrying until it has one. The url
+// scheme is checked by NewMannerEthernetConnector, so the only way this fails
+// is the meter not being there, which is not a reason to give up on it.
+func (r *MannerEthernetConnector) createConnection() io.ReadWriter {
+	var lastError string
 	for {
-		if r.config.URL.Scheme == "tcp" || r.config.URL.Scheme == "udp" {
-			connection, err = r.createNetworkConnection()
-			if err == nil {
-				break
-			}
+		connection, err := r.createNetworkConnection()
+		if err == nil {
+			return connection
+		}
+		// A meter that is absent fails identically every 5 seconds, so only
+		// say so when the reason changes; the repeats go to debug.
+		if err.Error() == lastError {
+			logger.GetLogger().Debug(
+				"Unable to create a connection, retrying in 5 seconds",
+				zap.String("URL", r.config.URL.String()),
+				zap.String("Error", err.Error()),
+			)
+		} else {
 			logger.GetLogger().Warn(
 				"Unable to create a connection, retrying in 5 seconds",
 				zap.String("URL", r.config.URL.String()),
 				zap.String("Error", err.Error()),
 			)
-			time.Sleep(5 * time.Second)
-		} else {
-			return nil, fmt.Errorf("unsupported connection scheme %v", r.config.URL.Scheme)
+			lastError = err.Error()
 		}
+		time.Sleep(5 * time.Second)
 	}
-	return connection, nil
 }
 
-func (r MannerEthernetConnector) createNetworkConnection() (io.ReadWriter, error) {
+func (r *MannerEthernetConnector) setConnection(connection io.ReadWriter) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	r.connection = connection
+}
+
+func (r *MannerEthernetConnector) currentConnection() io.ReadWriter {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	return r.connection
+}
+
+func (r *MannerEthernetConnector) createNetworkConnection() (io.ReadWriter, error) {
 	if r.config.Listen {
 		if r.config.URL.Scheme == "tcp" {
 			listener, err := net.Listen(r.config.URL.Scheme, net.JoinHostPort(r.config.URL.Hostname(), r.config.URL.Port()))

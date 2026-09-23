@@ -9,6 +9,7 @@ import (
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/protocol"
+	"github.com/munnik/gosk/sdnotify"
 	"github.com/munnik/modbus"
 	"go.bug.st/serial"
 	"go.uber.org/zap"
@@ -19,6 +20,7 @@ type ModbusConnector struct {
 	registerGroupsConfig []config.RegisterGroupConfig
 	realClient           *modbus.Client
 	lock                 *sync.Mutex
+	ready                *sync.Once
 }
 
 func NewModbusConnector(c *config.ConnectorConfig, rgcs []config.RegisterGroupConfig) (*ModbusConnector, error) {
@@ -93,6 +95,7 @@ func NewModbusConnector(c *config.ConnectorConfig, rgcs []config.RegisterGroupCo
 		registerGroupsConfig: rgcs,
 		realClient:           realClient,
 		lock:                 &sync.Mutex{},
+		ready:                &sync.Once{},
 	}, nil
 }
 
@@ -126,6 +129,7 @@ func (m *ModbusConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw])
 		go subscriber.Receive(receiveBuffer)
 
 		for raw := range receiveBuffer {
+			m.ready.Do(sdnotify.Ready)
 			if _, err := client.Write(raw.Value); err != nil {
 				logger.GetLogger().Warn(
 					"Error while writing data",

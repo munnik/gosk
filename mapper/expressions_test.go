@@ -190,3 +190,19 @@ func TestMilliAmpereToVolume(t *testing.T) {
 		t.Fail()
 	}
 }
+
+func TestRandom(t *testing.T) {
+	seen := make(map[float64]bool)
+	for i := 0; i < 1000; i++ {
+		res := Random()
+		if res < 0.0 || res >= 1.0 {
+			t.Logf("Expected a value in [0.0, 1.0) but got %f", res)
+			t.Fail()
+		}
+		seen[res] = true
+	}
+	if len(seen) < 900 {
+		t.Logf("Expected mostly different values but only got %d different ones out of 1000", len(seen))
+		t.Fail()
+	}
+}

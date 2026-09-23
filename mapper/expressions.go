@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"math/rand/v2"
 
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
@@ -51,6 +52,7 @@ func NewExpressionEnvironment() ExpressionEnvironment {
 		"bitwiseContains":    BitwiseContains,
 		"isBitSet":           IsBitSet,
 		"between":            Between,
+		"random":             Random,
 		"float64ToRegisters": Float64ToRegisters,
 	}
 }
@@ -180,6 +182,17 @@ func Between(value, min, max any) (bool, error) {
 		return false, err
 	}
 	return floats[0] >= floats[1] && floats[0] <= floats[2], nil
+}
+
+// Returns a pseudo random number in the half open interval [0.0, 1.0), so
+// 0.0 is a possible result but 1.0 is not. Takes no arguments.
+//
+// It reads the global source of math/rand/v2, which is safe to use from
+// several goroutines at once - mappers call expressions concurrently
+// wherever they are sharded, see the comment on runVM. The numbers are not
+// suitable for anything that needs to be unguessable.
+func Random() float64 {
+	return rand.Float64()
 }
 
 func ToFloat(mostSignificant, leastSignificant uint16) float32 {

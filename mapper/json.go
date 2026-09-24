@@ -12,6 +12,13 @@ import (
 	"go.uber.org/zap"
 )
 
+// maxTimestampSkew bounds how far a timestamp parsed out of a payload may
+// sit from the time the raw message carrying it arrived, in either
+// direction. A sensor whose clock is wrong by more than this is reporting
+// a time that would scatter its rows into chunks nothing else is written
+// to, so the arrival time is used instead and the reading is logged.
+const maxTimestampSkew = 365 * 24 * time.Hour
+
 type JSONMapper struct {
 	config            config.MapperConfig
 	protocol          string
@@ -74,25 +81,14 @@ func (m *JSONMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 
 	env := NewExpressionEnvironment()
 	env["json"] = j
-	// A mapping's timestampExpression used to be able to replace the
-	// update's timestamp with one parsed out of the payload. It no longer
-	// does: every row a mapper produces is now stamped with the time the
-	// raw message arrived, so that mapped_data."time" means one thing
-	// across every mapper rather than "arrival, unless this particular
-	// mapping was configured otherwise".
-	//
-	// The guard it came with was also only half a guard. It compared
-	// arrival-minus-payload against +365 days, which rejects a payload
-	// timestamp a year or more in the past but accepts one arbitrarily far
-	// in the future - that difference is negative, and every negative
-	// number is less than 365 days. A single bad reading could put a row
-	// in a chunk years ahead, where the retention policy would not reach
-	// it for as long.
-	//
-	// config.MappingConfig.TimestampExpression is kept so that verify()
-	// can warn about a configuration that still sets it, rather than
-	// letting it quietly stop having an effect.
 	for _, jmc := range m.jsonMappingConfig {
+		if at, ok := m.timestampFromPayload(env, &jmc, r); ok {
+			u.WithTimestamp(at)
+			// Keep the uuid's embedded time in step with the row's time,
+			// rather than leaving it to say when the bytes arrived while
+			// the row says when the measurement is for. See uuidV7At.
+			u.Source.Uuid = uuidV7At(at, r.Uuid)
+		}
 		output, err := runExpr(env, &jmc.MappingConfig)
 		if err == nil {
 			u.AddValue(message.NewValue().WithPath(jmc.Path).WithValue(output))
@@ -104,4 +100,79 @@ func (m *JSONMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	}
 
 	return result.AddUpdate(u), nil
+}
+
+// timestampFromPayload evaluates a mapping's timestampExpression against
+// the decoded payload, so that a source carrying its own clock (a GPS
+// fix, a sensor that stamps its readings) is recorded at the time it
+// reports rather than the time its bytes reached us.
+//
+// The second return is false whenever the payload's answer cannot be
+// trusted, in which case the caller keeps the arrival time. That covers a
+// mapping with no timestampExpression at all, an expression that failed,
+// one that did not return a string, one whose string is not RFC3339, and
+// one whose time is implausible - see maxTimestampSkew. A rejected
+// timestamp never discards the reading itself; only the time is fallen
+// back on.
+func (m *JSONMapper) timestampFromPayload(env ExpressionEnvironment, jmc *config.JSONMappingConfig, r *message.Raw) (time.Time, bool) {
+	if jmc.TimestampExpression == "" {
+		return time.Time{}, false
+	}
+
+	output, err := runTimestampExpr(env, &jmc.MappingConfig)
+	if err != nil {
+		return time.Time{}, false // already logged by runTimestampExpr
+	}
+
+	// Comma-ok, not a bare output.(string): a payload that simply does not
+	// carry the field the expression reads evaluates to nil, and asserting
+	// nil to a string panics - taking the whole mapper process down over
+	// one malformed message.
+	asString, ok := output.(string)
+	if !ok {
+		logger.GetLogger().Warn(
+			"The timestamp expression did not return a string",
+			zap.String("Expression", jmc.TimestampExpression),
+			zap.Any("Returned", output),
+			zap.String("Path", jmc.Path),
+		)
+		return time.Time{}, false
+	}
+
+	at, err := time.Parse(time.RFC3339, asString)
+	if err != nil {
+		logger.GetLogger().Warn(
+			"Could not parse the returned time, please use RFC3339",
+			zap.String("Error", err.Error()),
+			zap.String("Returned", asString),
+			zap.String("Path", jmc.Path),
+		)
+		return time.Time{}, false
+	}
+
+	// Checked in both directions. This used to be
+	// `r.Timestamp.Sub(newTime) < 365 days`, which is one sided: a payload
+	// timestamp a year or more in the past gives a large positive
+	// difference and is rejected, but one arbitrarily far in the future
+	// gives a negative difference, and every negative number is below any
+	// positive threshold. A single bad reading could put a row in a chunk
+	// years ahead, out of reach of the retention policy for that much
+	// longer.
+	//
+	// Arrival is the reference rather than time.Now(), so that replaying
+	// stored raw data checks the payload against when that data was
+	// collected instead of against today.
+	if skew := at.Sub(r.Timestamp); skew > maxTimestampSkew || skew < -maxTimestampSkew {
+		logger.GetLogger().Warn(
+			"Ignoring a timestamp from the payload that is too far from when the message arrived",
+			zap.Time("Timestamp", at),
+			zap.Time("Arrived", r.Timestamp),
+			zap.Duration("Skew", skew),
+			zap.Duration("MaxSkew", maxTimestampSkew),
+			zap.String("Path", jmc.Path),
+		)
+		return time.Time{}, false
+	}
+
+	return at, true
 }

@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/munnik/gosk/config"
 	. "github.com/munnik/gosk/message"
+	"github.com/munnik/uuid/v5"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -21,7 +21,7 @@ var _ = Describe("Raw", func() {
 	Describe("Marshal", func() {
 		JustBeforeEach(func() {
 			raw.Timestamp = time.Date(2022, time.Month(2), 9, 12, 3, 57, 431272983, time.UTC)
-			raw.Uuid = uuid.MustParse("496aa0fb-d838-4631-a12f-dbad3cb27389")
+			raw.Uuid = uuid.Must(uuid.FromString("496aa0fb-d838-4631-a12f-dbad3cb27389"))
 			marshaled, err = json.Marshal(raw)
 		})
 		Context("with an empty value", func() {
@@ -55,7 +55,7 @@ var _ = Describe("Raw", func() {
 			BeforeEach(func() {
 				expected = NewRaw().WithConnector("CAT 3512").WithValue([]byte{}).WithType(config.ModbusType)
 				expected.Timestamp = time.Date(2022, time.Month(2), 9, 12, 3, 57, 431272983, time.UTC)
-				expected.Uuid = uuid.MustParse("496aa0fb-d838-4631-a12f-dbad3cb27389")
+				expected.Uuid = uuid.Must(uuid.FromString("496aa0fb-d838-4631-a12f-dbad3cb27389"))
 				marshaled = []byte(`{"connector":"CAT 3512","timestamp":"2022-02-09T12:03:57.431272983Z","uuid":"496aa0fb-d838-4631-a12f-dbad3cb27389","value":"","type":"modbus"}`)
 			})
 			It("returns no errors", func() {
@@ -69,7 +69,7 @@ var _ = Describe("Raw", func() {
 			BeforeEach(func() {
 				expected = NewRaw().WithConnector("GPS").WithValue([]byte("$GPGLL,3723.2475,N,12158.3416,W,161229.487,A,A*41")).WithType(config.NMEA0183Type)
 				expected.Timestamp = time.Date(2022, time.Month(2), 9, 12, 3, 57, 431272983, time.UTC)
-				expected.Uuid = uuid.MustParse("496aa0fb-d838-4631-a12f-dbad3cb27389")
+				expected.Uuid = uuid.Must(uuid.FromString("496aa0fb-d838-4631-a12f-dbad3cb27389"))
 				marshaled = []byte(`{"connector":"GPS","timestamp":"2022-02-09T12:03:57.431272983Z","uuid":"496aa0fb-d838-4631-a12f-dbad3cb27389","value":"JEdQR0xMLDM3MjMuMjQ3NSxOLDEyMTU4LjM0MTYsVywxNjEyMjkuNDg3LEEsQSo0MQ==","type":"nmea0183"}`)
 			})
 			It("returns no errors", func() {
@@ -112,7 +112,7 @@ var _ = Describe("Mapped", func() {
 		Context("with a single update with a single value", func() {
 			BeforeEach(func() {
 				mapped = NewMapped().WithContext("vessels.urn:mrn:imo:mmsi:234567890").WithOrigin("vessels.urn:mrn:imo:mmsi:123456789")
-				s := NewSource().WithLabel("CAT 3512").WithType(config.ModbusType).WithUuid(uuid.MustParse("496aa0fb-d838-4631-a12f-dbad3cb27389"))
+				s := NewSource().WithLabel("CAT 3512").WithType(config.ModbusType).WithUuid(uuid.Must(uuid.FromString("496aa0fb-d838-4631-a12f-dbad3cb27389")))
 				u := NewUpdate().WithSource(*s)
 				v := NewValue().WithPath("propulsion.0.revolutions").WithValue(16.341667)
 				u.AddValue(v)
@@ -151,7 +151,7 @@ var _ = Describe("Mapped", func() {
 		Context("with a single update with a position value", func() {
 			BeforeEach(func() {
 				mapped = NewMapped().WithContext("vessels.urn:mrn:imo:mmsi:234567890").WithOrigin("vessels.urn:mrn:imo:mmsi:123456789")
-				s := NewSource().WithLabel("GPS").WithType(config.NMEA0183Type).WithUuid(uuid.MustParse("496aa0fb-d838-4631-a12f-dbad3cb27389"))
+				s := NewSource().WithLabel("GPS").WithType(config.NMEA0183Type).WithUuid(uuid.Must(uuid.FromString("496aa0fb-d838-4631-a12f-dbad3cb27389")))
 				u := NewUpdate().WithSource(*s)
 				lat := 52.150099
 				lon := 5.921749
@@ -221,7 +221,7 @@ var _ = Describe("Mapped", func() {
 				lon := -122.44880152
 				t := "alarm"
 				m := "AIS: Antenna VSWR exceeds limit"
-				s := NewSource().WithLabel("AIS").WithType(config.NMEA0183Type).WithUuid(uuid.MustParse("84679362-f963-405f-aa37-a6a8ed961417"))
+				s := NewSource().WithLabel("AIS").WithType(config.NMEA0183Type).WithUuid(uuid.Must(uuid.FromString("84679362-f963-405f-aa37-a6a8ed961417")))
 				v1 := NewValue().WithPath("navigation.position").WithValue(Position{Altitude: &alt, Latitude: &lat, Longitude: &lon})
 				v2 := NewValue().WithPath("navigation.state").WithValue("motoring")
 				v3 := NewValue().WithPath("notifications.ais").WithValue(Notification{State: &t, Message: &m})

@@ -14,34 +14,42 @@ linters:
   settings:
     forbidigo:
       # Patterns match the source text of the call; pkg additionally
-      # requires it to resolve to google/uuid, so a local package that
-      # happens to expose a New is not caught by mistake.
+      # requires it to resolve to the uuid package, so a local package
+      # that happens to expose a New is not caught by mistake.
       #
       # Note this does mean the patterns assume the usual unaliased
       # import. An aliased one would read differently and slip past - if
       # that ever shows up, the pattern is what has to grow.
       analyze-types: true
       forbid:
-        - pattern: ^uuid\.New$
-          pkg: ^github\.com/google/uuid$
+        - pattern: ^uuid\.NewV4$
+          pkg: ^github\.com/munnik/uuid/v5$
           msg: >-
-            Use uuid.Must(uuid.NewV7()). Version 4 UUIDs are random, so
-            they scatter every insert across mapped_data's uuid index;
-            version 7 leads with a timestamp and appends in order. See
-            section 6 of TRANSFER_REVIEW.md.
-        - pattern: ^uuid\.NewString$
-          pkg: ^github\.com/google/uuid$
+            Use uuid.Must(uuid.NewV7Precise()). Version 4 UUIDs are
+            random, so they scatter every insert across mapped_data's uuid
+            index; version 7 leads with a timestamp and appends in order.
+            See section 6 of TRANSFER_REVIEW.md.
+        - pattern: ^uuid\.NewV7$
+          pkg: ^github\.com/munnik/uuid/v5$
           msg: >-
-            Use uuid.Must(uuid.NewV7()).String(), NewString is version 4.
-        - pattern: ^uuid\.NewRandom$
-          pkg: ^github\.com/google/uuid$
+            Use uuid.Must(uuid.NewV7Precise()). Plain NewV7 spends rand_a
+            on a counter, so its timestamp resolves only to a
+            millisecond - too coarse for the 2kHz sources, and read back
+            wrong by uuid_timestamp_micros. See section 7.3.
+        - pattern: ^uuid\.NewV7AtTime$
+          pkg: ^github\.com/munnik/uuid/v5$
           msg: >-
-            Use uuid.NewV7(), NewRandom is version 4.
-        - pattern: ^uuid\.NewUUID$
-          pkg: ^github\.com/google/uuid$
+            Use uuid.NewV7AtTimePrecise, for the same reason as NewV7.
+        - pattern: ^uuid\.NewV1$
+          pkg: ^github\.com/munnik/uuid/v5$
           msg: >-
-            Use uuid.NewV7(). NewUUID is version 1, which embeds the
+            Use uuid.Must(uuid.NewV7Precise()). Version 1 embeds the
             host's MAC address.
+        - pattern: ^uuid\.NewV6$
+          pkg: ^github\.com/munnik/uuid/v5$
+          msg: >-
+            Use uuid.Must(uuid.NewV7Precise()), version 6 is the
+            transitional format version 7 replaces.
 
   exclusions:
     # Generated code is regenerated from its source, not edited, so a

@@ -3,11 +3,13 @@ package mapper
 import (
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/munnik/gosk/logger"
+	"github.com/munnik/uuid/v5"
+	"go.uber.org/zap"
 )
 
 // uuidV7At returns a version 7 UUID whose embedded timestamp is t, keeping
-// the non-timestamp bits of base.
+// the random bits of base.
 //
 // It exists so that a row whose timestamp did not come from the raw
 // message's arrival - see the timestampExpression handling in json.go -
@@ -16,28 +18,36 @@ import (
 // is for, and the two drift apart by however far the payload's clock is
 // from ours.
 //
-// Reusing base's remaining bits rather than drawing fresh randomness keeps
-// this deterministic: the same raw message mapped twice with the same
-// payload timestamp produces the same UUID, so re-processing cannot
-// silently change the identity of a row that the transfer protocol counts
-// by UUID. base is the raw message's own version 7 UUID, so those bits are
-// already random.
+// The timestamp bits, sub-millisecond fraction included, come from the
+// uuid package's NewV7AtTimePrecise, so that encoding lives in one place
+// rather than two. Its random bits are then replaced with base's, which
+// does two things NewV7AtTimePrecise on its own would not:
 //
-// Only the first 48 bits (the millisecond timestamp), the version nibble
-// and the variant bits are written; everything else is base's.
+//   - it keeps the result deterministic, so the same raw message with the
+//     same payload timestamp always produces the same UUID, and
+//     re-processing cannot silently change the identity of a row the
+//     transfer protocol counts by UUID;
+//   - it keeps the raw message's own randomness in the row, so two
+//     messages reporting the same instant still differ.
+//
+// base is the raw message's UUID, itself a version 7 UUID, so those bits
+// are already random.
 func uuidV7At(t time.Time, base uuid.UUID) uuid.UUID {
-	u := base
+	u, err := uuid.NewV7AtTimePrecise(t)
+	if err != nil {
+		// This only fails if the random source does, and the bits it drew
+		// are the ones overwritten below in any case. The timestamp is
+		// what was wanted, so fall back to the raw message's UUID rather
+		// than losing the row over it.
+		logger.GetLogger().Warn(
+			"Could not derive a UUID for a payload timestamp, keeping the raw message's",
+			zap.Time("Timestamp", t),
+			zap.Error(err),
+		)
+		return base
+	}
 
-	ms := t.UnixMilli()
-	u[0] = byte(ms >> 40)
-	u[1] = byte(ms >> 32)
-	u[2] = byte(ms >> 24)
-	u[3] = byte(ms >> 16)
-	u[4] = byte(ms >> 8)
-	u[5] = byte(ms)
-
-	u[6] = (u[6] & 0x0f) | 0x70 // version 7
-	u[8] = (u[8] & 0x3f) | 0x80 // RFC 9562 variant
+	copy(u[8:], base[8:])
 
 	return u
 }

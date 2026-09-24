@@ -3,7 +3,7 @@ package transfer
 import (
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/munnik/uuid/v5"
 )
 
 const (

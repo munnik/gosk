@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"github.com/allegro/bigcache/v3"
-	"github.com/google/uuid"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
+	"github.com/munnik/uuid/v5"
 	"go.uber.org/zap"
 )
 
@@ -90,7 +90,7 @@ func (c *BigCache) WriteMapped(mappedList ...*message.Mapped) []*message.Mapped 
 }
 
 func (c *BigCache) ReadRaw(where string, arguments ...interface{}) ([]message.Raw, error) {
-	if uuid, err := uuid.Parse(where); err == nil {
+	if uuid, err := uuid.FromString(where); err == nil {
 		bytes, err := c.rawCache.Get(uuid.String())
 		if err != nil {
 			logger.GetLogger().Warn(

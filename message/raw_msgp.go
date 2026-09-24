@@ -3,7 +3,7 @@ package message
 import (
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/munnik/uuid/v5"
 )
 
 // rawMsgp is Raw's msgpack wire shape - map mode, see mapped_msgp.go's
@@ -45,7 +45,7 @@ func (r *Raw) UnmarshalMsg(bts []byte) ([]byte, error) {
 		return rest, err
 	}
 
-	id, err := uuid.Parse(wire.Uuid)
+	id, err := uuid.FromString(wire.Uuid)
 	if err != nil {
 		return rest, err
 	}

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
-	"github.com/google/uuid"
 	"github.com/jackc/pgtype"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/database"
@@ -147,13 +146,31 @@ func (t *TransferResponder) injectData(requestMessage RequestMessage) {
 	// Length zero, capacity len(...): with a length the appends below run
 	// on past a slice that already held that many zero UUIDs, so the array
 	// sent to Postgres was twice the size it needed to be and half of it
-	// was uuid.Nil.
-	uuids := make([]uuid.UUID, 0, len(requestMessage.CountsPerUuid))
-	for uuid := range requestMessage.CountsPerUuid {
-		uuids = append(uuids, uuid)
+	// was the nil UUID.
+	//
+	// [][16]byte rather than []uuid.UUID, because that is the type
+	// pgtype.UUIDArray.Set matches directly. A slice of some named UUID
+	// type only reaches it through Set's reflection fallback, which works
+	// but rests on the shape of whichever uuid package is in use rather
+	// than on anything stated here.
+	uuids := make([][16]byte, 0, len(requestMessage.CountsPerUuid))
+	for u := range requestMessage.CountsPerUuid {
+		uuids = append(uuids, u)
 	}
 	pgUuids := &pgtype.UUIDArray{}
-	pgUuids.Set(uuids)
+	if err := pgUuids.Set(uuids); err != nil {
+		// Previously discarded. A failure here leaves the array unset,
+		// which the query below then matches nothing against - so the
+		// response carries no data at all, and the requester reads that as
+		// the origin having nothing to send rather than as an error.
+		logger.GetLogger().Warn(
+			"Could not build the uuid array for a data request",
+			zap.String("Error", err.Error()),
+			zap.String("Origin", t.config.Origin),
+			zap.Int("Uuids", len(uuids)),
+		)
+		return
+	}
 
 	deltas, err := t.db.ReadMapped(`WHERE "uuid" = ANY ($1) AND "time" BETWEEN $2 AND $2 + '5m'::interval`, pgUuids, requestMessage.PeriodStart)
 	if err != nil {

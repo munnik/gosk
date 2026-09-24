@@ -3,7 +3,7 @@ package message
 import (
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/munnik/uuid/v5"
 )
 
 // mappedMsgp, updateMsgp, sourceMsgp are Mapped/Update/Source's msgpack
@@ -55,11 +55,11 @@ func sourceToMsgp(s Source) sourceMsgp {
 }
 
 func sourceFromMsgp(w sourceMsgp) (Source, error) {
-	id, err := uuid.Parse(w.Uuid)
+	id, err := uuid.FromString(w.Uuid)
 	if err != nil {
 		return Source{}, err
 	}
-	transferID, err := uuid.Parse(w.TransferUuid)
+	transferID, err := uuid.FromString(w.TransferUuid)
 	if err != nil {
 		return Source{}, err
 	}

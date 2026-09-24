@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/message"
+	"github.com/munnik/uuid/v5"
 )
 
 func portStarboardMappings() []*config.ExpressionMappingConfig {

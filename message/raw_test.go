@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/munnik/uuid/v5"
 )
 
 // oldMarshalJSON is the map[string]string-based implementation this test
@@ -38,7 +38,7 @@ func TestRawMarshalJSONMatchesOldMapBasedImplementation(t *testing.T) {
 			Connector: "testConnector",
 			Timestamp: time.Date(2026, 9, 17, 14, 30, 0, 123456789, loc),
 			Type:      "modbus",
-			Uuid:      uuid.MustParse("11111111-2222-3333-4444-555555555555"),
+			Uuid:      uuid.Must(uuid.FromString("11111111-2222-3333-4444-555555555555")),
 			Value:     []byte{0xde, 0xad, 0xbe, 0xef, 0x00, 0x01},
 		},
 		{
@@ -53,7 +53,7 @@ func TestRawMarshalJSONMatchesOldMapBasedImplementation(t *testing.T) {
 			Connector: "unicode-Ø-connector",
 			Timestamp: time.Now(),
 			Type:      "nmea0183",
-			Uuid:      uuid.Must(uuid.NewV7()),
+			Uuid:      uuid.Must(uuid.NewV7Precise()),
 			Value:     []byte("hello \"world\"\n"),
 		},
 	}
@@ -78,7 +78,7 @@ func TestRawMarshalUnmarshalRoundTrip(t *testing.T) {
 		Connector: "testConnector",
 		Timestamp: time.Now(),
 		Type:      "modbus",
-		Uuid:      uuid.Must(uuid.NewV7()),
+		Uuid:      uuid.Must(uuid.NewV7Precise()),
 		Value:     []byte{1, 2, 3, 4, 5},
 	}
 
@@ -108,7 +108,7 @@ func BenchmarkRawMarshalJSON(b *testing.B) {
 		Connector: "testConnector",
 		Timestamp: time.Now(),
 		Type:      "manner_ethernet",
-		Uuid:      uuid.Must(uuid.NewV7()),
+		Uuid:      uuid.Must(uuid.NewV7Precise()),
 		Value:     []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c},
 	}
 	b.ResetTimer()
@@ -124,7 +124,7 @@ func BenchmarkRawMarshalJSONOld(b *testing.B) {
 		Connector: "testConnector",
 		Timestamp: time.Now(),
 		Type:      "manner_ethernet",
-		Uuid:      uuid.Must(uuid.NewV7()),
+		Uuid:      uuid.Must(uuid.NewV7Precise()),
 		Value:     []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c},
 	}
 	b.ResetTimer()

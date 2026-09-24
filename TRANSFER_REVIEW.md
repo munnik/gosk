@@ -301,10 +301,25 @@ counter, then randomness. Values generated in sequence sort in the order they
 were created. `uuid.Must` panics if the system's source of randomness fails —
 the same behaviour, from the same cause, as `uuid.New`'s for version 4.
 
-### No new dependency, and nothing hand-rolled
+### The library
 
-`github.com/google/uuid` — already a direct dependency — has implemented
-version 7 since v1.6.0 as `uuid.NewV7()`.
+gosk uses `github.com/munnik/uuid/v5`, a fork of `gofrs/uuid` carrying one
+addition: UUIDv7 generators that fill `rand_a` with sub-millisecond time
+(RFC 9562 method 3) rather than with a counter. `NewV7Precise` for the
+clock, `NewV7AtTimePrecise` for a time that came from elsewhere.
+
+That fork exists because no maintained library does this. `google/uuid`
+derives `rand_a` from the sub-millisecond nanoseconds but on a scale
+nothing else reads (256ns units, where the format's readers expect
+4096ths of a millisecond). `gofrs/uuid` states outright that it implements
+method 1 — `rand_a` is a counter with no time in it. The libraries that do
+implement method 3 are all single-author packages, two of them already
+archived. gofrs declined method 3 upstream in issue #174 on API-fit
+grounds, so the fork is long-term rather than a staging post.
+
+Why it matters here: the shaft power meter samples at 2kHz, one every
+500µs, and a millisecond-resolution timestamp cannot tell two of those
+apart. §7.7 has what the database can read back.
 
 The call is written out at each site rather than hidden behind a helper, so
 which version is in use is visible where it matters.
@@ -348,6 +363,13 @@ index stays as fragmented as it already is until those chunks age out.
 retention policy at all, so it will hold a mix indefinitely.
 
 **Not smaller.** A UUID is still 16 bytes.
+
+**Resolution.** Since the move to method 3 the embedded time resolves to
+about 244ns, finer than the microsecond `timestamptz` itself stores, so the
+UUID is no longer the limiting factor. Verified end to end: a row written
+through gosk's own database layer came back with its `time` column and the
+timestamp extracted from its UUID agreeing to the microsecond. §7.8 has the
+caveat that applied before the fork.
 
 ### The trade
 

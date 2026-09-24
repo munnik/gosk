@@ -14,7 +14,6 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
-	"github.com/google/uuid"
 	zapadapter "github.com/jackc/pgx-zap"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -23,6 +22,7 @@ import (
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
+	"github.com/munnik/uuid/v5"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/zap"
@@ -709,7 +709,7 @@ func (db *PostgresqlDatabase) flushBatch() {
 	if batchToFlush == nil {
 		return
 	}
-	uuid := uuid.Must(uuid.NewV7())
+	uuid := uuid.Must(uuid.NewV7Precise())
 	start := time.Now()
 	logger.GetLogger().Info(
 		"Going to flush",
@@ -765,7 +765,7 @@ func (db *PostgresqlDatabase) flushRawBatch() {
 	if rows == nil {
 		return
 	}
-	uuid := uuid.Must(uuid.NewV7())
+	uuid := uuid.Must(uuid.NewV7Precise())
 	start := time.Now()
 	logger.GetLogger().Info(
 		"Going to flush",

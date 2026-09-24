@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/munnik/uuid/v5"
 )
 
 type Raw struct {
@@ -51,7 +51,7 @@ const (
 // order append near one edge of the index instead.
 func NewRaw() *Raw {
 	return &Raw{
-		Uuid:      uuid.Must(uuid.NewV7()),
+		Uuid:      uuid.Must(uuid.NewV7Precise()),
 		Timestamp: time.Now(),
 	}
 }
@@ -135,7 +135,7 @@ func (r *Raw) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	r.Type = j["type"]
-	if r.Uuid, err = uuid.Parse(j["uuid"]); err != nil {
+	if r.Uuid, err = uuid.FromString(j["uuid"]); err != nil {
 		return err
 	}
 	if r.Value, err = base64.StdEncoding.DecodeString(j["value"]); err != nil {

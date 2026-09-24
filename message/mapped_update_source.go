@@ -1,6 +1,6 @@
 package message
 
-import "github.com/google/uuid"
+import "github.com/munnik/uuid/v5"
 
 //easyjson:json
 type Source struct {

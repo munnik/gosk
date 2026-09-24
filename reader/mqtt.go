@@ -5,7 +5,7 @@ import (
 	"sync"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
-	"github.com/google/uuid"
+	"github.com/munnik/uuid/v5"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/zap"

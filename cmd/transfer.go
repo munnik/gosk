@@ -27,6 +27,23 @@ var (
 		Long:  `respond to data count and missing data requests`,
 		Run:   doTransferRespond,
 	}
+	transferOutboxCmd = &cobra.Command{
+		Use:   "outbox",
+		Short: "send and receive data through the outbox",
+		Long:  `Deliver data by working through a list of what has not been acknowledged yet, rather than by comparing counts per period. Runs alongside request/respond, it does not replace them.`,
+	}
+	transferOutboxShipCmd = &cobra.Command{
+		Use:   "ship",
+		Short: "send unacknowledged data to the central server",
+		Long:  `On a vessel: work through transfer_outbox oldest first, send each batch, and clear entries once the far end confirms it has stored them.`,
+		Run:   doTransferOutboxShip,
+	}
+	transferOutboxReceiveCmd = &cobra.Command{
+		Use:   "receive",
+		Short: "store data shipped by vessels and acknowledge it",
+		Long:  `On the central server: store what a vessel ships, and acknowledge it only once the write has committed.`,
+		Run:   doTransferOutboxReceive,
+	}
 )
 
 func init() {
@@ -36,6 +53,28 @@ func init() {
 	transferCmd.AddCommand(transferRespondCmd)
 	transferRespondCmd.Flags().StringVarP(&publishURL, "publishURL", "p", "", "Nanomsg URL, the URL is used to publish the data on. It listens for connections.")
 	transferRespondCmd.MarkFlagRequired("publishURL")
+
+	transferCmd.AddCommand(transferOutboxCmd)
+	transferOutboxCmd.AddCommand(transferOutboxShipCmd)
+	transferOutboxCmd.AddCommand(transferOutboxReceiveCmd)
+}
+
+func doTransferOutboxShip(cmd *cobra.Command, args []string) {
+	c := config.NewTransferConfig(cfgFile)
+	s := transfer.NewOutboxShipper(c)
+	// Like the other transfer processes: it neither subscribes to nor
+	// publishes nanomsg data, so there is no first message to hang
+	// readiness off. Having read its configuration and connected is the
+	// meaningful ready state.
+	sdnotify.Ready()
+	s.Run()
+}
+
+func doTransferOutboxReceive(cmd *cobra.Command, args []string) {
+	c := config.NewTransferConfig(cfgFile)
+	r := transfer.NewOutboxReceiver(c)
+	sdnotify.Ready()
+	r.Run()
 }
 
 func doTransferRequest(cmd *cobra.Command, args []string) {

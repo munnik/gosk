@@ -10,9 +10,9 @@ the gaps the reconciliation loop chases are self-inflicted.
 
 **Status:** §1, §2 and §6 are implemented (see "Deploying §1" below for the two
 prerequisites this cannot enforce from the code). §3 and §4 are unchanged
-proposals; nothing in them has been built. §7 is a decision, recorded so it is
-not revisited from scratch; it changed no code, and §7.9 revisits it against
-the microsecond-accurate UUIDs §6 ended up with.
+proposals, except §4.2, which is built and runs alongside the old scheme. §7 is
+a decision, recorded so it is not revisited from scratch; it changed no code,
+and §7.9 revisits it against the microsecond-accurate UUIDs §6 ended up with.
 
 ---
 
@@ -259,6 +259,44 @@ This gives exact delivery semantics, O(1) reconciliation state, natural batching
 and no Postgres replication machinery, TimescaleDB version coupling, WAL pinning,
 or cloud→vessel connectivity requirement. It is also a strictly smaller change
 than logical replication: the wire format and the MQTT plumbing already exist.
+
+#### Built — with two deliberate departures from the sketch above
+
+`transfer_outbox`, `transfer/outbox*.go` and `gosk transfer outbox
+ship|receive`. It runs **alongside** request/respond rather than replacing it:
+a fleet cannot be cut over at once, and until every vessel ships this way the
+count protocol is what closes the gaps.
+
+**No sequence column, and no timestamp column.** Every UUID is now a version 7
+UUID (§6), so ordering by UUID is ordering by time and the oldest
+unacknowledged work sorts first with nothing else stored. `SelectOutbox`
+orders by `uuid`; reading the rows back uses `WHERE origin = ? AND uuid =
+ANY(?)`, which the `(origin, uuid, time)` index serves on its first two
+columns. No part of the protocol consults `time`.
+
+**No watermark.** A message is pending if and only if it is in
+`transfer_outbox`; progress is the delete, and there is no cursor. The
+"highest contiguous `seq`" in step 3 above is only safe if the key it advances
+over increases in the order rows *become visible*, and rows become visible when
+their transaction commits — which is not the order their keys were issued in.
+Under a watermark a late commit is a row skipped forever; under a pending set
+it is a row sent slightly later. That is worth more than the O(1) state the
+watermark was chosen for, and the state is O(pending) rather than O(backlog)
+in any case.
+
+Two things the implementation had to get right that the sketch does not
+mention. The outbox insert is queued into the *same pgx batch* as the row
+itself — pgx runs a batch in an implicit transaction, so the two commit
+together or not at all, which is the entire point of an outbox. And the
+receiving end writes **synchronously and acknowledges afterwards**: the normal
+ingest path hands rows to a batch that flushes later, so acknowledging on
+receipt would promise a durability that a restart would break. `Flush` exists
+for that, and returns its error rather than retrying, because its caller is
+deciding whether to make that promise.
+
+Not done: cutting over, retiring the count protocol, and compressing the wire
+format (shipments are plain JSON; `writer/mqtt.go` already zstds its payloads
+and this should too).
 
 ---
 

@@ -383,17 +383,28 @@ The two columns answer different questions: *when did this message arrive*
 against *when is this measurement for*. Deriving one from the other silently
 rewrites history for exactly the mappers where the difference is the point.
 
-**Since changed.** The first two were brought back to arrival-derived times, so
-`mapped_data."time"` now means one thing across every mapper:
+**Since changed.** `timestampExpression` stays — a source that carries its own
+clock should be recorded at the time it reports, not the time its bytes reached
+us. What changed is that the UUID now follows the timestamp instead of
+contradicting it:
 
-- `json.go` no longer honours `timestampExpression`; every row carries the raw
-  message's arrival time. `config.MappingConfig` keeps the field only so
-  `verify()` can warn about a configuration that still sets it. Its guard was
-  half a guard anyway: it compared arrival-minus-payload against +365 days,
-  which rejects a payload timestamp a year in the past but accepts one
-  arbitrarily far in the *future*, since that difference is negative and every
-  negative number is below the threshold. One bad reading could put a row in a
-  chunk years ahead, out of reach of the retention policy for that much longer.
+- `json.go` still takes the timestamp from the payload, and when it does, the
+  row's UUID becomes a version 7 UUID whose embedded time *is* that timestamp
+  (`mapper.uuidV7At`). So for these rows the two agree rather than differing by
+  however far the sensor's clock is from ours. The derivation keeps the raw
+  message's own random bits, which makes it deterministic: the same message and
+  the same payload timestamp always give the same UUID, so re-processing cannot
+  quietly change the identity of a row the transfer protocol counts by UUID.
+- The sanity check is now symmetric, `maxTimestampSkew` either side of arrival.
+  It used to compare arrival-minus-payload against +365 days, which rejects a
+  payload timestamp a year in the past but accepts one arbitrarily far in the
+  *future*, since that difference is negative and every negative number is
+  below a positive threshold. One bad reading could put a row in a chunk years
+  ahead, out of reach of the retention policy for that much longer. Arrival is
+  the reference rather than `time.Now()`, so replaying stored raw data is
+  checked against when it was collected.
+- A rejected timestamp costs only the timestamp; the reading is still mapped,
+  at the arrival time, with the raw message's UUID.
 - `fft.go` stamps a spectrum with the newest sample in its window rather than
   the oldest, so it is dated by the data that completed it instead of a full
   window into the past. Pinned by a test.
@@ -404,9 +415,16 @@ rewrites history for exactly the mappers where the difference is the point.
 `time.Now()` — they report events with no upstream message, so there is nothing
 for them to inherit.
 
-Note what this does and does not buy. Rows now agree on what their timestamp
-means, which is worth having on its own. It does **not** make the timestamp
-recoverable from the UUID, for the reason in §7.1.1.
+A latent panic turned up while testing this. The timestamp path asserted
+`output.(string)` without the comma-ok form, so a payload that simply does not
+carry the field the expression reads — the expression evaluates to nil — panicked
+and took the mapper process down over one malformed message. It is now checked
+and logged.
+
+Note what this does and does not buy. For json-mapped rows the UUID and the
+timestamp now agree. It still does **not** make the timestamp recoverable from
+the UUID in general, for the reason in §7.1.1: FFT, notification,
+connector-status and meteohydro rows carry no UUID at all.
 
 ### 7.1.1 And a whole class of rows carries no UUID at all
 

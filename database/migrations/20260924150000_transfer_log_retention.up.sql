@@ -1,0 +1,45 @@
+-- transfer_log had no retention policy and 7-day chunks, and had grown to 18TB
+-- - 62% of the whole gosk database, larger than mapped_data_matching_context
+-- and mapped_data_other_context combined.
+--
+-- Its growth is a step change, not a trend: ~60GB/month through 2023 and 2024,
+-- then ~2400GB/month from 2026-03 onwards, so 15.3TB of the 18TB was written in
+-- the last seven months. Almost all of it is the counts_per_uuid map that
+-- respondWithData and sendDataRequestWorker logged in full - the
+-- LoggedRequestMessage change in transfer/main.go stops writing it, and this
+-- clears out what has already accumulated.
+--
+-- Nothing in gosk reads this table: LogTransferRequest is the only statement
+-- that touches it. Transfer monitoring proper runs off transfer_data over
+-- transfer_local_data_* and transfer_remote_data, which carry retention of
+-- their own (365 days, since 20250115144655) - transfer_log was the one part
+-- of the transfer stack with no bound at all. 30 days is well past what an
+-- alert on "is transfer working now" looks at.
+--
+-- 30 rather than something closer to the aggregates' year because the point
+-- here is to clear the 18TB that already exists. Those aggregates are ~500MB
+-- each, so a year costs them nothing; this table was writing 2400GB a month.
+-- Once LoggedRequestMessage is in, new rows are ~113 bytes and the table
+-- should settle near 100GB/month, at which point a longer window becomes
+-- affordable again if anyone wants one - that is a policy change, not a
+-- schema change.
+--
+-- Note for whoever deploys this: nine roles hold SELECT on transfer_log,
+-- including `jupyter` and seven individual analyst accounts. Nothing
+-- programmatic reads it, but it is worth one check that no notebook depends on
+-- more than a month of history before this lands.
+--
+-- Compressing it instead was measured and rejected: a 30-minute slice
+-- (1020833 rows, 2489MB) converted to the columnstore in two minutes and came
+-- out at 2312MB, a ratio of 1.08. The bytes are already-TOASTed jsonb holding
+-- random uuid keys, so there is no entropy left to remove. Retention is the
+-- only thing that helps this table.
+--
+-- The chunk interval has to come first and has to be smaller than the
+-- retention, for the same reason as raw_data in
+-- 20260915180000_smaller_raw_data_chunk_interval: drop_chunks only removes a
+-- chunk once its whole range has expired, so 7-day chunks under a 30-day policy
+-- would keep up to 37 days. Existing wide chunks still age out under the old
+-- rule; every new chunk is narrow enough to add at most ~1 day.
+SELECT public.set_chunk_time_interval('transfer_log', INTERVAL '1 day');
+SELECT public.add_retention_policy('transfer_log', INTERVAL '30 days', if_not_exists => true);

@@ -63,8 +63,11 @@ func doTest(cmd *cobra.Command, args []string) {
 		i := 0
 		for range ticker.C {
 			result := message.NewMapped().WithContext(c.Context).WithOrigin(c.Context)
-			s := message.NewSource().WithLabel("sampleData").WithType("sampleData").WithUuid(uuid.Must(uuid.NewV7Precise()))
-			u := message.NewUpdate().WithSource(*s).WithTimestamp(time.Now())
+			// One clock reading for both, so the UUID's embedded time and
+			// the update's timestamp are the same instant - see NewRaw.
+			now := time.Now()
+			s := message.NewSource().WithLabel("sampleData").WithType("sampleData").WithUuid(uuid.Must(uuid.NewV7AtTimePrecise(now)))
+			u := message.NewUpdate().WithSource(*s).WithTimestamp(now)
 			for _, path := range c.Paths {
 				vm := vm.VM{}
 				env := make(map[string]interface{})

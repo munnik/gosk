@@ -16,6 +16,10 @@ type ExpressionFilter struct {
 }
 
 func NewExpressionFilter(emc []*config.ExpressionMappingConfig) (*ExpressionFilter, error) {
+	for _, m := range emc {
+		precompileMapping(&m.MappingConfig)
+	}
+
 	env := NewExpressionEnvironment()
 
 	mappings := make(map[string][]*config.ExpressionMappingConfig)

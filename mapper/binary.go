@@ -17,6 +17,9 @@ type BinaryMapper struct {
 }
 
 func NewBinaryMapper(c config.MapperConfig, mc []config.MappingConfig) (*BinaryMapper, error) {
+	for i := range mc {
+		precompileMapping(&mc[i])
+	}
 	return &BinaryMapper{
 		config:         c,
 		protocol:       config.BinaryType,
@@ -47,11 +50,18 @@ func (m *BinaryMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	s := message.NewSource().WithLabel(r.Connector).WithType(m.protocol).WithUuid(r.Uuid)
 	u := message.NewUpdate().WithSource(*s).WithTimestamp(r.Timestamp)
 	m.env["value"] = r.Value
-	for i, mc := range m.mappingsConfig {
-		output, err := runExpr(m.env, &mc)
+	// By index rather than by value: &mc would point at the loop's copy,
+	// so runExpr's compile cache would be written to something discarded
+	// at the end of the iteration. This used to be worked around by
+	// writing the copy back with m.mappingsConfig[i] = mc, which only
+	// took effect for a mapping that had already produced a value once.
+	// NewBinaryMapper now compiles them all up front, so there is nothing
+	// left to write back.
+	for i := range m.mappingsConfig {
+		mc := &m.mappingsConfig[i]
+		output, err := runExpr(m.env, mc)
 		if err == nil {
 			u.AddValue(message.NewValue().WithPath(mc.Path).WithValue(output))
-			m.mappingsConfig[i] = mc
 		}
 	}
 

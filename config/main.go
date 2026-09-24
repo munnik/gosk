@@ -399,14 +399,39 @@ type MQTTConfig struct {
 	BufferSize int           `mapstructure:"buffer_size"` // maximum size of the cache in MBs, cache will be flushed when size is reached, ignored for reader
 	Compress   bool          `mapstructure:"compress"`    // compress the data before sending
 	Topic      string        `mapstructure:"topic"`       // topic to subscribe to
+
+	// ClientID is the MQTT client identifier. It must be stable across
+	// restarts - the broker keys the persistent session (queued messages
+	// for a subscriber that is offline, unacknowledged QoS 1 publishes)
+	// on it - and unique across every client connected to the same
+	// broker: two clients sharing an id disconnect each other in a loop.
+	// Leave it empty to have mqtt.New derive one from the process's role
+	// and the hostname, which satisfies both as long as a given role runs
+	// once per host.
+	ClientID string `mapstructure:"client_id"`
+	// StoreDir is where undelivered QoS 1 messages are persisted, so a
+	// publisher that is restarted (or killed) while the link is down does
+	// not lose what it had queued. Empty means keep them in memory only,
+	// which is the right choice for anything running in the cloud and the
+	// wrong one on a vessel.
+	StoreDir string `mapstructure:"store_dir"`
+	// StoreMaxSize bounds StoreDir in bytes; the oldest messages are
+	// dropped once it is exceeded, so a long outage costs the oldest data
+	// rather than the filesystem. Ignored when StoreDir is empty.
+	StoreMaxSize int64 `mapstructure:"store_max_size"`
+}
+
+func defaultMQTTConfig() MQTTConfig {
+	return MQTTConfig{
+		BufferSize:   100,
+		Interval:     30 * time.Second,
+		Compress:     true,
+		StoreMaxSize: 256 * 1024 * 1024,
+	}
 }
 
 func NewMQTTConfig(configFilePath string) *MQTTConfig {
-	result := MQTTConfig{
-		BufferSize: 100,
-		Interval:   30 * time.Second,
-		Compress:   true,
-	}
+	result := defaultMQTTConfig()
 	readConfigFile(&result, configFilePath)
 
 	return &result
@@ -482,17 +507,27 @@ type TransferConfig struct {
 	NumberOfRequestWorkers    int              `mapstructure:"number_of_request_workers"`
 	MaxPeriodsToRequest       int              `mapstructure:"max_periods_to_request"`
 	CompletenessFactor        float64          `mapstructure:"completeness_factor"`
+	// MaxCountRequestsPerCycle bounds how many count requests are sent per
+	// origin per cycle. Without it, an origin that has been unreachable
+	// for a while accumulates one un-answered period every 5 minutes and
+	// every cycle re-asks about all of them at once - a week offline is
+	// ~2000 publishes per origin every SleepBetweenCountRequests, forever.
+	// The newest periods are asked about first, so a backlog drains at a
+	// bounded rate while recent gaps are still closed promptly.
+	MaxCountRequestsPerCycle int `mapstructure:"max_count_requests_per_cycle"`
 }
 
 func NewTransferConfig(configFilePath string) *TransferConfig {
 	result := &TransferConfig{
 		PostgresqlConfig:          defaultPostgresqlConfig(),
+		MQTTConfig:                defaultMQTTConfig(),
 		SleepBetweenCountRequests: 30 * time.Minute,
 		SleepBetweenDataRequests:  6 * time.Hour,
 		SleepBetweenRespondDeltas: 10 * time.Millisecond,
 		NumberOfRequestWorkers:    5,
 		MaxPeriodsToRequest:       500,
 		CompletenessFactor:        0.99,
+		MaxCountRequestsPerCycle:  1000,
 	}
 	readConfigFile(result, configFilePath)
 

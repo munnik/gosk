@@ -20,6 +20,20 @@ const (
 	disconnectWait = 5000 // time to wait before disconnect in ms
 	keepAlive      = 30 * time.Second
 	writeTopic     = "vessels/urn:mrn:imo:mmsi:%s"
+
+	// dataQoS is 1, not 0: this is the link that loses data when a vessel's
+	// connection degrades, and at QoS 0 there is no acknowledgement and no
+	// redelivery, so paho hands the batch to a socket that is about to die
+	// and it is gone. At QoS 1 an unacknowledged batch is held (on disk,
+	// when store_dir is configured) and redelivered when the link returns.
+	dataQoS = 1
+	// dataRetained is false. Retaining this topic never provided
+	// durability - each batch replaced the last, so the broker kept
+	// exactly one arbitrary batch - while it did replay that batch to
+	// every subscriber that connected, feeding old deltas back in. A
+	// persistent session queues what a subscriber actually missed, which
+	// is what was wanted from it.
+	dataRetained = false
 )
 
 type MqttWriter struct {
@@ -56,15 +70,15 @@ func (w *MqttWriter) sendMQTT(deltas []message.Mapped) {
 	}
 	go func(context string, bytes []byte) {
 		if w.mqttConfig.Compress {
-			w.mqttClient.Publish(context, 0, true, w.encoder.EncodeAll(bytes, make([]byte, 0, len(bytes))))
+			w.mqttClient.Publish(context, dataQoS, dataRetained, w.encoder.EncodeAll(bytes, make([]byte, 0, len(bytes))))
 		} else {
-			w.mqttClient.Publish(context, 0, true, bytes)
+			w.mqttClient.Publish(context, dataQoS, dataRetained, bytes)
 		}
 	}(fmt.Sprintf(writeTopic, w.mqttConfig.Username), bytes)
 }
 
 func (w *MqttWriter) WriteMapped(subscriber *nanomsg.Subscriber[message.Mapped]) {
-	w.mqttClient = mqtt.New(w.mqttConfig, nil, "")
+	w.mqttClient = mqtt.New(w.mqttConfig, "write", nil, "")
 	defer w.mqttClient.Disconnect()
 	receiveBuffer := make(chan *message.Mapped, bufferCapacity)
 	defer close(receiveBuffer)

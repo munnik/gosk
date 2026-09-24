@@ -53,7 +53,7 @@ func (t *TransferResponder) Run(publisher *nanomsg.Publisher[message.Mapped]) {
 	t.sendBuffer = make(chan *message.Mapped, bufferCapacity)
 	defer close(t.sendBuffer)
 	go publisher.Send(t.sendBuffer)
-	t.mqttClient = mqtt.New(&t.config.MQTTConfig, t.messageReceived, fmt.Sprintf(requestTopic, t.config.Origin))
+	t.mqttClient = mqtt.New(&t.config.MQTTConfig, "transferRespond", t.messageReceived, fmt.Sprintf(requestTopic, t.config.Origin))
 	defer t.mqttClient.Disconnect()
 
 	// never exit
@@ -112,7 +112,7 @@ func (t *TransferResponder) respondWithCount(request RequestMessage) {
 		return
 	}
 	topic := fmt.Sprintf(respondTopic, t.config.Origin)
-	t.mqttClient.Publish(topic, 0, true, bytes)
+	t.mqttClient.Publish(topic, transferQoS, transferRetained, bytes)
 	t.db.LogTransferRequest(t.config.Origin, response)
 	t.countRequestsHandled.Inc()
 }
@@ -144,7 +144,11 @@ func (t *TransferResponder) respondWithData(requestMessage RequestMessage) {
 }
 
 func (t *TransferResponder) injectData(requestMessage RequestMessage) {
-	uuids := make([]uuid.UUID, len(requestMessage.CountsPerUuid))
+	// Length zero, capacity len(...): with a length the appends below run
+	// on past a slice that already held that many zero UUIDs, so the array
+	// sent to Postgres was twice the size it needed to be and half of it
+	// was uuid.Nil.
+	uuids := make([]uuid.UUID, 0, len(requestMessage.CountsPerUuid))
 	for uuid := range requestMessage.CountsPerUuid {
 		uuids = append(uuids, uuid)
 	}

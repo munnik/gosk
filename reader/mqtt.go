@@ -53,7 +53,7 @@ func (r *MqttReader) ReadMapped(publisher *nanomsg.Publisher[message.Mapped]) {
 	defer close(r.sendBuffer)
 	go publisher.Send(r.sendBuffer)
 
-	m := mqtt.New(r.mqttConfig, r.messageHandler, mqttTopic)
+	m := mqtt.New(r.mqttConfig, "read", r.messageHandler, mqttTopic)
 	defer m.Disconnect()
 
 	// never exit

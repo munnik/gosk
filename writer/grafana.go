@@ -45,7 +45,7 @@ func (w *GrafanaWriter) sendMQTT(delta *message.Mapped) {
 }
 
 func (w *GrafanaWriter) WriteMapped(subscriber *nanomsg.Subscriber[message.Mapped]) {
-	w.mqttClient = mqtt.New(w.mqttConfig, nil, "")
+	w.mqttClient = mqtt.New(w.mqttConfig, "grafana", nil, "")
 	defer w.mqttClient.Disconnect()
 
 	receiveBuffer := make(chan *message.Mapped, bufferCapacity)

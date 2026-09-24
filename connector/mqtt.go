@@ -33,7 +33,7 @@ func NewMQTTConnector(c *config.ConnectorConfig, mqttC *config.MQTTConfig) (*MQT
 func (m *MQTTConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
 	stream := make(chan []byte, 1)
 	defer close(stream)
-	m.mqttClient = mqtt.New(m.mqttConfig, m.handleMessageReceived(stream), m.mqttConfig.Topic)
+	m.mqttClient = mqtt.New(m.mqttConfig, "connect", m.handleMessageReceived(stream), m.mqttConfig.Topic)
 	process(stream, m.config.Name, m.config.Protocol, publisher, m.config.Timeout)
 }
 

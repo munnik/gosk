@@ -55,6 +55,10 @@ var _ = Describe("DoMap json", func() {
 					now,
 				).AddValue(
 					message.NewValue().WithPath("propulsion.mainEngine.drive.power").WithValue("8409.6"),
+				).AddValue(
+					message.NewValue().WithPath("propulsion.mainEngine.drive.revolutions").WithValue("980"),
+				).AddValue(
+					message.NewValue().WithPath("propulsion.mainEngine.drive.torque").WithValue("82.29"),
 				),
 			),
 			false,

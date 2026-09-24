@@ -3,3 +3,10 @@ context: "vessels.urn:mrn:imo:mmsi:123456789"
 mappings:
   - expression: "json['pwr']"
     path: "propulsion.mainEngine.drive.power"
+  # Two more mappings over the same payload, so the suite covers a mapper
+  # with several mappings - the shape every real json mapper has, and the
+  # one DoMap only parses the message once for.
+  - expression: "json['spd']"
+    path: "propulsion.mainEngine.drive.revolutions"
+  - expression: "json['trq']"
+    path: "propulsion.mainEngine.drive.torque"

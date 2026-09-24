@@ -16,7 +16,10 @@
       eachSystem = nixpkgs.lib.genAttrs (import systems);
 
       goskFor =
-        pkgs:
+        {
+          pkgs,
+          runTests ? false,
+        }:
         pkgs.buildGoModule {
           pname = "gosk";
           version = self.shortRev or self.dirtyShortRev or "dev";
@@ -25,7 +28,16 @@
 
           vendorHash = "sha256-r//mle76pC1hTy3CGVczsjoBup2NaiU+HeJaIVKov7Y=";
 
-          doCheck = false; # tests require a database available
+          # Off for the package that gets installed, on for the flake
+          # check. database/'s suite starts its own PostgreSQL and needs the
+          # timescaledb extension, which is unfree in nixpkgs - see the
+          # checks output below, which allows unfree for that build alone so
+          # `nix build` of the binary stays free of it.
+          doCheck = runTests;
+
+          nativeCheckInputs = pkgs.lib.optionals runTests [
+            (pkgs.postgresql.withPackages (p: [ p.timescaledb ]))
+          ];
 
           ldflags = [
             "-s"
@@ -46,7 +58,7 @@
         };
     in
     {
-      overlays.default = final: _prev: { gosk = goskFor final; };
+      overlays.default = final: _prev: { gosk = goskFor { pkgs = final; }; };
 
       packages = eachSystem (
         system:
@@ -54,8 +66,30 @@
           pkgs = nixpkgs.legacyPackages.${system};
         in
         {
-          gosk = goskFor pkgs;
-          default = goskFor pkgs;
+          gosk = goskFor { inherit pkgs; };
+          default = goskFor { inherit pkgs; };
+        }
+      );
+
+      # `nix flake check` builds this, which runs `go test ./...` - including
+      # database/, which initdb's a throwaway PostgreSQL in the build
+      # sandbox. nixpkgs is instantiated here rather than taken from
+      # legacyPackages because timescaledb is unfree, and this keeps that
+      # confined to the tests instead of pushing NIXPKGS_ALLOW_UNFREE onto
+      # anyone building the binary.
+      checks = eachSystem (
+        system:
+        let
+          pkgs = import nixpkgs {
+            inherit system;
+            config.allowUnfree = true;
+          };
+        in
+        {
+          tests = goskFor {
+            inherit pkgs;
+            runTests = true;
+          };
         }
       );
 

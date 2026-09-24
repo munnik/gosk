@@ -6,17 +6,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/munnik/gosk/config"
-	. "github.com/munnik/gosk/database"
 	"github.com/munnik/gosk/message"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("Test database", Ordered, func() {
-	c := config.NewPostgresqlConfig("postgresql_test.yaml")
-	db := NewPostgresqlDatabase(c)
-
 	now := time.Now()
 
 	f := "normal"
@@ -48,26 +43,32 @@ var _ = Describe("Test database", Ordered, func() {
 		return *message.NewMapped().WithOrigin("testingOrigin").WithContext("testingContext").AddUpdate(u)
 	}()
 
-	BeforeEach(func() {
-		err := db.UpgradeDatabase()
-		Expect(err).ShouldNot(HaveOccurred())
-	})
-
+	// Clear what the previous spec wrote. This replaces a full downgrade
+	// of all 46 migrations, which is what the suite used to do between
+	// specs: the schema is migrated once for the suite (see
+	// database_suite_test.go), so only the rows need resetting. mapped_data
+	// is a view over the two context tables since
+	// 20231024113638_split_mapped_data, so the tables underneath it are the
+	// ones to truncate.
 	AfterEach(func() {
-		err := db.DowngradeDatabase()
+		_, err := db.GetConnection().Exec(
+			context.Background(),
+			`TRUNCATE "mapped_data_matching_context", "mapped_data_other_context", "raw_data", "static_data"`,
+		)
 		Expect(err).ShouldNot(HaveOccurred())
 	})
 
-	Describe("Reconnect",
-		func() {
-			Context("ping", func() {
-				db.GetConnection().Close()
-				err := db.GetConnection().Ping(context.Background())
+	Describe("Reconnect", func() {
+		// Inside an It: as a bare Context body this ran while ginkgo was
+		// still building the spec tree, so it opened a connection before
+		// BeforeSuite had a server to connect to, and its assertion counted
+		// for nothing.
+		It("reconnects after the connection is closed", func() {
+			db.GetConnection().Close()
 
-				Expect(err).ShouldNot(HaveOccurred())
-			})
-		},
-	)
+			Expect(db.GetConnection().Ping(context.Background())).To(Succeed())
+		})
+	})
 
 	DescribeTable("Write mapped",
 		func(input *message.Mapped, expected message.Mapped) {
@@ -75,7 +76,7 @@ var _ = Describe("Test database", Ordered, func() {
 
 			// WriteMapped only queues the write - flushBatch runs it against
 			// postgres asynchronously (on a background goroutine, once the
-			// batch crosses batch_flush_length - see postgresql_test.yaml).
+			// batch crosses batch_flush_length - see database_suite_test.go).
 			// Poll instead of asserting immediately, or this races the flush.
 			mappedSelectQuery := `SELECT "time", "connector", "type", "context", "path", "value", "uuid", "origin" FROM "mapped_data" WHERE "uuid" = $1`
 			var written *message.Mapped

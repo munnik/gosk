@@ -61,15 +61,20 @@ RETURN NEW;
 END;
 $$ LANGUAGE 'plpgsql';
 
+-- path = 'name' / path = 'mmsi', not the empty path these used to carry.
+-- 20230328094816_non_empty_paths already moved both triggers off the empty
+-- path, so that is the state this migration found and the state its
+-- reversal has to put back. Restoring the pre-20230328094816 condition
+-- here left an intermediate schema that did not match any migration.
 CREATE TRIGGER "update_name_trigger"
 AFTER
 INSERT ON "mapped_data" FOR EACH ROW
-    WHEN (NEW."path" = '' AND NEW."value" ? 'name') EXECUTE PROCEDURE "update_name"();
+    WHEN (NEW."path" = 'name') EXECUTE PROCEDURE "update_name"();
 
 CREATE TRIGGER "update_mmsi_trigger"
 AFTER
 INSERT ON "mapped_data" FOR EACH ROW
-    WHEN (NEW."path" = '' AND NEW."value" ? 'mmsi') EXECUTE PROCEDURE "update_mmsi"();
+    WHEN (NEW."path" = 'mmsi') EXECUTE PROCEDURE "update_mmsi"();
 
 CREATE TRIGGER "update_callsignvhf_trigger"
 AFTER

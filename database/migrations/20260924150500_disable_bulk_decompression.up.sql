@@ -1,0 +1,32 @@
+-- Guard for the columnstore migrations that follow this one.
+--
+-- TimescaleDB segfaults on `CREATE TABLE ... AS SELECT` over a columnstore
+-- chunk. Signal 11 kills the backend, so postgres terminates every other
+-- session and goes into crash recovery - a whole-database outage, not a failed
+-- query. Nothing in gosk does that, and neither does Grafana or the continuous
+-- aggregate refresh (plain SELECT, SELECT count(*), and INSERT INTO ... SELECT
+-- were all verified fine against a compressed chunk), but nine roles have
+-- SELECT on mapped_data, including `jupyter` and seven analyst accounts, and
+-- materialising a working table is an ordinary thing for a person to do.
+--
+-- Verified still present in 2.30.1, the current release, by building
+-- postgresql 17.11 against timescaledb 2.27.1 and 2.30.1 and running the same
+-- fixture through both, so waiting for an upgrade is not the answer.
+-- Reproducing it needs real data - a synthetic hypertable of the same shape
+-- does not crash even at 3M rows with parallelism forced.
+--
+-- Turning off bulk decompression avoids it: the same CTAS then completes and
+-- returns the correct rows (15520 of 15520 on the fixture). Measured cost was
+-- ~7-8% on the reconciliation and continuous-aggregate refresh query shapes at
+-- 370k rows, against roughly 23x less data to read, so it pays for itself many
+-- times over.
+--
+-- Do NOT reach for timescaledb.enable_columnarscan = off instead. That is a
+-- separate and worse bug: with it set, both SELECT and CTAS return *zero* rows
+-- from a compressed chunk, silently and with no error.
+--
+-- ALTER DATABASE rather than a postgresql.conf setting so it travels with the
+-- migrations that create the risk, and so a node and a server cannot drift
+-- apart on it. It applies to connections opened after this runs, which is why
+-- it is ordered ahead of the migrations that enable the columnstore.
+ALTER DATABASE gosk SET timescaledb.enable_bulk_decompression = off;

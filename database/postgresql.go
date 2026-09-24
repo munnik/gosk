@@ -40,7 +40,7 @@ const (
 	selectExistingRemoteCounts     = `SELECT "origin", "start" FROM "transfer_remote_data" WHERE "start" >= $1`
 	selectIncompletePeriodsQuery   = `SELECT "origin", "start", "local_count", "remote_count" FROM "transfer_data" WHERE "local_count" < "remote_count" * $1::double precision ORDER BY "start" DESC`
 	insertOrUpdateRemoteData       = `INSERT INTO "transfer_remote_data" ("start", "origin", "count") VALUES ($1, $2, $3) ON CONFLICT ("start", "origin") DO UPDATE SET "count" = EXCLUDED.count`
-	logTransferInsertQuery         = `INSERT INTO "transfer_log" ("time", "origin", "message") VALUES (NOW(), $1, $2)`
+	logTransferInsertQuery         = `INSERT INTO "transfer_log" ("time", "origin", "message") VALUES ($1, $2, $3)`
 	selectMappedCountPerUuid       = `SELECT "uuid", COUNT("uuid") FROM "mapped_data" WHERE "origin" = $1 AND "time" BETWEEN $2 AND $2 + '5m'::interval GROUP BY 1`
 	selectFirstMappedDataPerOrigin = `SELECT "origin", MIN("start") FROM "transfer_local_data" GROUP BY 1`
 )
@@ -601,17 +601,28 @@ func (db *PostgresqlDatabase) CreateRemoteCount(start time.Time, origin string, 
 	return err
 }
 
-// Log the transfer request
-func (db *PostgresqlDatabase) LogTransferRequest(origin string, message interface{}) error {
-	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
-	defer cancel()
-	_, err := db.GetConnection().Exec(ctx, logTransferInsertQuery, origin, message)
-	if ctx.Err() != nil {
-		logger.GetLogger().Error("Timeout during database insertion")
-		db.timeoutsCounter.Inc()
-		return ctx.Err()
-	}
-	return err
+// LogTransferRequest queues one transfer_log row onto the same batch
+// Write*/updateStaticData use, rather than sending it immediately.
+//
+// It used to be one round trip per call, at the full databaseTimeout (the
+// transfer requester configures five minutes). That is one round trip per
+// request *and* per response, on a process whose whole job is to send
+// thousands of them - a backlog of a few hundred periods across a handful
+// of origins spent most of its time waiting on this rather than on the
+// requests themselves. Nothing reads these rows synchronously and every
+// caller already discards the result, so there is nothing to be gained by
+// making the caller wait for it.
+//
+// The timestamp is passed explicitly because the row is now written some
+// time after the event: NOW() would record the flush.
+func (db *PostgresqlDatabase) LogTransferRequest(origin string, message interface{}) {
+	db.batchMutex.Lock()
+	db.batch.Queue(logTransferInsertQuery, time.Now(), origin, message)
+	length := db.batch.Len()
+	db.batchMutex.Unlock()
+
+	db.batchSizeGauge.Inc()
+	db.flushIfNeeded(length)
 }
 
 func (db *PostgresqlDatabase) UpgradeDatabase() error {

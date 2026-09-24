@@ -32,7 +32,7 @@ func TestNewSurvivesABrokerThatIsNotThere(t *testing.T) {
 			URLString: "tcp://" + address,
 			Username:  "test",
 			Password:  "test",
-		}, nil, "")
+		}, "test", nil, "")
 	}()
 
 	select {

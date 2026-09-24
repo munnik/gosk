@@ -4,3 +4,18 @@ password: "unknown"
 url: "mqtt://broker.mqtt.cool:1883"
 interval: '10s'
 buffer_size: 100
+
+# Optional. Defaults to gosk-write-<hostname>. Must be stable across
+# restarts (the broker keys this client's session on it) and unique across
+# every client on the broker (two clients sharing an id disconnect each
+# other in a loop).
+# client_id: "gosk-write-vessel01"
+
+# Where to persist deltas that have been published but not yet acknowledged
+# by the broker, so they survive a restart of this process while the link
+# is down. Leave it unset to keep them in memory only. This is the setting
+# that decides whether an outage costs data on a vessel.
+store_dir: "/var/lib/gosk/mqtt"
+# Bounds store_dir in bytes; the oldest undelivered messages are dropped
+# once it is exceeded. Defaults to 256 MiB.
+store_max_size: 268435456

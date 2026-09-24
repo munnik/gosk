@@ -6,3 +6,14 @@ mqtt:
   username: "unknown"
   password: "unknown"
   url: "mqtt://broker.mqtt.cool:1883"
+  # Optional. Defaults to gosk-transferRequest-<hostname> or
+  # gosk-transferRespond-<hostname>. Must be stable across restarts and
+  # unique across every client on the broker.
+  # client_id: "gosk-transferRespond-vessel01"
+
+# Requester only. How many periods without a remote count to ask about per
+# origin per cycle. An origin that has been unreachable accumulates one
+# un-answered period every 5 minutes, and they stay in the list until it
+# answers, so without this an origin that was offline for a week is asked
+# ~2000 questions every cycle. The newest periods are asked about first.
+max_count_requests_per_cycle: 1000

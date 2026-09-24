@@ -1,0 +1,49 @@
+---
+# gosk does not lint broadly - this file exists to enforce one invariant
+# mechanically, so every other linter is off. Turning more on is a
+# separate decision: the codebase has never been linted, so enabling the
+# defaults would surface a backlog of findings and block every commit
+# until it is worked through.
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - forbidigo
+
+  settings:
+    forbidigo:
+      # Patterns match the source text of the call; pkg additionally
+      # requires it to resolve to google/uuid, so a local package that
+      # happens to expose a New is not caught by mistake.
+      #
+      # Note this does mean the patterns assume the usual unaliased
+      # import. An aliased one would read differently and slip past - if
+      # that ever shows up, the pattern is what has to grow.
+      analyze-types: true
+      forbid:
+        - pattern: ^uuid\.New$
+          pkg: ^github\.com/google/uuid$
+          msg: >-
+            Use uuid.Must(uuid.NewV7()). Version 4 UUIDs are random, so
+            they scatter every insert across mapped_data's uuid index;
+            version 7 leads with a timestamp and appends in order. See
+            section 6 of TRANSFER_REVIEW.md.
+        - pattern: ^uuid\.NewString$
+          pkg: ^github\.com/google/uuid$
+          msg: >-
+            Use uuid.Must(uuid.NewV7()).String(), NewString is version 4.
+        - pattern: ^uuid\.NewRandom$
+          pkg: ^github\.com/google/uuid$
+          msg: >-
+            Use uuid.NewV7(), NewRandom is version 4.
+        - pattern: ^uuid\.NewUUID$
+          pkg: ^github\.com/google/uuid$
+          msg: >-
+            Use uuid.NewV7(). NewUUID is version 1, which embeds the
+            host's MAC address.
+
+  exclusions:
+    # Generated code is regenerated from its source, not edited, so a
+    # finding in it cannot be acted on where it is reported.
+    generated: lax

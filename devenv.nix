@@ -4,6 +4,7 @@
 
   packages = with pkgs; [
     claude-code
+    golangci-lint
     goreleaser
     prettierd
     shellcheck
@@ -20,6 +21,11 @@
   };
 
   git-hooks.hooks = {
+    # go
+    # Only forbidigo is on, see .golangci.yml - this is here to enforce
+    # the version 7 UUID rule, not to start linting gosk broadly.
+    golangci-lint.enable = true;
+
     # markdown
     mdsh.enable = true;
 

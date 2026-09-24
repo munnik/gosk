@@ -44,31 +44,48 @@ func process(stream <-chan []byte, connector string, protocol string, publisher 
 	defer close(sendBuffer)
 	go publisher.Send(sendBuffer)
 
-	connected := false
-	var timeout *time.Timer
-	markDisconnected := func() {
-		if connected {
-			logger.GetLogger().Warn(
-				"timeout receiving data for the stream, no data received",
-				zap.String("connector", connector),
-			)
-		}
-		connected = false
-		sendBuffer <- connectorStatus(connector, false)
-		timeout.Reset(timeoutDuration)
-	}
-	timeout = time.AfterFunc(timeoutDuration, markDisconnected)
+	// The timeout is selected on here rather than run as an AfterFunc, so
+	// that the one goroutine which reads the stream is also the only one
+	// that ever touches connected. As a callback it ran on the timer's
+	// own goroutine and raced this loop for that variable, and losing
+	// that race did more than tear a bool: the loop only announces
+	// ConnectedAndData when it sees connected go false, so a timeout
+	// firing between the loop's read of connected and its write could
+	// leave the connector reporting DisconnectedOrNoData - and the
+	// mapper raising an offline notification for it - every timeout for
+	// as long as the process lived, while data flowed the whole time.
+	//
+	// Reset is safe to call on an already fired timer here: since go
+	// 1.23, which go.mod is well past, it discards a value the channel
+	// is still holding instead of leaving it to be received as a stale
+	// timeout.
+	timeout := time.NewTimer(timeoutDuration)
 	defer timeout.Stop()
 
-	var m *message.Raw
-	for value := range stream {
-		timeout.Reset(timeoutDuration)
-		if !connected {
-			connected = true
-			sendBuffer <- connectorStatus(connector, true)
+	connected := false
+	for {
+		select {
+		case value, ok := <-stream:
+			if !ok {
+				return
+			}
+			timeout.Reset(timeoutDuration)
+			if !connected {
+				connected = true
+				sendBuffer <- connectorStatus(connector, true)
+			}
+			sendBuffer <- message.NewRaw().WithConnector(connector).WithValue(value).WithType(protocol)
+		case <-timeout.C:
+			if connected {
+				logger.GetLogger().Warn(
+					"timeout receiving data for the stream, no data received",
+					zap.String("connector", connector),
+				)
+			}
+			connected = false
+			sendBuffer <- connectorStatus(connector, false)
+			timeout.Reset(timeoutDuration)
 		}
-		m = message.NewRaw().WithConnector(connector).WithValue(value).WithType(protocol)
-		sendBuffer <- m
 	}
 }
 

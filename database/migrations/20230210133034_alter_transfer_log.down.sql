@@ -13,13 +13,22 @@ CREATE TABLE "transfer_log" (
 
 SELECT "public".create_hypertable('transfer_log', 'time');
 
+-- ->> with a single-quoted key, not -> with a double-quoted one. Double
+-- quotes make "uuid" an identifier, so this read as a reference to a
+-- column of transfer_log_temp that does not exist and the downgrade failed
+-- with 'column "uuid" does not exist'. -> would also have yielded jsonb
+-- where these columns want uuid and timestamptz.
+--
+-- Both columns are NOT NULL, and the message shape they are read out of
+-- only exists for rows the up migration wrote or that were logged after
+-- it, so a row without them falls back rather than failing the migration.
 INSERT INTO "transfer_log" (
     SELECT
         "origin",
         "time",
-        "message"->"uuid",
-        "message"->"period_start",
-        "message"->"period_start" + '5 min'::interval,
+        COALESCE(("message" ->> 'uuid')::UUID, "public".uuid_nil()),
+        COALESCE(("message" ->> 'period_start')::TIMESTAMPTZ, "time"),
+        COALESCE(("message" ->> 'period_start')::TIMESTAMPTZ, "time") + '5 min'::interval,
         -1,
         -1
     FROM "transfer_log_temp"

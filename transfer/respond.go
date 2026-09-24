@@ -138,7 +138,7 @@ func (t *TransferResponder) respondWithData(requestMessage RequestMessage) {
 
 	requestMessage.CountsPerUuid = localCountsPerUuid
 	t.injectData(requestMessage)
-	t.db.LogTransferRequest(t.config.Origin, requestMessage)
+	t.db.LogTransferRequest(t.config.Origin, requestMessage.ForLog())
 	t.uuidsTransmitted.Add(float64(len(localCountsPerUuid)))
 	t.dataRequestsHandled.Inc()
 }

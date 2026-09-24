@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/munnik/uuid/v5"
 )
 
 func float64Ptr(f float64) *float64 { return &f }
@@ -23,7 +23,7 @@ func TestMappedMsgpRoundTripPreservesPolymorphicValues(t *testing.T) {
 	original := *NewMapped().WithContext("vessels.urn:mrn:imo:mmsi:123456789").WithOrigin("vessels.urn:mrn:imo:mmsi:123456789").
 		AddUpdate(
 			NewUpdate().WithSource(
-				*NewSource().WithLabel("GPS").WithType("nmea0183").WithUuid(uuid.MustParse("11111111-2222-3333-4444-555555555555")).WithTransferUuid(uuid.MustParse("66666666-7777-8888-9999-aaaaaaaaaaaa")),
+				*NewSource().WithLabel("GPS").WithType("nmea0183").WithUuid(uuid.Must(uuid.FromString("11111111-2222-3333-4444-555555555555"))).WithTransferUuid(uuid.Must(uuid.FromString("66666666-7777-8888-9999-aaaaaaaaaaaa"))),
 			).WithTimestamp(time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC)).
 				AddValue(NewValue().WithPath("navigation.position").WithValue(Position{Latitude: float64Ptr(52.1), Longitude: float64Ptr(5.9)})).
 				AddValue(NewValue().WithPath("notifications.test.alarm").WithValue(Notification{State: stringPtr("alarm"), Method: []string{"sound", "visual"}, Message: stringPtr("test")})).
@@ -87,7 +87,7 @@ func TestRawMsgpRoundTrip(t *testing.T) {
 		Connector: "testConnector",
 		Timestamp: time.Now(),
 		Type:      "manner_ethernet",
-		Uuid:      uuid.Must(uuid.NewV7()),
+		Uuid:      uuid.Must(uuid.NewV7Precise()),
 		Value:     []byte{0xde, 0xad, 0xbe, 0xef, 0x00, 0x01},
 	}
 
@@ -113,7 +113,7 @@ func TestRawMsgpRoundTrip(t *testing.T) {
 }
 
 func TestRawMsgpRoundTripNilValue(t *testing.T) {
-	original := Raw{Connector: "c", Timestamp: time.Now(), Type: "t", Uuid: uuid.Must(uuid.NewV7()), Value: nil}
+	original := Raw{Connector: "c", Timestamp: time.Now(), Type: "t", Uuid: uuid.Must(uuid.NewV7Precise()), Value: nil}
 
 	data, err := original.MarshalMsg(nil)
 	if err != nil {
@@ -178,7 +178,7 @@ func BenchmarkRawMsgpMarshal(b *testing.B) {
 		Connector: "testConnector",
 		Timestamp: time.Now(),
 		Type:      "manner_ethernet",
-		Uuid:      uuid.Must(uuid.NewV7()),
+		Uuid:      uuid.Must(uuid.NewV7Precise()),
 		Value:     []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c},
 	}
 	buf := make([]byte, 0, 128)
@@ -197,7 +197,7 @@ func BenchmarkRawMsgpUnmarshal(b *testing.B) {
 		Connector: "testConnector",
 		Timestamp: time.Now(),
 		Type:      "manner_ethernet",
-		Uuid:      uuid.Must(uuid.NewV7()),
+		Uuid:      uuid.Must(uuid.NewV7Precise()),
 		Value:     []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c},
 	}
 	data, err := r.MarshalMsg(nil)

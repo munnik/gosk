@@ -8,12 +8,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/sdnotify"
+	"github.com/munnik/uuid/v5"
 	"go.uber.org/zap"
 	"gonum.org/v1/gonum/dsp/fourier"
 )

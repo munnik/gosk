@@ -11,7 +11,6 @@ require (
 	github.com/expr-lang/expr v1.17.8
 	github.com/fgrosse/zaptest v1.2.1
 	github.com/golang-migrate/migrate/v4 v4.20.1
-	github.com/google/uuid v1.6.0
 	github.com/jackc/pgtype v1.14.4
 	github.com/jackc/pgx-zap v0.0.0-20221202020421-94b1cb2f889f
 	github.com/jackc/pgx/v5 v5.11.0
@@ -22,6 +21,7 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/munnik/go-signalk v0.0.3
 	github.com/munnik/modbus v1.6.6
+	github.com/munnik/uuid/v5 v5.6.0
 	github.com/onsi/ginkgo/v2 v2.22.0
 	github.com/onsi/gomega v1.36.0
 	github.com/prometheus/client_golang v1.24.1

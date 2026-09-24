@@ -4,11 +4,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/munnik/uuid/v5"
 )
 
 func TestUuidV7AtEmbedsTheGivenTime(t *testing.T) {
-	base := uuid.Must(uuid.NewV7())
+	base := uuid.Must(uuid.NewV7Precise())
 	want := time.Date(2026, 3, 4, 5, 6, 7, 891_000_000, time.UTC)
 
 	got := uuidV7At(want, base)
@@ -16,7 +16,7 @@ func TestUuidV7AtEmbedsTheGivenTime(t *testing.T) {
 	if v := got.Version(); v != 7 {
 		t.Errorf("version is %d, want 7", v)
 	}
-	if v := got.Variant(); v != uuid.RFC4122 {
+	if v := got.Variant(); v != uuid.VariantRFC9562 {
 		t.Errorf("variant is %v, want RFC4122", v)
 	}
 
@@ -32,7 +32,7 @@ func TestUuidV7AtIsDeterministic(t *testing.T) {
 	// The same raw message and the same payload timestamp have to produce
 	// the same UUID: re-processing must not silently change the identity
 	// of a row the transfer protocol counts by UUID.
-	base := uuid.Must(uuid.NewV7())
+	base := uuid.Must(uuid.NewV7Precise())
 	at := time.Date(2026, 3, 4, 5, 6, 7, 891_000_000, time.UTC)
 
 	if a, b := uuidV7At(at, base), uuidV7At(at, base); a != b {
@@ -45,14 +45,14 @@ func TestUuidV7AtKeepsTheBaseEntropy(t *testing.T) {
 	// carries the raw message's own randomness, so two different raw
 	// messages at the same instant stay distinct.
 	at := time.Date(2026, 3, 4, 5, 6, 7, 891_000_000, time.UTC)
-	first := uuidV7At(at, uuid.Must(uuid.NewV7()))
-	second := uuidV7At(at, uuid.Must(uuid.NewV7()))
+	first := uuidV7At(at, uuid.Must(uuid.NewV7Precise()))
+	second := uuidV7At(at, uuid.Must(uuid.NewV7Precise()))
 
 	if first == second {
 		t.Errorf("two different base UUIDs both produced %s", first)
 	}
 
-	base := uuid.Must(uuid.NewV7())
+	base := uuid.Must(uuid.NewV7Precise())
 	got := uuidV7At(at, base)
 	for i := 9; i < 16; i++ {
 		if got[i] != base[i] {
@@ -64,7 +64,7 @@ func TestUuidV7AtKeepsTheBaseEntropy(t *testing.T) {
 func TestUuidV7AtRoundTripsThroughTheSameArithmeticPostgresUses(t *testing.T) {
 	// Mirrors what uuid_timestamp() does server side: milliseconds only,
 	// so anything finer is expected to be lost.
-	base := uuid.Must(uuid.NewV7())
+	base := uuid.Must(uuid.NewV7Precise())
 	for _, at := range []time.Time{
 		time.Unix(0, 0).UTC(),
 		time.Date(2026, 9, 24, 16, 30, 20, 455_108_166, time.UTC),

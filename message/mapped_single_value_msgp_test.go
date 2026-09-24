@@ -4,14 +4,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/munnik/uuid/v5"
 )
 
 func TestSingleValueMappedMsgpRoundTrip(t *testing.T) {
 	original := SingleValueMapped{
 		Context:   "vessels.urn:mrn:imo:mmsi:123456789",
 		Origin:    "vessels.urn:mrn:imo:mmsi:123456789",
-		Source:    *NewSource().WithLabel("GPS").WithType("nmea0183").WithUuid(uuid.MustParse("11111111-2222-3333-4444-555555555555")),
+		Source:    *NewSource().WithLabel("GPS").WithType("nmea0183").WithUuid(uuid.Must(uuid.FromString("11111111-2222-3333-4444-555555555555"))),
 		Timestamp: time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC),
 		Path:      "navigation.position",
 		Value:     Position{Latitude: float64Ptr(52.1), Longitude: float64Ptr(5.9)},

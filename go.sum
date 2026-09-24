@@ -91,8 +91,6 @@ github.com/google/go-cmp v0.7.0/go.mod h1:pXiqmnSA92OHEEa9HXL2W4E7lf9JzCmGVUdgjX
 github.com/google/pprof v0.0.0-20241206021119-61a79c692802 h1:US08AXzP0bLurpzFUV3Poa9ZijrRdd1zAIOVtoHEiS8=
 github.com/google/pprof v0.0.0-20241206021119-61a79c692802/go.mod h1:vavhavw2zAxS5dIdcRluK6cSGGPlZynqzFM8NdvU144=
 github.com/google/renameio v0.1.0/go.mod h1:KWCgfxg9yswjAJkECMjeO8J8rahYeXnNhOm40UhjYkI=
-github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
-github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/gorilla/websocket v1.5.0/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aNNg=
 github.com/gorilla/websocket v1.5.3/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
@@ -210,6 +208,8 @@ github.com/munnik/go-signalk v0.0.3 h1:UaPKQTLaBHwXl1bU5rdQHJ+4VT3qp70L6RQG06M3p
 github.com/munnik/go-signalk v0.0.3/go.mod h1:rZZrUJWYrkZvZ8HhnUEAttZjxFaRBLZeFkzY+gYd4lg=
 github.com/munnik/modbus v1.6.6 h1:QRAR+04bivKSzPN5qi5g9Wyzh+e3oQVFMUOhv35ya5Q=
 github.com/munnik/modbus v1.6.6/go.mod h1:p8PIBjiZgsY82MiZPrkAGkrDomL1tBNGGQIwyAm4Vp0=
+github.com/munnik/uuid/v5 v5.6.0 h1:w4XCL8SYjoEF+01IVhV58JEYGs+FU/cPmQkFEnkxTf4=
+github.com/munnik/uuid/v5 v5.6.0/go.mod h1:3iZ1EfoLk5qNf+4Hy7N5jxZKctjDqxgUHAo9icrvqI0=
 github.com/nxadm/tail v1.4.4/go.mod h1:kenIhsEOeOJmVchQTgglprH7qJGnHDVpk1VPCcaMI8A=
 github.com/nxadm/tail v1.4.8 h1:nPr65rt6Y5JFSKQO7qToXr7pePgD6Gwiw05lkbyAQTE=
 github.com/nxadm/tail v1.4.8/go.mod h1:+ncqLTQzXmGhMZNUePPaPqPvBxHAIsmXswZKocGu+AU=

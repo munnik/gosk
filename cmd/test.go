@@ -9,11 +9,11 @@ import (
 
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
-	"github.com/google/uuid"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
+	"github.com/munnik/uuid/v5"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 )
@@ -63,7 +63,7 @@ func doTest(cmd *cobra.Command, args []string) {
 		i := 0
 		for range ticker.C {
 			result := message.NewMapped().WithContext(c.Context).WithOrigin(c.Context)
-			s := message.NewSource().WithLabel("sampleData").WithType("sampleData").WithUuid(uuid.Must(uuid.NewV7()))
+			s := message.NewSource().WithLabel("sampleData").WithType("sampleData").WithUuid(uuid.Must(uuid.NewV7Precise()))
 			u := message.NewUpdate().WithSource(*s).WithTimestamp(time.Now())
 			for _, path := range c.Paths {
 				vm := vm.VM{}

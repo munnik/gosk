@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/munnik/uuid/v5"
 )
 
 // These mirror Mapped/Update/Source's own field layout exactly, but
@@ -53,7 +53,7 @@ func sampleMapped() Mapped {
 	return *NewMapped().WithContext("vessels.urn:mrn:imo:mmsi:123456789").WithOrigin("vessels.urn:mrn:imo:mmsi:123456789").
 		AddUpdate(
 			NewUpdate().WithSource(
-				*NewSource().WithLabel("GPS").WithType("nmea0183").WithUuid(uuid.MustParse("11111111-2222-3333-4444-555555555555")).WithTransferUuid(uuid.MustParse("66666666-7777-8888-9999-aaaaaaaaaaaa")),
+				*NewSource().WithLabel("GPS").WithType("nmea0183").WithUuid(uuid.Must(uuid.FromString("11111111-2222-3333-4444-555555555555"))).WithTransferUuid(uuid.Must(uuid.FromString("66666666-7777-8888-9999-aaaaaaaaaaaa"))),
 			).WithTimestamp(time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC)).
 				// plain scalars only: Value.UnmarshalJSON's Decode dispatch
 				// (unrelated to this test) recognizes some map shapes -

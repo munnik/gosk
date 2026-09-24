@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/munnik/gosk/message"
+	"github.com/munnik/uuid/v5"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -19,14 +19,14 @@ var _ = Describe("Test database", Ordered, func() {
 
 	mappedStringValue := func() message.Mapped {
 		v := message.NewValue().WithPath("testingPath").WithValue("testValue")
-		s := message.NewSource().WithLabel("testingLabel").WithType("testingType").WithUuid(uuid.Must(uuid.NewV7()))
+		s := message.NewSource().WithLabel("testingLabel").WithType("testingType").WithUuid(uuid.Must(uuid.NewV7Precise()))
 		u := message.NewUpdate().WithSource(*s).WithTimestamp(now).AddValue(v)
 		u.Timestamp = u.Timestamp.Add(-time.Duration(u.Timestamp.Nanosecond())) // resolution of time in postgresql is lower
 		return *message.NewMapped().WithOrigin("testingOrigin").WithContext("testingContext").AddUpdate(u)
 	}()
 	mappedNotificationValue := func() message.Mapped {
 		v := message.NewValue().WithPath("testingPath").WithValue(message.Notification{State: &f, Message: &m})
-		s := message.NewSource().WithLabel("testingLabel").WithType("testingType").WithUuid(uuid.Must(uuid.NewV7()))
+		s := message.NewSource().WithLabel("testingLabel").WithType("testingType").WithUuid(uuid.Must(uuid.NewV7Precise()))
 		u := message.NewUpdate().WithSource(*s).WithTimestamp(now).AddValue(v)
 		u.Timestamp = u.Timestamp.Add(-time.Duration(u.Timestamp.Nanosecond())) // resolution of time in postgresql is lower
 		return *message.NewMapped().WithOrigin("testingOrigin").WithContext("testingContext").AddUpdate(u)
@@ -37,7 +37,7 @@ var _ = Describe("Test database", Ordered, func() {
 	// it's ever bundled with, forever.
 	mappedClearedValue := func() message.Mapped {
 		v := message.NewValue().WithPath("testingPath").WithValue(nil)
-		s := message.NewSource().WithLabel("testingLabel").WithType("testingType").WithUuid(uuid.Must(uuid.NewV7()))
+		s := message.NewSource().WithLabel("testingLabel").WithType("testingType").WithUuid(uuid.Must(uuid.NewV7Precise()))
 		u := message.NewUpdate().WithSource(*s).WithTimestamp(now).AddValue(v)
 		u.Timestamp = u.Timestamp.Add(-time.Duration(u.Timestamp.Nanosecond())) // resolution of time in postgresql is lower
 		return *message.NewMapped().WithOrigin("testingOrigin").WithContext("testingContext").AddUpdate(u)

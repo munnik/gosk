@@ -8,7 +8,7 @@ recommendations.
 a transport that is configured to lose data. Fix the transport first — most of
 the gaps the reconciliation loop chases are self-inflicted.
 
-**Status:** §1, §2 and §6 are implemented (see "Deploying §1" below for the two
+**Status:** §1, §2, §6 and §7 are implemented (see "Deploying §1" below for the two
 prerequisites this cannot enforce from the code). §3 and §4 are unchanged
 proposals; nothing in them has been built.
 
@@ -358,3 +358,135 @@ there.
 In one place this is strictly an improvement. `writer/signalk_ws.go` was
 generating its websocket session names with `uuid.NewUUID()` — **version 1**,
 which embeds the host's MAC address. That is now version 7 too.
+
+---
+
+## 7. Can the time column go, now that the UUID carries a timestamp?
+
+Asked once the UUIDs became time-ordered: drop `time` from `raw_data` and
+`mapped_data` and derive it from the UUID instead. The answer is no, and the
+first reason below is decisive on its own.
+
+### 7.1 mapped_data.time is not the UUID's creation time
+
+The UUID is the *raw message's*, generated in `message.NewRaw` when the bytes
+arrived. The `time` column is the measurement's own timestamp, and several
+mappers set it independently of arrival:
+
+- `mapper/json.go` — a configured `TimestampExpression` parses the timestamp
+  **out of the payload**, accepted as far as a year from arrival.
+- `mapper/fft.go` — the start of the FFT window.
+- `mapper/aggregate.go` — a source update's timestamp, while inheriting one
+  input's `Source` and therefore that input's UUID.
+
+The two columns answer different questions: *when did this message arrive*
+against *when is this measurement for*. Deriving one from the other silently
+rewrites history for exactly the mappers where the difference is the point.
+
+### 7.2 The UUID is not unique per mapped row
+
+One raw message produces many mapped rows — which is precisely what
+`SelectCountPerUuid`'s `GROUP BY uuid` counts, and what the whole data-request
+path is built on. A column that repeats across rows cannot carry a per-row
+timestamp even in principle.
+
+### 7.3 Millisecond against microsecond
+
+A version 7 UUID embeds milliseconds; `timestamptz` stores microseconds.
+`message/raw.go`'s own comment describes "every 2kHz sample from the shaft
+power meter" — a sample every 0.5 ms. Two UUIDs generated back to back
+extract to the identical timestamp (verified: both
+`2026-09-24 16:30:20.467`). With `time` inside the unique index
+`(time, origin, context, connector, path)`, two such samples would collide and
+upsert over one another.
+
+google/uuid does hide sub-millisecond information in `rand_a`, but that is an
+implementation detail rather than part of the format, and it is perturbed
+whenever the monotonic counter has to be bumped. It is not a clock.
+
+### 7.4 time is the partitioning column
+
+Every hypertable here is created on `time`. Dropping it means repartitioning
+through a `time_partitioning_func` over the UUID, and reworking every
+retention policy, every continuous aggregate (`time_bucket` over `time`), the
+reorder policies, `transfer_local_data`, the transfer period logic, Grafana
+and the SignalK reads.
+
+### 7.5 The storage argument runs the other way
+
+It would trade away 8 bytes of `timestamptz` while keeping 16 bytes of UUID.
+And once the columnstore work lands — the thing that motivates version 7 in
+the first place — an ordered timestamp column is the *most* compressible
+column in these tables, since delta-delta encoding is built for exactly that
+shape, while a UUID's low 74 bits are random and compress poorly. This would
+drop the cheapest column to keep the most expensive one.
+
+### 7.6 Converting the existing version 4 UUIDs: don't
+
+It would not be a conversion. Version 4 holds no timestamp, so every row would
+need a *newly generated* UUID derived from its `time` — a re-keying, not a
+rewrite of the same fact.
+
+**It would break the transfer protocol.** The UUID is a correlation key
+between two systems: `SelectCountPerUuid` compares per-UUID counts between
+vessel and cloud over arbitrary historical periods. Re-key one side and every
+period reads as incomplete forever, triggering wholesale retransmission.
+Avoiding that means re-keying every vessel and the cloud identically and at
+the same moment, including vessels that have been offline for weeks.
+
+**It would buy nothing.** Version 7's benefit is index locality *at insert
+time*. Rewriting rows that were inserted long ago does not change how future
+rows insert.
+
+**It would cost a full rewrite.** An `UPDATE` of every row means the table
+rewritten, indexes rebuilt, WAL proportional to the whole history, and
+decompression and recompression of any compressed chunk — across a
+`mapped_data` that has no retention policy at all.
+
+What to do instead: `raw_data` heals itself inside its 7-day retention. For
+`mapped_data`, if the real worry is fragmented old chunks, the
+`add_reorder_policy` already on both tables reorders them physically by index
+and touches no data. And if a time-ordered surrogate key is ever genuinely
+wanted, add a column rather than rewriting `uuid`.
+
+### 7.7 Extracting the timestamp in SQL
+
+There is a trap in the middle of the version history:
+
+| Server | `uuid_extract_timestamp` | on a version 7 UUID |
+| --- | --- | --- |
+| 16 and earlier | absent | — |
+| 17 | present | **returns NULL** (handles version 1 only) |
+| 18 | present | works |
+
+PostgreSQL 17 is the trap: the function exists, `uuid_extract_version`
+correctly answers `7`, and extraction silently returns NULL. Verified on a
+17.11 server where a version 1 UUID returns `2022-02-22 20:22:22+01` while
+every version 7 UUID returns NULL.
+
+Check a server with:
+
+```sql
+SELECT current_setting('server_version'),
+       uuid_extract_timestamp('01a0d440-ef27-71e9-a3ef-512d5239ffb2'::uuid);
+```
+
+Migration `20260924130000_uuid_v7_timestamp_function` therefore installs
+`public.uuid_v7_timestamp(uuid)`, whose body is chosen once at migration time
+by asking the server what it can actually do rather than by reading a version
+number: it delegates to the built-in where that handles version 7, and
+extracts the first 48 bits itself where it does not. The name is the same
+either way. Both paths return NULL for any version other than 7, and produce
+byte-identical results (verified against 17.11 and 18.6).
+
+It is a debugging aid, not something gosk queries. Comparing a row's
+`uuid_v7_timestamp(uuid)` against its `time` shows the gap between arrival and
+measurement described in §7.1 — which is exactly the sort of discrepancy the
+count-based reconciliation in §3 cannot see.
+
+Two properties worth knowing while using it. Resolution is milliseconds, so
+UUIDs from the same millisecond report the same time. And PostgreSQL's
+bytewise UUID ordering matches time ordering for version 7, so
+`WHERE uuid BETWEEN … AND …` is a valid range predicate — no TimescaleDB
+chunk pruning comes with it, though, since the chunks are partitioned on
+`time`.

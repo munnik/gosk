@@ -8,6 +8,7 @@ import (
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
+	"github.com/munnik/uuid/v5"
 )
 
 // Signal K paths the meteo/hydro mapper publishes. Where the Signal K
@@ -376,8 +377,11 @@ func (m *MeteoHydroMapper) publishInterval(now time.Time) time.Duration {
 // would otherwise have every value in the pipeline look up to fifteen
 // minutes old.
 func (m *MeteoHydroMapper) buildUpdate(observation *weatherObservation, marine *marineObservation, now time.Time) *message.Update {
+	// A weather observation has no source message to inherit from - it was
+	// fetched, not mapped - so uuidV7At builds the UUID from the timestamp
+	// alone. These rows used to carry uuid.Nil.
 	update := message.NewUpdate().
-		WithSource(*message.NewSource().WithLabel("meteohydro").WithType(config.MeteoHydroType)).
+		WithSource(*message.NewSource().WithLabel("meteohydro").WithType(config.MeteoHydroType).WithUuid(uuidV7At(now, uuid.Nil))).
 		WithTimestamp(now)
 	add := func(path string, value interface{}) {
 		if m.hasLiveData(path, now) {

@@ -12,6 +12,7 @@ import (
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
+	"github.com/munnik/uuid/v5"
 	"go.uber.org/zap"
 )
 
@@ -30,8 +31,8 @@ func NewCSVMapper(c config.CSVMapperConfig, cmc []config.CSVMappingConfig) (*CSV
 
 // MapConnectorStatus implements ConnectorStatusMapper - see its doc
 // comment and process in main.go.
-func (m *CSVMapper) MapConnectorStatus(connector string, connected bool) *message.Mapped {
-	return NewConnectorStatusUpdate(m.config.Context, connector, connected)
+func (m *CSVMapper) MapConnectorStatus(connector string, connected bool, source uuid.UUID) *message.Mapped {
+	return NewConnectorStatusUpdate(m.config.Context, connector, connected, source)
 }
 
 // GetTickerInterval returns the interval on which the mapper should

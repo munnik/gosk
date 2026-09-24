@@ -10,6 +10,7 @@ import (
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
+	"github.com/munnik/uuid/v5"
 	"go.uber.org/zap"
 )
 
@@ -178,7 +179,7 @@ func (s *NotificationMapper) DoMap(input *message.Mapped) (*message.Mapped, erro
 		s.lastSeen[svm.Path] = svm.Timestamp
 
 		for _, nmc := range nmcs {
-			if u := s.evaluateCheck(nmc, svm.Timestamp, false); u != nil {
+			if u := s.evaluateCheck(nmc, svm.Timestamp, false, svm.Source.Uuid); u != nil {
 				result.AddUpdate(u)
 			}
 		}
@@ -190,7 +191,7 @@ func (s *NotificationMapper) DoMap(input *message.Mapped) (*message.Mapped, erro
 func (s *NotificationMapper) refreshMap(timeStamp time.Time) *message.Mapped {
 	result := message.NewMapped().WithContext(s.config.Context).WithOrigin(s.config.Context)
 	for nmc := range s.states {
-		if u := s.evaluateCheck(nmc, timeStamp, true); u != nil {
+		if u := s.evaluateCheck(nmc, timeStamp, true, uuid.Nil); u != nil {
 			result.AddUpdate(u)
 		}
 	}
@@ -219,7 +220,7 @@ func (s *NotificationMapper) refreshMap(timeStamp time.Time) *message.Mapped {
 // re-sends the currently confirmed state - notifying or cleared - on every
 // sweep regardless of whether it changed, so a lost or stale announcement
 // self-heals within one tick interval either way.
-func (s *NotificationMapper) evaluateCheck(nmc *config.NotificationMappingConfig, now time.Time, republish bool) *message.Update {
+func (s *NotificationMapper) evaluateCheck(nmc *config.NotificationMappingConfig, now time.Time, republish bool, source uuid.UUID) *message.Update {
 	applies, err := s.applies(nmc)
 	if err != nil {
 		logger.GetLogger().Warn(
@@ -228,7 +229,13 @@ func (s *NotificationMapper) evaluateCheck(nmc *config.NotificationMappingConfig
 			zap.String("Error", err.Error()),
 		)
 	}
-	u := message.NewUpdate().WithSource(*message.NewSource().WithLabel("notification").WithType(config.SignalKType)).WithTimestamp(now)
+	// A notification used to go out with uuid.Nil. It takes the
+	// randomness of whichever value triggered the check, and its own
+	// timestamp; the periodic sweep has no such value and passes
+	// uuid.Nil, which uuidV7At builds from the timestamp alone.
+	u := message.NewUpdate().
+		WithSource(*message.NewSource().WithLabel("notification").WithType(config.SignalKType).WithUuid(uuidV7At(now, source))).
+		WithTimestamp(now)
 	if !applies {
 		if changed := s.states[nmc].reset(); !changed && !republish {
 			return nil

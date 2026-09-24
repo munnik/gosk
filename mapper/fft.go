@@ -155,7 +155,7 @@ func (m *FftMapper) DoMap(input *message.Mapped) (*message.Mapped, error) {
 		sfm.samplesBufferMutex.Lock()
 		sfm.samplesBuffer[svm.Timestamp] = value
 		sfm.samplesBufferMutex.Unlock()
-		m.doFft(u, svm.Path)
+		m.doFft(u, svm.Path, svm.Source.Uuid)
 	}
 
 	if len(u.Values) == 0 {
@@ -165,7 +165,7 @@ func (m *FftMapper) DoMap(input *message.Mapped) (*message.Mapped, error) {
 	return result.AddUpdate(u), nil
 }
 
-func (m *FftMapper) doFft(update *message.Update, path string) {
+func (m *FftMapper) doFft(update *message.Update, path string, source uuid.UUID) {
 	sfm := m.mappings[path]
 	sfm.samplesBufferMutex.Lock()
 	defer sfm.samplesBufferMutex.Unlock()
@@ -198,9 +198,15 @@ func (m *FftMapper) doFft(update *message.Update, path string) {
 		// derived from when the raw data arrived, so that
 		// mapped_data."time" means the same thing across all of them;
 		// window[0] pointed a whole window into the past instead.
+		at := window[len(window)-1]
 		update.AddValue(
 			message.NewValue().WithPath(sfm.spectrumPath).WithValue(value),
-		).WithTimestamp(window[len(window)-1])
+		).WithTimestamp(at)
+		// A spectrum used to go out with uuid.Nil, so its rows carried no
+		// identity and no time of their own beyond the time column. It is
+		// derived from the sample that completed the window, so it takes
+		// that sample's randomness and its own timestamp - see uuidV7At.
+		update.Source.Uuid = uuidV7At(at, source)
 	} else {
 		logger.GetLogger().Warn(
 			"Discarding an FFT window with an irregular sample interval, a dropped-sample gap, or duplicate/out-of-order timestamps",

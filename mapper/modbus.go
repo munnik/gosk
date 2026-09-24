@@ -12,6 +12,7 @@ import (
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/protocol"
+	"github.com/munnik/uuid/v5"
 )
 
 type ModbusMapper struct {
@@ -35,8 +36,8 @@ func NewModbusMapper(c config.MapperConfig, mmc []config.ModbusMappingsConfig) (
 
 // MapConnectorStatus implements ConnectorStatusMapper - see its doc
 // comment and process in main.go.
-func (m *ModbusMapper) MapConnectorStatus(connector string, connected bool) *message.Mapped {
-	return NewConnectorStatusUpdate(m.config.Context, connector, connected)
+func (m *ModbusMapper) MapConnectorStatus(connector string, connected bool, source uuid.UUID) *message.Mapped {
+	return NewConnectorStatusUpdate(m.config.Context, connector, connected, source)
 }
 
 // GetTickerInterval returns the interval on which the mapper should

@@ -6,6 +6,7 @@ import (
 	"github.com/munnik/gosk/config"
 	. "github.com/munnik/gosk/mapper"
 	"github.com/munnik/gosk/message"
+	"github.com/munnik/uuid/v5"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -36,6 +37,16 @@ var _ = Describe("DoMap notification", func() {
 				Expect(result).To(BeNil())
 			} else {
 				Expect(err).ToNot(HaveOccurred())
+				// A notification's uuid is derived from whichever value
+				// triggered the check (see uuidV7At), so it is not a
+				// constant this table could state. It is cleared here and
+				// checked on its own in "notification uuids" below, which
+				// leaves the rest of each expectation literal.
+				for i := range result.Updates {
+					if result.Updates[i].Source.Label == "notification" {
+						result.Updates[i].Source.Uuid = uuid.Nil
+					}
+				}
 				Expect(result).To(Equal(expected))
 			}
 		},
@@ -534,3 +545,70 @@ func passThroughUpdate(path string, value interface{}, at time.Time) *message.Up
 func strPtr(s string) *string {
 	return &s
 }
+
+var _ = Describe("notification uuids", func() {
+	// Notifications used to go out with uuid.Nil, leaving those rows with
+	// no identity of their own - and, once mapped_data's time could in
+	// principle be recovered from the uuid, no time either. See section
+	// 7.1.1 of TRANSFER_REVIEW.md.
+	newMapper := func() *NotificationMapper {
+		m, err := NewNotificationMapper(
+			config.MapperConfig{Context: "testingContext"},
+			config.NewNotificationMappingConfig("notification_test.yaml"),
+		)
+		Expect(err).ToNot(HaveOccurred())
+		return m
+	}
+
+	notificationUpdates := func(m *message.Mapped) []message.Update {
+		out := make([]message.Update, 0)
+		for _, u := range m.Updates {
+			if u.Source.Label == "notification" {
+				out = append(out, u)
+			}
+		}
+		return out
+	}
+
+	It("derives the uuid from the value that triggered the check", func() {
+		source := uuid.Must(uuid.NewV7Precise())
+
+		input := message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+			message.NewUpdate().WithSource(
+				*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType).WithUuid(source),
+			).WithTimestamp(time.Now()).AddValue(
+				message.NewValue().WithPath("propulsion.mainEngine.fuel.rate").WithValue(20000.0),
+			),
+		)
+
+		result, err := newMapper().DoMap(input)
+		Expect(err).ToNot(HaveOccurred())
+
+		updates := notificationUpdates(result)
+		Expect(updates).ToNot(BeEmpty())
+		for _, u := range updates {
+			Expect(u.Source.Uuid).ToNot(Equal(uuid.Nil))
+			Expect(u.Source.Uuid.Version()).To(BeEquivalentTo(7))
+			// the random half is the triggering value's, the timestamp
+			// half is the notification's own
+			Expect(u.Source.Uuid[8:]).To(Equal(source[8:]))
+		}
+	})
+
+	It("still produces a usable uuid when the triggering value has none", func() {
+		input := message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+			passThroughUpdate("propulsion.mainEngine.fuel.rate", 20000.0, time.Now()),
+		)
+
+		result, err := newMapper().DoMap(input)
+		Expect(err).ToNot(HaveOccurred())
+
+		updates := notificationUpdates(result)
+		Expect(updates).ToNot(BeEmpty())
+		for _, u := range updates {
+			Expect(u.Source.Uuid).ToNot(Equal(uuid.Nil))
+			Expect(u.Source.Uuid.Version()).To(BeEquivalentTo(7))
+			Expect(u.Source.Uuid.Variant()).To(Equal(uuid.VariantRFC9562))
+		}
+	})
+})

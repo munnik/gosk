@@ -22,7 +22,24 @@ DROP MATERIALIZED VIEW "transfer_local_data_other_context";
 
 DROP VIEW "mapped_data";
 ALTER TABLE "mapped_data_matching_context" RENAME TO "mapped_data";
---  mapped_data_other_context is not dropped because that would result in data loss and inserting it back into mapped data would be too slow
+
+-- Fold mapped_data_other_context back in and drop it. This used to leave
+-- the table standing, to avoid both the data loss of dropping it outright
+-- and the cost of moving its rows. That left a table no migration owned:
+-- migrating up again failed on 'relation "mapped_data_other_context"
+-- already exists', so a downgrade could not be rolled forward.
+--
+-- The two tables hold disjoint contexts by construction - that is what the
+-- up migration split them on - and mapped_data_unique_idx keys on context,
+-- so these rows cannot collide with the ones already here. A conflict
+-- would mean the same context had been written to both tables, which is
+-- worth failing the downgrade over rather than passing over silently.
+--
+-- This is the slow statement in the migration, in proportion to how much
+-- landed in the other-context table. That is the price of a reversal that
+-- neither loses rows nor blocks the next upgrade.
+INSERT INTO "mapped_data" SELECT * FROM "mapped_data_other_context";
+DROP TABLE "mapped_data_other_context";
 
 -- transfer_local_data as 20230203140028 created it, with the policy
 -- 20230517122705 then changed it to.

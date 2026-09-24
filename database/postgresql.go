@@ -43,6 +43,19 @@ const (
 	logTransferInsertQuery         = `INSERT INTO "transfer_log" ("time", "origin", "message") VALUES ($1, $2, $3)`
 	selectMappedCountPerUuid       = `SELECT "uuid", COUNT("uuid") FROM "mapped_data" WHERE "origin" = $1 AND "time" BETWEEN $2 AND $2 + '5m'::interval GROUP BY 1`
 	selectFirstMappedDataPerOrigin = `SELECT "origin", MIN("start") FROM "transfer_local_data" GROUP BY 1`
+
+	// The outbox, see 20260924140000_transfer_outbox and section 4.2 of
+	// TRANSFER_REVIEW.md. ON CONFLICT DO NOTHING because a source message
+	// becomes one outbox entry however many mapped rows it produces, and
+	// because re-writing a row that is already pending must not reset
+	// anything.
+	outboxInsertQuery = `INSERT INTO "transfer_outbox" ("origin", "uuid") VALUES ($1, $2) ON CONFLICT DO NOTHING`
+	// Oldest first. Every uuid is a version 7 uuid, so ordering by uuid is
+	// ordering by the time the data was produced - there is no sequence or
+	// timestamp column to order by, and none is needed.
+	outboxSelectQuery = `SELECT "origin", "uuid" FROM "transfer_outbox" ORDER BY "uuid" LIMIT $1`
+	outboxDeleteQuery = `DELETE FROM "transfer_outbox" WHERE "origin" = $1 AND "uuid" = ANY ($2)`
+	outboxDepthQuery  = `SELECT "origin", COUNT(*) FROM "transfer_outbox" GROUP BY 1`
 )
 
 //go:embed migrations/*.sql
@@ -78,6 +91,7 @@ type PostgresqlDatabase struct {
 	flushMutex      sync.Mutex
 	batchMutex      sync.Mutex
 	upgradeDone     bool
+	outboxEnabled   bool
 	databaseTimeout time.Duration
 	flushesCounter  prometheus.Counter
 	lastFlushGauge  prometheus.Gauge
@@ -93,6 +107,7 @@ func NewPostgresqlDatabase(c *config.PostgresqlConfig) *PostgresqlDatabase {
 		batch:           &pgx.Batch{},
 		lastFlush:       time.Now(),
 		upgradeDone:     false,
+		outboxEnabled:   c.Outbox,
 		databaseTimeout: c.Timeout,
 		flushesCounter:  promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_flushes_total", Help: "total number batches flushed"}),
 		lastFlushGauge:  promauto.NewGauge(prometheus.GaugeOpts{Name: "gosk_psql_last_flush_time", Help: "last db flush"}),
@@ -237,6 +252,19 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 	}
 	query := fmt.Sprintf(mappedInsertQuery, table)
 	db.batchMutex.Lock()
+	// The outbox entry goes into the same batch as the row itself.
+	// pgx runs a batch in an implicit transaction, so the two commit
+	// together or not at all - which is the whole point of an outbox: a
+	// row can never exist without something recording that it still has
+	// to be sent, and nothing can be marked for sending that was not
+	// written.
+	//
+	// Skipped for a row that arrived through the transfer protocol
+	// itself (TransferUuid set): it came from somewhere else, and
+	// queueing it would send it back.
+	if db.outboxEnabled && svm.Source.TransferUuid == uuid.Nil {
+		db.batch.Queue(outboxInsertQuery, svm.Origin, svm.Source.Uuid)
+	}
 	db.batch.Queue(query, svm.Timestamp, svm.Source.Label, svm.Source.Type, svm.Context, path, svm.Value, svm.Source.Uuid, svm.Origin, svm.Source.TransferUuid).Exec(func(ct pgconn.CommandTag) error {
 		if ct.RowsAffected() == 0 {
 			logger.GetLogger().Warn("0 rows affected",
@@ -895,4 +923,149 @@ func (db *PostgresqlDatabase) copyRawBatch() []rawRow {
 	db.batchSizeGauge.Set(0)
 
 	return rows
+}
+
+// OutboxEntry is one source message still waiting to be acknowledged by
+// the far end. There is no sequence number and no timestamp: the uuid is a
+// version 7 uuid, so it orders itself.
+type OutboxEntry struct {
+	Origin string
+	Uuid   uuid.UUID
+}
+
+// SetOutbox turns on what PostgresqlConfig.Outbox turns on, for a caller
+// that builds its configuration in code rather than reading it - and for
+// tests, which cannot simply construct a second PostgresqlDatabase to get
+// a differently configured one, because the Prometheus collectors
+// registered in NewPostgresqlDatabase panic on a duplicate name.
+//
+// With it on, WriteSingleValueMapped records every row it writes in
+// transfer_outbox, in the same batch and therefore the same transaction.
+// Off by default, so a process that only reads, or a deployment not using
+// the outbox scheme, pays nothing for it.
+func (db *PostgresqlDatabase) SetOutbox(enabled bool) {
+	db.outboxEnabled = enabled
+}
+
+// SelectOutbox returns the oldest pending entries, uuid order being time
+// order. limit bounds one shipment, not the backlog.
+func (db *PostgresqlDatabase) SelectOutbox(limit int) ([]OutboxEntry, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
+	defer cancel()
+	rows, err := db.GetConnection().Query(ctx, outboxSelectQuery, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make([]OutboxEntry, 0, limit)
+	for rows.Next() {
+		var e OutboxEntry
+		if err := rows.Scan(&e.Origin, &e.Uuid); err != nil {
+			return nil, err
+		}
+		result = append(result, e)
+	}
+	return result, rows.Err()
+}
+
+// DeleteOutbox removes entries the far end has confirmed it has stored.
+// Progress is this deletion and nothing else - there is no watermark to
+// advance, so an entry that was never acknowledged simply stays, whatever
+// order things happened in.
+func (db *PostgresqlDatabase) DeleteOutbox(origin string, uuids []uuid.UUID) (int64, error) {
+	if len(uuids) == 0 {
+		return 0, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
+	defer cancel()
+
+	pgUuids := make([][16]byte, 0, len(uuids))
+	for _, u := range uuids {
+		pgUuids = append(pgUuids, u)
+	}
+
+	tag, err := db.GetConnection().Exec(ctx, outboxDeleteQuery, origin, pgUuids)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+// OutboxDepth is how many entries are pending per origin, for reporting how
+// far behind delivery is.
+func (db *PostgresqlDatabase) OutboxDepth() (map[string]int, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
+	defer cancel()
+	rows, err := db.GetConnection().Query(ctx, outboxDepthQuery)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]int)
+	for rows.Next() {
+		var origin string
+		var n int
+		if err := rows.Scan(&origin, &n); err != nil {
+			return nil, err
+		}
+		result[origin] = n
+	}
+	return result, rows.Err()
+}
+
+// SelectMappedByUuids reads back every mapped row belonging to the given
+// source messages.
+//
+// No time predicate: the (origin, uuid, time) index is satisfied by its
+// first two columns, and the outbox deliberately records no timestamp to
+// supply a third. That is what lets a row be shipped by identity rather
+// than by which five minute period it happens to fall in.
+func (db *PostgresqlDatabase) SelectMappedByUuids(origin string, uuids []uuid.UUID) ([]*message.Mapped, error) {
+	if len(uuids) == 0 {
+		return []*message.Mapped{}, nil
+	}
+
+	pgUuids := make([][16]byte, 0, len(uuids))
+	for _, u := range uuids {
+		pgUuids = append(pgUuids, u)
+	}
+
+	return db.ReadMapped(`WHERE "origin" = $1 AND "uuid" = ANY ($2)`, origin, pgUuids)
+}
+
+// Flush sends whatever is queued and waits for the database to accept it,
+// rather than leaving it to the size threshold or the ticker.
+//
+// Everything else here queues and returns, which is right for a writer
+// whose job is to keep up with a sensor. It is wrong for anything that has
+// to tell someone else the data is safe: see transfer's OutboxReceiver,
+// which acknowledges a shipment to the vessel that sent it and must not do
+// so until the rows are actually committed.
+func (db *PostgresqlDatabase) Flush() error {
+	db.flushMutex.Lock()
+	defer db.flushMutex.Unlock()
+
+	batchToFlush := db.copyBatch()
+	if batchToFlush == nil {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
+	defer cancel()
+
+	result := db.GetConnection().SendBatch(ctx, batchToFlush)
+	if err := result.Close(); err != nil {
+		// Unlike flushBatch, the error is returned rather than retried:
+		// the caller is waiting on the answer to decide whether to
+		// promise durability, and a silent requeue would let it promise
+		// something that has not happened yet.
+		db.invalidateConnection()
+		return err
+	}
+
+	db.lastFlush = time.Now()
+	db.lastFlushGauge.SetToCurrentTime()
+	return nil
 }

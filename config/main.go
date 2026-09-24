@@ -442,6 +442,11 @@ type PostgresqlConfig struct {
 	BatchFlushLength   int           `mapstructure:"batch_flush_length"`
 	BatchFlushInterval time.Duration `mapstructure:"batch_flush_interval"`
 	Timeout            time.Duration `mapstructure:"timeout"`
+	// Outbox records every mapped row written here in transfer_outbox, in
+	// the same transaction, so that `gosk transfer outbox ship` can
+	// deliver it and know when it has been acknowledged. Only the writer
+	// on a vessel needs it; see transfer/outbox.go.
+	Outbox bool `mapstructure:"outbox"`
 }
 
 func defaultPostgresqlConfig() PostgresqlConfig {
@@ -515,6 +520,14 @@ type TransferConfig struct {
 	// The newest periods are asked about first, so a backlog drains at a
 	// bounded rate while recent gaps are still closed promptly.
 	MaxCountRequestsPerCycle int `mapstructure:"max_count_requests_per_cycle"`
+
+	// The outbox scheme, see transfer/outbox.go. OutboxBatchSize is how
+	// many source messages one shipment covers - larger amortises the
+	// round trip, smaller means less to resend when one is lost.
+	// OutboxIdleInterval is how long to wait before looking again once
+	// the outbox is empty, or everything left in it is already in flight.
+	OutboxBatchSize    int           `mapstructure:"outbox_batch_size"`
+	OutboxIdleInterval time.Duration `mapstructure:"outbox_idle_interval"`
 }
 
 func NewTransferConfig(configFilePath string) *TransferConfig {
@@ -528,6 +541,8 @@ func NewTransferConfig(configFilePath string) *TransferConfig {
 		MaxPeriodsToRequest:       500,
 		CompletenessFactor:        0.99,
 		MaxCountRequestsPerCycle:  1000,
+		OutboxBatchSize:           500,
+		OutboxIdleInterval:        5 * time.Second,
 	}
 	readConfigFile(result, configFilePath)
 

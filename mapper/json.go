@@ -74,24 +74,25 @@ func (m *JSONMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 
 	env := NewExpressionEnvironment()
 	env["json"] = j
+	// A mapping's timestampExpression used to be able to replace the
+	// update's timestamp with one parsed out of the payload. It no longer
+	// does: every row a mapper produces is now stamped with the time the
+	// raw message arrived, so that mapped_data."time" means one thing
+	// across every mapper rather than "arrival, unless this particular
+	// mapping was configured otherwise".
+	//
+	// The guard it came with was also only half a guard. It compared
+	// arrival-minus-payload against +365 days, which rejects a payload
+	// timestamp a year or more in the past but accepts one arbitrarily far
+	// in the future - that difference is negative, and every negative
+	// number is less than 365 days. A single bad reading could put a row
+	// in a chunk years ahead, where the retention policy would not reach
+	// it for as long.
+	//
+	// config.MappingConfig.TimestampExpression is kept so that verify()
+	// can warn about a configuration that still sets it, rather than
+	// letting it quietly stop having an effect.
 	for _, jmc := range m.jsonMappingConfig {
-		if jmc.TimestampExpression != "" {
-			output, err := runTimestampExpr(env, &jmc.MappingConfig)
-			if err == nil {
-				newTime, err := time.Parse(time.RFC3339, output.(string))
-				if err != nil {
-					logger.GetLogger().Warn(
-						"Could not parse the returned time, please use RFC3339",
-						zap.String("Error", err.Error()),
-					)
-				} else {
-					if u.Timestamp.Sub(newTime) < time.Duration(365*24*time.Hour) {
-
-						u.WithTimestamp(newTime)
-					}
-				}
-			}
-		}
 		output, err := runExpr(env, &jmc.MappingConfig)
 		if err == nil {
 			u.AddValue(message.NewValue().WithPath(jmc.Path).WithValue(output))

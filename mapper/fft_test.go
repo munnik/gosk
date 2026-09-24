@@ -145,6 +145,44 @@ var _ = Describe("DoMap fft", func() {
 		Expect(spectra).To(BeEmpty())
 	})
 
+	It("stamps a spectrum with the newest sample in its window, not the oldest", func() {
+		// The whole pipeline stamps a row with a time derived from when
+		// the raw data arrived, so a spectrum is dated by the sample that
+		// completed its window. Dating it window[0] instead - as this
+		// used to - put every spectrum a full window into the past
+		// relative to everything around it.
+		start := time.Now().Truncate(time.Millisecond)
+		// A spectrum is only emitted once the buffer holds a full window
+		// plus one hop, so this feeds exactly enough for one.
+		samples := sineWave(windowLen+hopSize, signalFrequency)
+
+		m := newMapper()
+		timestamps := make([]time.Time, 0)
+		for i, v := range samples {
+			input := message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				message.NewUpdate().WithSource(
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
+				).WithTimestamp(
+					start.Add(time.Duration(i) * period),
+				).AddValue(
+					message.NewValue().WithPath(fftTestPath).WithValue(v),
+				),
+			)
+			out, err := m.DoMap(input)
+			Expect(err).ToNot(HaveOccurred())
+			for _, svm := range out.ToSingleValueMapped() {
+				if svm.Path == fftTestSpectrumPath {
+					timestamps = append(timestamps, svm.Timestamp)
+				}
+			}
+		}
+
+		Expect(timestamps).To(HaveLen(1))
+		// windowLen samples were fed, so the window covers indices
+		// 0..windowLen-1 and the newest of them is the last.
+		Expect(timestamps[0]).To(BeTemporally("==", start.Add(time.Duration(windowLen-1)*period)))
+	})
+
 	It("discards a non-numeric value instead of panicking", func() {
 		m := newMapper()
 		input := message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(

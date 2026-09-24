@@ -138,10 +138,18 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 		if !ok {
 			continue
 		}
+		// Take the timestamp and the uuid from the same value - the most
+		// recent one. The uuid assignment used to sit outside this branch,
+		// so the timestamp came from the newest relevant value while the
+		// uuid came from whichever one happened to be iterated last. One
+		// message.Mapped can carry several Updates with different Sources
+		// (see removeOverWrites below, and the sharding mapper), so those
+		// are not always the same raw message, and the row then claimed
+		// provenance from one message while carrying another's time.
 		if svm.Timestamp.After(u.Timestamp) { // take most recent timestamp from relevant data
 			u.WithTimestamp(svm.Timestamp)
+			u.Source.Uuid = svm.Source.Uuid // and the uuid from that same message
 		}
-		u.Source.Uuid = svm.Source.Uuid // take the uuid from the message that updated this value
 		path := strings.ReplaceAll(svm.Path, ".", "_")
 
 		// remove old data from buffer

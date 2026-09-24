@@ -377,12 +377,62 @@ mappers set it independently of arrival:
 - `mapper/json.go` — a configured `TimestampExpression` parses the timestamp
   **out of the payload**, accepted as far as a year from arrival.
 - `mapper/fft.go` — the start of the FFT window.
-- `mapper/aggregate.go` — a source update's timestamp, while inheriting one
-  input's `Source` and therefore that input's UUID.
+- `mapper/aggregate.go` — the most recent of the source values it folded in.
 
 The two columns answer different questions: *when did this message arrive*
 against *when is this measurement for*. Deriving one from the other silently
 rewrites history for exactly the mappers where the difference is the point.
+
+**Since changed.** The first two were brought back to arrival-derived times, so
+`mapped_data."time"` now means one thing across every mapper:
+
+- `json.go` no longer honours `timestampExpression`; every row carries the raw
+  message's arrival time. `config.MappingConfig` keeps the field only so
+  `verify()` can warn about a configuration that still sets it. Its guard was
+  half a guard anyway: it compared arrival-minus-payload against +365 days,
+  which rejects a payload timestamp a year in the past but accepts one
+  arbitrarily far in the *future*, since that difference is negative and every
+  negative number is below the threshold. One bad reading could put a row in a
+  chunk years ahead, out of reach of the retention policy for that much longer.
+- `fft.go` stamps a spectrum with the newest sample in its window rather than
+  the oldest, so it is dated by the data that completed it instead of a full
+  window into the past. Pinned by a test.
+- `aggregate.go` needed no change: it takes the maximum of its *inputs'*
+  timestamps, so it follows whatever they are.
+
+`notification.go`, `connector_status.go` and `meteohydro.go` still use
+`time.Now()` — they report events with no upstream message, so there is nothing
+for them to inherit.
+
+Note what this does and does not buy. Rows now agree on what their timestamp
+means, which is worth having on its own. It does **not** make the timestamp
+recoverable from the UUID, for the reason in §7.1.1.
+
+### 7.1.1 And a whole class of rows carries no UUID at all
+
+Stronger than the above, and on its own enough to settle the question:
+`message.NewSource()` returns `&Source{}`, so `Uuid` starts as the zero value,
+and these mappers never set one —
+
+- `mapper/fft.go` — sets `uuid.Nil` explicitly and never replaces it
+- `mapper/notification.go`
+- `mapper/connector_status.go`
+- `mapper/meteohydro.go`
+
+— so their rows reach `mapped_data` with `uuid.Nil`. That is by design, not by
+accident: `20220214103722` declares the column
+`uuid UUID NOT NULL DEFAULT uuid_nil()`, i.e. "this row came from no raw
+message".
+
+`uuid.Nil` is version 0, so `uuid_timestamp()` returns NULL for it. For FFT
+spectra, notifications, connector-status reports and meteohydro rows there is
+therefore no embedded timestamp to fall back on. Dropping `time` would not give
+those rows a less precise timestamp; it would leave them with none.
+
+This also bounds what changing the mappers could achieve. Making every mapper
+stamp rows with arrival time would align §7.1's three cases, and still leave
+this class with no UUID to read a time from — so `time` could not be dropped
+afterwards either.
 
 ### 7.2 The UUID is not unique per mapped row
 

@@ -192,9 +192,15 @@ func (m *FftMapper) doFft(update *message.Update, path string) {
 		coeff := sfm.fft.Coefficients(nil, samples)
 		m.buildSpectrum(&value, coeff, path)
 
+		// Stamped with the newest sample in the window rather than the
+		// oldest, so a spectrum carries the time of the data that
+		// completed it. Every mapper now stamps its rows with a time
+		// derived from when the raw data arrived, so that
+		// mapped_data."time" means the same thing across all of them;
+		// window[0] pointed a whole window into the past instead.
 		update.AddValue(
 			message.NewValue().WithPath(sfm.spectrumPath).WithValue(value),
-		).WithTimestamp(window[0])
+		).WithTimestamp(window[len(window)-1])
 	} else {
 		logger.GetLogger().Warn(
 			"Discarding an FFT window with an irregular sample interval, a dropped-sample gap, or duplicate/out-of-order timestamps",

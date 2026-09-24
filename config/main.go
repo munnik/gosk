@@ -202,6 +202,17 @@ func (m *MappingConfig) verify() {
 			zap.String("Register mapping", fmt.Sprintf("%+v", m)),
 		)
 	}
+	if m.TimestampExpression != "" {
+		// Warned about rather than silently ignored: a mapping that used
+		// to stamp its rows with a time out of the payload now stamps them
+		// with the time the raw message arrived, which moves where those
+		// rows land. See mapper/json.go's DoMap.
+		logger.GetLogger().Warn(
+			"timestampExpression is no longer used, rows are stamped with the arrival time of the raw message - remove it from the configuration",
+			zap.String("TimestampExpression", m.TimestampExpression),
+			zap.String("Path", m.Path),
+		)
+	}
 }
 
 type ModbusMappingsConfig struct {

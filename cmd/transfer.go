@@ -2,11 +2,13 @@ package cmd
 
 import (
 	"github.com/munnik/gosk/config"
+	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
 	"github.com/munnik/gosk/sdnotify"
 	"github.com/munnik/gosk/transfer"
 	"github.com/spf13/cobra"
+	"go.uber.org/zap"
 )
 
 var (
@@ -44,6 +46,22 @@ var (
 		Long:  `On the central server: store what a vessel ships, and acknowledge it only once the write has committed.`,
 		Run:   doTransferOutboxReceive,
 	}
+	transferOutboxSeedCmd = &cobra.Command{
+		Use:   "seed",
+		Short: "find history the central server is missing and put it in the outbox",
+		Long: `On a vessel, once: compare this vessel's history with the central server's without either sending the other its data, and enqueue only what the central server turns out to be missing.
+
+Comparison is by summary. Both ends group their source messages into buckets - a bucket being a leading part of the uuid, which for a version 7 uuid is a span of time - and exchange a count and a checksum per bucket. Buckets that agree are settled in one line each however much they contain; only buckets that disagree are opened up, and only at the bottom are individual source messages named. What this costs therefore follows how much is missing, not how much history there is.
+
+Run "outbox ship" afterwards, or alongside, to deliver what this enqueues. This command writes nothing else, sends no data, and can be interrupted and run again.`,
+		Run: doTransferOutboxSeed,
+	}
+	transferOutboxDigestCmd = &cobra.Command{
+		Use:   "digest",
+		Short: "answer vessels seeding their outbox",
+		Long:  `On the central server: answer the summaries a vessel sends while seeding, saying which parts of history do not match what is stored here. Reads only.`,
+		Run:   doTransferOutboxDigest,
+	}
 )
 
 func init() {
@@ -57,6 +75,8 @@ func init() {
 	transferCmd.AddCommand(transferOutboxCmd)
 	transferOutboxCmd.AddCommand(transferOutboxShipCmd)
 	transferOutboxCmd.AddCommand(transferOutboxReceiveCmd)
+	transferOutboxCmd.AddCommand(transferOutboxSeedCmd)
+	transferOutboxCmd.AddCommand(transferOutboxDigestCmd)
 }
 
 func doTransferOutboxShip(cmd *cobra.Command, args []string) {
@@ -73,6 +93,29 @@ func doTransferOutboxShip(cmd *cobra.Command, args []string) {
 func doTransferOutboxReceive(cmd *cobra.Command, args []string) {
 	c := config.NewTransferConfig(cfgFile)
 	r := transfer.NewOutboxReceiver(c)
+	sdnotify.Ready()
+	r.Run()
+}
+
+func doTransferOutboxSeed(cmd *cobra.Command, args []string) {
+	c := config.NewTransferConfig(cfgFile)
+	s := transfer.NewOutboxSeeder(c)
+	sdnotify.Ready()
+	// Unlike the others this one finishes. Exiting non-zero when part of
+	// history went uncompared matters: the run has to be repeatable, and
+	// an operator has to be able to tell a complete pass from one that
+	// gave up on some buckets.
+	if err := s.Run(); err != nil {
+		logger.GetLogger().Fatal(
+			"Could not finish seeding the outbox",
+			zap.String("Error", err.Error()),
+		)
+	}
+}
+
+func doTransferOutboxDigest(cmd *cobra.Command, args []string) {
+	c := config.NewTransferConfig(cfgFile)
+	r := transfer.NewOutboxDigestResponder(c)
 	sdnotify.Ready()
 	r.Run()
 }

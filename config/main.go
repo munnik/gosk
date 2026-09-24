@@ -528,6 +528,19 @@ type TransferConfig struct {
 	// the outbox is empty, or everything left in it is already in flight.
 	OutboxBatchSize    int           `mapstructure:"outbox_batch_size"`
 	OutboxIdleInterval time.Duration `mapstructure:"outbox_idle_interval"`
+
+	// Seeding an outbox with history, see transfer/outbox_digest.go.
+	// OutboxSeedLeafSize is how few source messages a bucket has to hold
+	// before they are named one by one instead of summarised again: it
+	// trades round trips against message size, and is the only number in
+	// the walk that has to be chosen rather than derived.
+	// OutboxSeedTimeout is how long one summary may go unanswered - the
+	// far end has to read an index over the same range, so this is
+	// generous. OutboxSeedPause throttles the walk, because a seeding run
+	// competes with the writes the vessel is still taking.
+	OutboxSeedLeafSize int           `mapstructure:"outbox_seed_leaf_size"`
+	OutboxSeedTimeout  time.Duration `mapstructure:"outbox_seed_timeout"`
+	OutboxSeedPause    time.Duration `mapstructure:"outbox_seed_pause"`
 }
 
 func NewTransferConfig(configFilePath string) *TransferConfig {
@@ -543,6 +556,9 @@ func NewTransferConfig(configFilePath string) *TransferConfig {
 		MaxCountRequestsPerCycle:  1000,
 		OutboxBatchSize:           500,
 		OutboxIdleInterval:        5 * time.Second,
+		OutboxSeedLeafSize:        2000,
+		OutboxSeedTimeout:         2 * time.Minute,
+		OutboxSeedPause:           100 * time.Millisecond,
 	}
 	readConfigFile(result, configFilePath)
 

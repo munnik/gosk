@@ -306,43 +306,135 @@ with those bytes. The flag therefore governs only what a process *sends*, and
 a vessel and the cloud can be switched over weeks apart without a payload
 being read as though it were the other format.
 
-#### Turning it on for a vessel that already has history
+#### Turning it on for a vessel that already has history — *seeding, built*
 
-Nothing is seeded, and the outbox is deliberately **forward-only**: it covers
-data written from the moment it is switched on, and the count protocol keeps
-closing gaps in what came before. The two run side by side so that switching
-over needs no migration at all.
+This was first answered "nothing is seeded, the outbox is forward-only and the
+count protocol keeps closing older gaps". That answer was wrong, and it was
+wrong for a reason worth writing down rather than quietly deleting.
 
-What settles it is how far back the count protocol actually reaches.
-`transfer_data` is bounded by the `MIN`/`MAX` of `transfer_local_data`, and
-those continuous aggregates are dropped after 365 days
-(`20250115144655_continuous_aggregate_policy_longer_period`). So "what does
-the far end already have" is only a live question for about the last year;
-older than that is outside its reach and always has been. Retire the count
-protocol once the pre-cutover window stops mattering.
+It rested on the count protocol working. The observation that prompted the
+rewrite is that a lot of data is missing in the cloud, which says it is not.
+If the thing that was supposed to handle everything before the cutover is
+itself the problem, then forward-only does not leave history to a slower
+mechanism; it leaves history unrecoverable.
 
-Two alternatives were considered and rejected.
+The second half of the argument was worse, because it was wrong on its own
+terms. The digest was rejected for "saving most where it is needed least":
+where little is missing it avoids re-sending nearly everything, and where a
+lot is missing it avoids re-sending little. That compares the *ratio* it
+saves. What matters is the *absolute* cost, and by that measure:
 
-**Seeding the outbox with a bounded window** —
-`INSERT INTO transfer_outbox SELECT DISTINCT origin, uuid FROM mapped_data
-WHERE uuid >= <a version 7 uuid at the cutoff>` — is one statement and needs
-no protocol, because the far end's insert is already an upsert and re-sending
-a row it holds costs bandwidth and nothing else. Worth remembering if a
-particular vessel ever needs its recent history guaranteed rather than
-reconciled; the cutoff bounds the cost.
+| | cost |
+|---|---|
+| seed everything | O(history) |
+| seed a window | O(window), and misses whatever falls outside it |
+| digest | O(what is actually missing) + O(log) summaries |
 
-**Asking the far end what it has**, as a digest: split the uuid space by
-leading hex characters — which are a millisecond timestamp, so a prefix is a
-time bucket with no time column involved — and exchange a `(count, sum of
-per-uuid hashes)` per bucket, drilling into the buckets that disagree. Exact,
-and the message is one row per bucket rather than one per source message. It
-was half built and then dropped, because it **saves most where it is needed
-least**: on a well-connected vessel the far end already holds nearly
-everything, so the digest avoids re-sending almost all of it - but that vessel
-has little to recover. On a badly-connected one the far end is missing a great
-deal, so the digest avoids re-sending little - and that is the vessel that
-matters. Against that it costs a second protocol and a full `DISTINCT uuid`
-scan at both ends.
+A scheme that costs what the gap costs is never worse than one that costs what
+the history costs, whatever the ratio between them. The ratio only looks bad
+when the gap is large — but then the alternative is *even more* expensive in
+absolute terms, which is exactly the vessel that cannot afford it. The
+argument had the comparison backwards.
+
+So it is built: `gosk transfer outbox seed` on the vessel,
+`gosk transfer outbox digest` on the central server. See
+`transfer/outbox_digest.go`.
+
+**How it works.** A bucket is a leading hex prefix of the uuid. Every uuid is
+now a version 7 uuid, so that prefix *is* a millisecond timestamp — a bucket
+is a span of time, and the whole walk partitions history without reading a
+`time` column, a continuous aggregate, or a five minute period. Five hex
+digits leaves 28 bits of the millisecond field below them, so a root bucket
+spans about three days; nine digits spans about four seconds.
+
+Both ends summarise a bucket the same way: a count of source messages and an
+exclusive-or of `md5(uuid || ':' || row count)` per source message. The
+exclusive-or describes a *set*, so neither side has to sort or agree on an
+ordering. Hashing the row count in, not just the uuid, is what carries over
+the one thing `SelectCountPerUuid` gave the count protocol: a source message
+that arrived with only some of its rows differs too.
+
+```
+vessel: buckets 019ceba0..019cebaf, with counts and digests
+cloud:  019ceba4 and 019cebad differ
+vessel: the children of 019ceba4
+cloud:  019ceba4c differs
+ ...
+vessel: 019ceba4c9 is small — here are its 1,800 source messages
+cloud:  I am missing these eleven
+vessel: enqueues those eleven, and nothing else
+```
+
+A bucket both ends agree on is settled in one line whatever it contains. Only
+at the bottom is anything named individually, and only then does the ordinary
+shipper send data — for the eleven, not the 1,800. Measured on 20,000 source
+messages, the summary is **46× smaller** than naming them
+(`TestDigestIsSmallerThanTheKeysItSummarises`).
+
+**What it costs at the extremes.** Where nothing is missing, one pass over the
+top-level summaries finds nothing and stops: a few messages for a decade of
+history. Where everything is scattered, it degenerates to naming every uuid —
+which is the floor for any exact answer, since scattered gaps cannot be found
+without comparing scattered keys. Even then a uuid is 16 bytes against a
+delta's hundreds, and the deltas that follow are only the missing ones.
+
+**What it does not do.** It never writes anything but outbox entries, never
+deletes, and sends no data itself. `EnqueueOutbox` is `ON CONFLICT DO
+NOTHING` and the walk is deterministic, so a run can be interrupted and
+started again with no bookkeeping. It exits non-zero if any bucket went
+uncompared, so a partial pass is not mistaken for a clean one.
+
+Buckets the far end holds and the vessel does not are ignored. Retention runs
+at different times on the two sides, and treating that as a difference would
+send a vessel looking for rows it cannot produce, forever.
+
+The remaining alternative is still worth remembering: **seeding a bounded
+window** — `INSERT INTO transfer_outbox SELECT DISTINCT origin, uuid FROM
+mapped_data WHERE uuid >= <a version 7 uuid at the cutoff>` — is one
+statement and no protocol, because the far end's insert is an upsert and
+re-sending a row it holds costs bandwidth and nothing else. Right when a
+particular vessel's recent history has to be *guaranteed* rather than
+reconciled, and the cutoff bounds the cost.
+
+#### Why the count protocol is missing data — diagnose before seeding
+
+Seeding will find the gaps whatever caused them, but it is worth knowing
+which failure it is working around, because two of the candidates also affect
+what the outbox itself can reach. `database/scripts/diagnose_transfer.sql`
+separates them. Run it on the central server first.
+
+The split that matters is **detection** against **repair**: is the count
+protocol failing to notice the gaps, or noticing and failing to close them?
+
+- **Detection.** `transfer_data` is built on the `transfer_local_data`
+  continuous aggregates. `20250115144655` widened their refresh window to 180
+  days on a one hour schedule and `20260915160000` had to cap `max_runtime`
+  afterwards, which is the signature of refreshes overrunning and piling up. A
+  stale or failing refresh makes `local_count` wrong in *both* directions —
+  understated, and every period looks incomplete; stale, and periods look
+  complete when they are not. Query 1 of the script shows the job's failure
+  count and last successful finish; query 2 shows how far behind the
+  materialisation watermark is.
+- **Reach.** `transfer_local_data` is dropped after 365 days, so anything
+  older than that was never in the count protocol's reach and never will be
+  (query 4). The digest has no such horizon — it reads `mapped_data` directly.
+- **Repair.** §2.5: `mapped_data_other_context` had no `(origin, uuid, time)`
+  index until `20260924120100`, so the data response's own query was liable to
+  hit the five minute statement timeout — gaps detected, requests sent,
+  nothing coming back (query 5).
+- **Transport.** Until §1 the requests and the data answering them both went
+  at QoS 0, on a link whose unreliability is the entire reason this system
+  exists.
+- **By design.** `CompletenessFactor` is 0.99 and was 0.98: a period is only
+  re-requested when it is more than one or two percent short. Permanent loss
+  below that threshold is tolerated on purpose, forever, and no amount of
+  fixing the above changes it.
+
+The outbox scheme is structurally immune to all five. It has no continuous
+aggregate, no counts, no periods, no completeness factor and no retention
+horizon of its own: a source message is pending if and only if it is in
+`transfer_outbox`, and it leaves only when the far end says it has committed
+it.
 
 Not done: cutting over, and retiring the count protocol.
 
@@ -352,15 +444,20 @@ Not done: cutting over, and retiring the count protocol.
 
 1. ~~**MQTT durability**~~ — done, see §1. Highest value per line changed.
 2. ~~**The bugs in §2**~~ — done.
-3. **Measure what is left.** This is the next step, and it gates everything
-   after it. `gosk_transfer_data_requests_total` and
-   `gosk_transfer_count_requests_total` should fall sharply once §1 is deployed
-   and the broker is configured to hold sessions; `gosk_transfer_missing_counts_total`
-   (new) shows the per-origin backlog of periods without a remote count. If the
-   residual gap rate is low enough, steps 4 and 5 are not worth doing.
-4. **Outbox + watermark**, replacing count-based reconciliation (§3, §4.2).
-5. **Logical replication** only if step 4 proves insufficient (§4.1) — and with
-   an explicit plan for slot invalidation.
+3. **Diagnose the missing data** — `database/scripts/diagnose_transfer.sql`.
+   This was written as "measure what is left, and if the residual gap rate is
+   low enough, steps 4 and 5 are not worth doing". It is not low enough: a lot
+   of data is missing in the cloud. The question is no longer whether to
+   replace the count protocol but which of its failure modes to expect on the
+   way out — see §4.2, "Why the count protocol is missing data".
+4. ~~**Outbox**~~ — done, §4.2. Not a watermark: a pending set, for the
+   commit-ordering reason given there.
+5. **Seed the outbox from history** — `gosk transfer outbox seed`, §4.2. This
+   is what recovers what is already missing; the outbox alone only covers what
+   is written from now on.
+6. **Cut over and retire the count protocol.** Not done.
+7. **Logical replication** only if the outbox proves insufficient (§4.1) — and
+   with an explicit plan for slot invalidation.
 
 ### What §1 and §2 did not change
 

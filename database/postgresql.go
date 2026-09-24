@@ -56,6 +56,56 @@ const (
 	outboxSelectQuery = `SELECT "origin", "uuid" FROM "transfer_outbox" ORDER BY "uuid" LIMIT $1`
 	outboxDeleteQuery = `DELETE FROM "transfer_outbox" WHERE "origin" = $1 AND "uuid" = ANY ($2)`
 	outboxDepthQuery  = `SELECT "origin", COUNT(*) FROM "transfer_outbox" GROUP BY 1`
+	// Bulk enqueue, for seeding an outbox with history that predates it -
+	// see transfer/outbox_seed.go. unnest rather than a row per statement
+	// because a seeding run enqueues in the thousands.
+	outboxEnqueueQuery = `INSERT INTO "transfer_outbox" ("origin", "uuid") SELECT $1, * FROM unnest($2::uuid[]) ON CONFLICT DO NOTHING`
+
+	// The digest, see transfer/outbox_digest.go. It summarises a range of
+	// the uuid space so two databases can find where they differ without
+	// either sending the other its keys.
+	//
+	// The summary is per bucket, a bucket being a leading hex prefix of the
+	// uuid. Because every uuid is a version 7 uuid that prefix is a time
+	// bucket, so this partitions history without reading a timestamp -
+	// which is the point: no "time" column, no continuous aggregate, no
+	// five minute period.
+	//
+	// Two numbers per bucket. The count catches a bucket that is simply
+	// short. The digest catches one that is the right size but holds
+	// different things: an exclusive or of a hash per source message, which
+	// is order free, so neither side has to sort or agree on an ordering.
+	// md5 rather than anything stronger because this is a comparison and
+	// not a defence - and because it is in core Postgres, so both ends
+	// compute it the same way without an extension.
+	//
+	// Hashed with the row count, not just the uuid, so a source message
+	// that arrived with only some of its rows differs too. That is what
+	// SelectCountPerUuid gave the count protocol, kept.
+	//
+	// The range predicate is on "uuid" alone, which the (origin, uuid,
+	// time) index serves as an index only scan.
+	uuidDigestQuery = `
+		WITH "per_uuid" AS (
+			SELECT "uuid", COUNT(*) AS "rows"
+			FROM "mapped_data"
+			WHERE "origin" = $1 AND "uuid" >= $2 AND "uuid" <= $3
+			GROUP BY 1
+		)
+		SELECT substr(replace("uuid"::text, '-', ''), 1, $4) AS "prefix",
+		       COUNT(*),
+		       bit_xor(('x' || substr(md5("uuid"::text || ':' || "rows"), 1, 16))::bit(64)::bigint)
+		FROM "per_uuid"
+		GROUP BY 1
+		ORDER BY 1`
+	// The leaf of the same walk: once a bucket is small enough, naming its
+	// source messages outright is cheaper than another round of summaries.
+	uuidsInPrefixQuery = `
+		SELECT "uuid", COUNT(*)
+		FROM "mapped_data"
+		WHERE "origin" = $1 AND "uuid" >= $2 AND "uuid" <= $3
+		GROUP BY 1
+		ORDER BY 1`
 )
 
 //go:embed migrations/*.sql
@@ -1013,6 +1063,109 @@ func (db *PostgresqlDatabase) OutboxDepth() (map[string]int, error) {
 		result[origin] = n
 	}
 	return result, rows.Err()
+}
+
+// UuidBucket summarises one bucket of the uuid space: a leading hex
+// prefix, how many source messages fall under it, and a digest that
+// changes if any of them do. See uuidDigestQuery.
+//
+// Json tags because this goes on the wire as it is - the whole point of a
+// digest is that both ends compare the same numbers, so re-describing them
+// in a second struct would only create somewhere for the two descriptions
+// to drift apart.
+type UuidBucket struct {
+	Prefix string `json:"prefix"`
+	Uuids  int64  `json:"uuids"`
+	Digest int64  `json:"digest"`
+}
+
+// UuidCount is one source message and how many mapped rows it produced.
+type UuidCount struct {
+	Uuid uuid.UUID `json:"uuid"`
+	Rows int64     `json:"rows"`
+}
+
+// SelectUuidDigest summarises everything this database holds for origin
+// between lo and hi, grouped into buckets prefixLength hex digits long.
+//
+// lo and hi are the bounds of the bucket being described, and prefixLength
+// is longer than that bucket's own prefix by however many digits the
+// caller wants to split it into: one digit gives sixteen children, two
+// gives two hundred and fifty six. Both ends run this same query over the
+// same bounds, and compare what comes back.
+func (db *PostgresqlDatabase) SelectUuidDigest(origin string, lo, hi uuid.UUID, prefixLength int) ([]UuidBucket, error) {
+	// A seeding pass reads a lot more than a write does, and it is not
+	// something anyone is waiting on, so it gets its own budget rather
+	// than the write path's.
+	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout*10)
+	defer cancel()
+
+	rows, err := db.GetConnection().Query(ctx, uuidDigestQuery, origin, [16]byte(lo), [16]byte(hi), prefixLength)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := []UuidBucket{}
+	for rows.Next() {
+		var b UuidBucket
+		if err := rows.Scan(&b.Prefix, &b.Uuids, &b.Digest); err != nil {
+			return nil, err
+		}
+		result = append(result, b)
+	}
+	return result, rows.Err()
+}
+
+// SelectUuidsInPrefix names the source messages between lo and hi, with
+// how many rows each produced. This is what the digest walk falls back to
+// once a bucket is small enough that summarising it again would cost more
+// than saying what is in it.
+func (db *PostgresqlDatabase) SelectUuidsInPrefix(origin string, lo, hi uuid.UUID) ([]UuidCount, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout*10)
+	defer cancel()
+
+	rows, err := db.GetConnection().Query(ctx, uuidsInPrefixQuery, origin, [16]byte(lo), [16]byte(hi))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := []UuidCount{}
+	for rows.Next() {
+		var c UuidCount
+		if err := rows.Scan(&c.Uuid, &c.Rows); err != nil {
+			return nil, err
+		}
+		result = append(result, c)
+	}
+	return result, rows.Err()
+}
+
+// EnqueueOutbox puts source messages into the outbox that the write path
+// never put there - history from before the outbox existed, or from before
+// this vessel was switched over to it.
+//
+// ON CONFLICT DO NOTHING, so seeding something already pending is a no-op
+// and a seeding run can be stopped and started again without any
+// bookkeeping of its own.
+func (db *PostgresqlDatabase) EnqueueOutbox(origin string, uuids []uuid.UUID) (int64, error) {
+	if len(uuids) == 0 {
+		return 0, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
+	defer cancel()
+
+	pgUuids := make([][16]byte, 0, len(uuids))
+	for _, u := range uuids {
+		pgUuids = append(pgUuids, u)
+	}
+
+	tag, err := db.GetConnection().Exec(ctx, outboxEnqueueQuery, origin, pgUuids)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
 }
 
 // SelectMappedByUuids reads back every mapped row belonging to the given

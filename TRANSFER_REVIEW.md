@@ -729,13 +729,24 @@ nothing to inherit.
 The rows written before this still carry `uuid.Nil`, and `mapped_data` has
 no retention policy, so they remain until something removes them.
 
-**`message.NewRaw` reads the clock twice.** It calls `NewV7Precise()` and
-`time.Now()` separately, so the UUID's embedded time is a microsecond or two
-behind `Timestamp`. That did not matter while the UUID was only accurate to
-a millisecond; at microsecond resolution it is a real, if tiny,
-disagreement between two fields that are meant to say the same thing. Worth
-fixing on its own merits: take one `time.Now()` and build the UUID from it
-with `NewV7AtTimePrecise`.
+**`message.NewRaw` read the clock twice** — *since fixed*. It called
+`NewV7Precise()` and `time.Now()` separately, so the UUID's embedded time
+sat a microsecond or two behind `Timestamp`. That did not matter while the
+UUID was only accurate to a millisecond; at microsecond resolution it is a
+real disagreement between two fields that are meant to say the same thing.
+
+It now takes one reading and builds both from it, with
+`NewV7AtTimePrecise` rather than `NewV7Precise` — only the former encodes a
+given instant exactly, where the latter takes the clock itself and may hold
+its value above the previous one, reintroducing the gap. The cost is that
+two raw messages created inside one 244ns step are no longer ordered by
+their UUIDs, only distinguished by them; at the rates gosk collects even
+the 2kHz meter leaves 2048 steps between samples. `cmd/test.go`'s sample
+generator had the same pattern and got the same fix.
+
+A test pins it: over a thousand `NewRaw` calls the two must agree to within
+one step, and the difference must never be negative — the fraction is
+floored, so the embedded time can lag the real one but never lead it.
 
 **The storage argument still runs backwards**, and is now the strongest
 standing reason. §7.5: this trades away 8 bytes of `timestamptz` while

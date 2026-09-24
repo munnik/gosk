@@ -134,3 +134,33 @@ func BenchmarkRawMarshalJSONOld(b *testing.B) {
 		}
 	}
 }
+
+// TestNewRawUuidAndTimestampAgree pins the single clock reading in NewRaw.
+// The two fields describe the same instant, and once the UUID resolved to
+// about 244ns rather than to a millisecond, reading the clock twice made
+// them disagree by however long the second call took.
+func TestNewRawUuidAndTimestampAgree(t *testing.T) {
+	for range 1000 {
+		r := NewRaw()
+
+		// The 48 bit millisecond field, then the 12 bit sub-millisecond
+		// fraction in 4096ths - the same arithmetic uuid_timestamp_micros
+		// performs server side.
+		ms := int64(r.Uuid[0])<<40 | int64(r.Uuid[1])<<32 | int64(r.Uuid[2])<<24 |
+			int64(r.Uuid[3])<<16 | int64(r.Uuid[4])<<8 | int64(r.Uuid[5])
+		frac := int64(r.Uuid[6]&0x0f)<<8 | int64(r.Uuid[7])
+		embedded := time.UnixMilli(ms).Add(time.Duration(frac * int64(time.Millisecond) / 4096))
+
+		// Within one step, which is all the format can express - not
+		// "close enough", but as close as the encoding allows. A step is
+		// 1000000/4096 = 244.14ns, which integer Duration arithmetic
+		// truncates to 244, so the bound is the next nanosecond up. The
+		// difference is never negative: the fraction is floored, so the
+		// embedded time never runs ahead of the real one.
+		const step = time.Millisecond/4096 + 1
+		if d := r.Timestamp.Sub(embedded); d < 0 || d >= step {
+			t.Fatalf("timestamp %s and uuid %s (embedding %s) differ by %s, want less than one %s step",
+				r.Timestamp.Format(time.RFC3339Nano), r.Uuid, embedded.Format(time.RFC3339Nano), d, step)
+		}
+	}
+}

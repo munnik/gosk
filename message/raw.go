@@ -49,10 +49,27 @@ const (
 // larger than the rows actually being inserted. Version 7 leads with a
 // millisecond timestamp and a sequence counter, so values generated in
 // order append near one edge of the index instead.
+//
+// The clock is read once and both fields come from that one reading, so
+// the time embedded in the UUID and the time in Timestamp are the same
+// instant rather than two instants a microsecond or so apart. That did not
+// matter while the UUID only resolved to a millisecond; now that it
+// resolves to about 244ns it is a visible disagreement between two fields
+// that are supposed to say the same thing, and it would put a floor under
+// any later attempt to read a row's time back out of its UUID.
+//
+// NewV7AtTimePrecise rather than NewV7Precise, because only the former
+// encodes a given instant exactly; NewV7Precise takes the clock itself and
+// may hold its value above the previous one, which would reintroduce the
+// very gap this closes. The cost is that two raw messages created inside
+// the same 244ns step are no longer ordered by their UUIDs, only made
+// distinct by them - irrelevant at the rates gosk collects, where even the
+// 2kHz shaft power meter leaves 2048 steps between samples.
 func NewRaw() *Raw {
+	now := time.Now()
 	return &Raw{
-		Uuid:      uuid.Must(uuid.NewV7Precise()),
-		Timestamp: time.Now(),
+		Uuid:      uuid.Must(uuid.NewV7AtTimePrecise(now)),
+		Timestamp: now,
 	}
 }
 

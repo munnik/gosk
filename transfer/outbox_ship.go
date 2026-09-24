@@ -1,7 +1,6 @@
 package transfer
 
 import (
-	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -25,6 +24,7 @@ type OutboxShipper struct {
 	db         *database.PostgresqlDatabase
 	config     *config.TransferConfig
 	mqttClient *mqtt.Client
+	codec      *outboxCodec
 
 	// inFlight remembers when each uuid was last sent, so a shipment the
 	// far end never acknowledged is retried rather than blocking the
@@ -45,6 +45,7 @@ func NewOutboxShipper(c *config.TransferConfig) *OutboxShipper {
 	return &OutboxShipper{
 		db:       db,
 		config:   c,
+		codec:    newOutboxCodec(c.MQTTConfig.Compress),
 		inFlight: make(map[uuid.UUID]time.Time),
 		shipped:  promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_outbox_shipments_total", Help: "total number of outbox shipments sent"}),
 		acked:    promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_outbox_acked_total", Help: "total number of source messages acknowledged by the far end"}),
@@ -137,16 +138,16 @@ func (s *OutboxShipper) ship(origin string, uuids []uuid.UUID) bool {
 		Deltas:   values,
 	}
 
-	bytes, err := json.Marshal(shipment)
+	payload, err := s.codec.encode(shipment)
 	if err != nil {
 		logger.GetLogger().Warn(
-			"Could not marshal an outbox shipment",
+			"Could not encode an outbox shipment",
 			zap.String("Error", err.Error()),
 		)
 		return false
 	}
 
-	s.mqttClient.Publish(fmt.Sprintf(outboxDataTopic, origin), transferQoS, transferRetained, bytes)
+	s.mqttClient.Publish(fmt.Sprintf(outboxDataTopic, origin), transferQoS, transferRetained, payload)
 	s.markInFlight(uuids)
 
 	s.shipped.Inc()
@@ -157,15 +158,16 @@ func (s *OutboxShipper) ship(origin string, uuids []uuid.UUID) bool {
 		zap.String("Origin", origin),
 		zap.Int("Uuids", len(uuids)),
 		zap.Int("Rows", len(values)),
+		zap.Int("Bytes", len(payload)),
 	)
 	return true
 }
 
 func (s *OutboxShipper) ackReceived(c paho.Client, m paho.Message) {
 	var ack OutboxAck
-	if err := json.Unmarshal(m.Payload(), &ack); err != nil {
+	if err := s.codec.decode(m.Payload(), &ack); err != nil {
 		logger.GetLogger().Warn(
-			"Could not unmarshal an outbox acknowledgement",
+			"Could not decode an outbox acknowledgement",
 			zap.String("Error", err.Error()),
 			zap.ByteString("Bytes", m.Payload()),
 		)

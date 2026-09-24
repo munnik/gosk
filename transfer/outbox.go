@@ -1,8 +1,12 @@
 package transfer
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"time"
 
+	"github.com/klauspost/compress/zstd"
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/uuid/v5"
 )
@@ -78,3 +82,59 @@ type OutboxAck struct {
 // covers what that cannot: the far end receiving a shipment and then
 // failing to commit it.
 const outboxRetryAfter = 5 * time.Minute
+
+// outboxCodec compresses what goes onto the wire and works out for itself
+// what is coming back off it.
+//
+// The existing writer and reader (writer/mqtt.go, reader/mqtt.go) each
+// consult MQTTConfig.Compress and have to agree: set it on one side only
+// and the other reads the payload as though it were JSON. That is
+// tolerable for a pair of processes deployed together, and a poor fit
+// here, where one end is on a vessel and the other is in the cloud and
+// they are upgraded weeks apart. What is read is therefore decided by the
+// payload itself - a zstd frame announces itself - so the flag governs
+// only what this process sends, and either end can be switched over on
+// its own.
+type outboxCodec struct {
+	encoder  *zstd.Encoder
+	decoder  *zstd.Decoder
+	compress bool
+}
+
+// zstdMagic is the frame header every zstd stream starts with, little
+// endian 0xFD2FB528. JSON cannot begin with these bytes, so their presence
+// separates the two without a flag or a wrapper of our own.
+var zstdMagic = []byte{0x28, 0xb5, 0x2f, 0xfd}
+
+func newOutboxCodec(compress bool) *outboxCodec {
+	// Both errors are for options this passes none of.
+	encoder, _ := zstd.NewWriter(nil)
+	decoder, _ := zstd.NewReader(nil)
+	return &outboxCodec{encoder: encoder, decoder: decoder, compress: compress}
+}
+
+// encode marshals v, compressing it when this process is configured to.
+// EncodeAll and DecodeAll are both safe to call from several goroutines at
+// once, so one codec serves a whole process.
+func (c *outboxCodec) encode(v any) ([]byte, error) {
+	plain, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	if !c.compress {
+		return plain, nil
+	}
+	return c.encoder.EncodeAll(plain, make([]byte, 0, len(plain))), nil
+}
+
+// decode unmarshals a payload, decompressing it first if it is compressed.
+func (c *outboxCodec) decode(payload []byte, v any) error {
+	if bytes.HasPrefix(payload, zstdMagic) {
+		plain, err := c.decoder.DecodeAll(payload, nil)
+		if err != nil {
+			return fmt.Errorf("could not decompress the payload: %w", err)
+		}
+		payload = plain
+	}
+	return json.Unmarshal(payload, v)
+}

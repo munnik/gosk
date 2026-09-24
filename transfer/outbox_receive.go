@@ -1,7 +1,6 @@
 package transfer
 
 import (
-	"encoding/json"
 	"fmt"
 	"sync"
 
@@ -29,6 +28,7 @@ type OutboxReceiver struct {
 	db         *database.PostgresqlDatabase
 	config     *config.TransferConfig
 	mqttClient *mqtt.Client
+	codec      *outboxCodec
 
 	// One shipment at a time per receiver. The write has to complete
 	// before the acknowledgement, and paho calls this handler
@@ -45,6 +45,7 @@ func NewOutboxReceiver(c *config.TransferConfig) *OutboxReceiver {
 	return &OutboxReceiver{
 		db:       database.NewPostgresqlDatabase(&c.PostgresqlConfig),
 		config:   c,
+		codec:    newOutboxCodec(c.MQTTConfig.Compress),
 		received: promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_outbox_received_total", Help: "total number of outbox shipments received"}),
 		stored:   promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_outbox_stored_total", Help: "total number of mapped rows stored from outbox shipments"}),
 		acked:    promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_outbox_acks_sent_total", Help: "total number of outbox acknowledgements sent"}),
@@ -65,9 +66,9 @@ func (r *OutboxReceiver) Run() {
 
 func (r *OutboxReceiver) shipmentReceived(c paho.Client, m paho.Message) {
 	var shipment OutboxMessage
-	if err := json.Unmarshal(m.Payload(), &shipment); err != nil {
+	if err := r.codec.decode(m.Payload(), &shipment); err != nil {
 		logger.GetLogger().Warn(
-			"Could not unmarshal an outbox shipment",
+			"Could not decode an outbox shipment",
 			zap.String("Error", err.Error()),
 			zap.ByteString("Bytes", m.Payload()),
 		)
@@ -114,16 +115,16 @@ func (r *OutboxReceiver) shipmentReceived(c paho.Client, m paho.Message) {
 		Uuids:    shipment.Uuids,
 		Stored:   rows,
 	}
-	bytes, err := json.Marshal(ack)
+	payload, err := r.codec.encode(ack)
 	if err != nil {
 		logger.GetLogger().Warn(
-			"Could not marshal an outbox acknowledgement",
+			"Could not encode an outbox acknowledgement",
 			zap.String("Error", err.Error()),
 		)
 		return
 	}
 
-	r.mqttClient.Publish(fmt.Sprintf(outboxAckTopic, shipment.Origin), transferQoS, transferRetained, bytes)
+	r.mqttClient.Publish(fmt.Sprintf(outboxAckTopic, shipment.Origin), transferQoS, transferRetained, payload)
 	r.acked.Inc()
 	logger.GetLogger().Info(
 		"Stored and acknowledged an outbox shipment",

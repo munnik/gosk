@@ -294,9 +294,19 @@ receipt would promise a durability that a restart would break. `Flush` exists
 for that, and returns its error rather than retrying, because its caller is
 deciding whether to make that promise.
 
-Not done: cutting over, retiring the count protocol, and compressing the wire
-format (shipments are plain JSON; `writer/mqtt.go` already zstds its payloads
-and this should too).
+Shipments and acknowledgements are zstd compressed, governed by the existing
+`mqtt.compress`. Measured on a batch of the default size — 500 source messages
+of three paths each — 269 KB becomes 14.7 KB, a factor of 18, which is what
+repetitive JSON does under zstd.
+
+Unlike `writer/mqtt.go` and `reader/mqtt.go`, which both read `compress` and
+have to agree, the receiving side here works out what it was sent: a zstd
+frame announces itself with a four-byte magic number, and JSON cannot begin
+with those bytes. The flag therefore governs only what a process *sends*, and
+a vessel and the cloud can be switched over weeks apart without a payload
+being read as though it were the other format.
+
+Not done: cutting over, and retiring the count protocol.
 
 ---
 

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/munnik/gosk/uuidv7"
 )
 
 type Raw struct {
@@ -39,7 +40,7 @@ const (
 
 func NewRaw() *Raw {
 	return &Raw{
-		Uuid:      uuid.New(),
+		Uuid:      uuidv7.New(),
 		Timestamp: time.Now(),
 	}
 }

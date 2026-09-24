@@ -8,7 +8,7 @@ recommendations.
 a transport that is configured to lose data. Fix the transport first — most of
 the gaps the reconciliation loop chases are self-inflicted.
 
-**Status:** §1 and §2 are implemented (see "Deploying §1" below for the two
+**Status:** §1, §2 and §6 are implemented (see "Deploying §1" below for the two
 prerequisites this cannot enforce from the code). §3 and §4 are unchanged
 proposals; nothing in them has been built.
 
@@ -282,3 +282,67 @@ than logical replication: the wire format and the MQTT plumbing already exist.
 - The per-request `uuid → count` map is still sent uncompressed, though it is
   now sent reliably.
 - A data request still resends every row for any UUID whose count differs.
+
+---
+
+## 6. UUIDv7 for the identifiers gosk generates — *implemented*
+
+Every raw message carries a generated UUID (`message.NewRaw`). It is written to
+`raw_data.uuid`, follows the mapping into `mapped_data.uuid`, and is indexed
+there by `mapped_data_origin_uuid_time_idx (origin, uuid, time)` — the index
+§2.5 turned out to be missing from half the data. Those UUIDs were version 4:
+122 bits of randomness, so consecutive messages produce values that sort
+nowhere near each other.
+
+All generation now goes through one place, the `uuidv7` package, which returns
+version 7: a 48-bit millisecond timestamp in the high bits, then a 12-bit
+sequence counter, then randomness. Values generated in sequence sort in the
+order they were created.
+
+### No new dependency, and nothing hand-rolled
+
+`github.com/google/uuid` — already a direct dependency — has implemented
+version 7 since v1.6.0 as `uuid.NewV7()`. `uuidv7.New()` is a three-line shim
+over `uuid.Must(uuid.NewV7())`; its job is to be the single point the rule is
+enforced at, so `grep -r 'uuid\.New()'` proves the invariant, and to carry the
+reasoning below in one doc comment.
+
+Worth noting that its implementation is **strictly monotonic**, not just
+timestamp-prefixed: `getV7Time` keeps a counter in the 12 bits below the
+timestamp, so two UUIDs created in the same millisecond still sort in creation
+order. That is what the index-locality argument below actually rests on. The
+ordering is per process; two processes writing to one table interleave at
+millisecond granularity, which is as fine as the index needs.
+
+### What this buys, and what it does not
+
+**Index locality — immediate, and the real reason to do it.** With random
+UUIDs, each insert targets a different part of the UUID index, so the pages
+being dirtied are spread across the whole index rather than clustered: more
+page splits, and a write working set far larger than the rows actually being
+inserted. Ordered UUIDs append near one edge.
+
+**Compression — real but deferred.** A batch of ordered UUIDs shares its
+leading bytes where random ones share nothing, so the column compresses better.
+This only pays off on chunks that are actually compressed, and **no migration
+in this repository sets up a compression or columnstore policy**. Until that
+changes the compression benefit is zero. It is worth measuring against the
+columnstore work rather than assuming a figure.
+
+**Not retroactive.** Rows already written keep their version 4 UUIDs, so an
+index stays as fragmented as it already is until those chunks age out.
+`raw_data` turns over inside its 7-day retention. `mapped_data` has no
+retention policy at all, so it will hold a mix indefinitely.
+
+**Not smaller.** A UUID is still 16 bytes.
+
+### The trade
+
+A version 7 UUID is no longer opaque: it discloses when it was created, to the
+millisecond. Everywhere gosk stores one, it sits next to a `time` column
+holding that same information, so nothing is disclosed that was not already
+there.
+
+In one place this is strictly an improvement. `writer/signalk_ws.go` was
+generating its websocket session names with `uuid.NewUUID()` — **version 1**,
+which embeds the host's MAC address. That is now version 7 too.

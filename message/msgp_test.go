@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/munnik/gosk/uuidv7"
 )
 
 func float64Ptr(f float64) *float64 { return &f }
@@ -88,7 +87,7 @@ func TestRawMsgpRoundTrip(t *testing.T) {
 		Connector: "testConnector",
 		Timestamp: time.Now(),
 		Type:      "manner_ethernet",
-		Uuid:      uuidv7.New(),
+		Uuid:      uuid.Must(uuid.NewV7()),
 		Value:     []byte{0xde, 0xad, 0xbe, 0xef, 0x00, 0x01},
 	}
 
@@ -114,7 +113,7 @@ func TestRawMsgpRoundTrip(t *testing.T) {
 }
 
 func TestRawMsgpRoundTripNilValue(t *testing.T) {
-	original := Raw{Connector: "c", Timestamp: time.Now(), Type: "t", Uuid: uuidv7.New(), Value: nil}
+	original := Raw{Connector: "c", Timestamp: time.Now(), Type: "t", Uuid: uuid.Must(uuid.NewV7()), Value: nil}
 
 	data, err := original.MarshalMsg(nil)
 	if err != nil {
@@ -179,7 +178,7 @@ func BenchmarkRawMsgpMarshal(b *testing.B) {
 		Connector: "testConnector",
 		Timestamp: time.Now(),
 		Type:      "manner_ethernet",
-		Uuid:      uuidv7.New(),
+		Uuid:      uuid.Must(uuid.NewV7()),
 		Value:     []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c},
 	}
 	buf := make([]byte, 0, 128)
@@ -198,7 +197,7 @@ func BenchmarkRawMsgpUnmarshal(b *testing.B) {
 		Connector: "testConnector",
 		Timestamp: time.Now(),
 		Type:      "manner_ethernet",
-		Uuid:      uuidv7.New(),
+		Uuid:      uuid.Must(uuid.NewV7()),
 		Value:     []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c},
 	}
 	data, err := r.MarshalMsg(nil)

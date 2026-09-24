@@ -23,7 +23,6 @@ import (
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
-	"github.com/munnik/gosk/uuidv7"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/zap"
@@ -710,7 +709,7 @@ func (db *PostgresqlDatabase) flushBatch() {
 	if batchToFlush == nil {
 		return
 	}
-	uuid := uuidv7.New()
+	uuid := uuid.Must(uuid.NewV7())
 	start := time.Now()
 	logger.GetLogger().Info(
 		"Going to flush",
@@ -766,7 +765,7 @@ func (db *PostgresqlDatabase) flushRawBatch() {
 	if rows == nil {
 		return
 	}
-	uuid := uuidv7.New()
+	uuid := uuid.Must(uuid.NewV7())
 	start := time.Now()
 	logger.GetLogger().Info(
 		"Going to flush",

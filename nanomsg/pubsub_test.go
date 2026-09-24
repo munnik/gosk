@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/munnik/gosk/message"
-	"github.com/munnik/gosk/uuidv7"
 )
 
 var inprocSeq atomic.Uint64
@@ -54,7 +54,7 @@ func TestPubSubMsgpRoundTrip(t *testing.T) {
 		Connector: "testConnector",
 		Timestamp: time.Now(),
 		Type:      "manner_ethernet",
-		Uuid:      uuidv7.New(),
+		Uuid:      uuid.Must(uuid.NewV7()),
 		Value:     []byte{0x01, 0x02, 0x03},
 	}
 	sendCh <- &original
@@ -171,7 +171,7 @@ func TestSubscriberReceivesFromEveryPublisher(t *testing.T) {
 			Connector: fmt.Sprintf("connector-%d", i),
 			Timestamp: time.Now(),
 			Type:      "manner_ethernet",
-			Uuid:      uuidv7.New(),
+			Uuid:      uuid.Must(uuid.NewV7()),
 			Value:     []byte{byte(i)},
 		}
 	}

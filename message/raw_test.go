@@ -151,6 +151,14 @@ func TestNewRawUuidAndTimestampAgree(t *testing.T) {
 		frac := int64(r.Uuid[6]&0x0f)<<8 | int64(r.Uuid[7])
 		embedded := time.UnixMilli(ms).Add(time.Duration(frac * int64(time.Millisecond) / 4096))
 
+		// The timestamp must be storable as-is: timestamptz keeps
+		// microseconds, and anything finer would be rounded on the way in,
+		// leaving the stored row disagreeing with its own uuid.
+		if r.Timestamp.Truncate(time.Microsecond) != r.Timestamp {
+			t.Fatalf("timestamp %s is finer than a microsecond, so the database cannot store it unchanged",
+				r.Timestamp.Format(time.RFC3339Nano))
+		}
+
 		// Within one step, which is all the format can express - not
 		// "close enough", but as close as the encoding allows. A step is
 		// 1000000/4096 = 244.14ns, which integer Duration arithmetic

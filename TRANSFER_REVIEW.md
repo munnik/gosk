@@ -8,9 +8,10 @@ recommendations.
 a transport that is configured to lose data. Fix the transport first — most of
 the gaps the reconciliation loop chases are self-inflicted.
 
-**Status:** §1, §2, §6 and §7 are implemented (see "Deploying §1" below for the two
+**Status:** §1, §2 and §6 are implemented (see "Deploying §1" below for the two
 prerequisites this cannot enforce from the code). §3 and §4 are unchanged
-proposals; nothing in them has been built.
+proposals; nothing in them has been built. §7 is a decision, recorded so it is
+not revisited from scratch; it changed no code.
 
 ---
 
@@ -404,13 +405,26 @@ google/uuid does hide sub-millisecond information in `rand_a`, but that is an
 implementation detail rather than part of the format, and it is perturbed
 whenever the monotonic counter has to be bumped. It is not a clock.
 
-### 7.4 time is the partitioning column
+### 7.4 time is the partitioning column — a cost, not a blocker
 
-Every hypertable here is created on `time`. Dropping it means repartitioning
-through a `time_partitioning_func` over the UUID, and reworking every
-retention policy, every continuous aggregate (`time_bucket` over `time`), the
-reorder policies, `transfer_local_data`, the transfer period logic, Grafana
-and the SignalK reads.
+This objection was first written as "TimescaleDB would need a
+`time_partitioning_func` over the UUID". That is out of date. Verified on
+2.27.1: a hypertable partitions on a `uuid` column directly —
+
+```sql
+SELECT create_hypertable('uuid_part', by_range('id', INTERVAL '1 day'));
+```
+
+— and `time_bucket(INTERVAL '1 hour', <uuid column>)` works and returns a
+`timestamptz`, so a continuous aggregate over a UUID-partitioned hypertable is
+possible too. (`time_bucket` on a UUID was missing as recently as October 2025,
+timescaledb issue #8781; it has since landed.)
+
+So this is a migration cost rather than an impossibility: every hypertable
+recreated, every retention policy, reorder policy and continuous aggregate
+rewritten, `transfer_local_data` rebuilt, plus the transfer period logic,
+Grafana and the SignalK reads. Large, but doable — which is why the decision
+rests on §7.1 to §7.3 and §7.5, not on this.
 
 ### 7.5 The storage argument runs the other way
 
@@ -451,7 +465,10 @@ wanted, add a column rather than rewriting `uuid`.
 
 ### 7.7 Extracting the timestamp in SQL
 
-There is a trap in the middle of the version history:
+Three implementations exist, and the one in the middle has a trap in it.
+
+**PostgreSQL.** `uuid_extract_timestamp` arrived in 17, but that version
+handles version 1 only:
 
 | Server | `uuid_extract_timestamp` | on a version 7 UUID |
 | --- | --- | --- |
@@ -464,29 +481,94 @@ correctly answers `7`, and extraction silently returns NULL. Verified on a
 17.11 server where a version 1 UUID returns `2022-02-22 20:22:22+01` while
 every version 7 UUID returns NULL.
 
-Check a server with:
+**TimescaleDB** added its own set in 2.23, in the `public` schema —
+`generate_uuidv7()`, `to_uuidv7(timestamptz)`, `to_uuidv7_boundary(timestamptz)`,
+`uuid_version(uuid)`, `uuid_timestamp(uuid)` and `uuid_timestamp_micros(uuid)`.
+`uuid_timestamp` reads gosk's Go-generated UUIDs correctly and is immutable,
+parallel safe and strict (verified against 2.27.1).
+
+**Use TimescaleDB's.** gosk creates the TimescaleDB extension in its first
+migration and six migrations depend on its functions, so it is always present
+— which makes `public.uuid_timestamp(uuid)` the one to reach for, with no
+wrapper and nothing to install:
 
 ```sql
-SELECT current_setting('server_version'),
-       uuid_extract_timestamp('01a0d440-ef27-71e9-a3ef-512d5239ffb2'::uuid);
+SELECT time, uuid, uuid_timestamp(uuid) AS created
+FROM mapped_data
+WHERE origin = '…' AND time BETWEEN … AND …;
 ```
 
-Migration `20260924130000_uuid_v7_timestamp_function` therefore installs
-`public.uuid_v7_timestamp(uuid)`, whose body is chosen once at migration time
-by asking the server what it can actually do rather than by reading a version
-number: it delegates to the built-in where that handles version 7, and
-extracts the first 48 bits itself where it does not. The name is the same
-either way. Both paths return NULL for any version other than 7, and produce
-byte-identical results (verified against 17.11 and 18.6).
+An earlier draft of this branch added a `public.uuid_v7_timestamp(uuid)` that
+picked between the three implementations at migration time. It was deleted: a
+debugging aid does not justify a permanent database object, a migration that
+can never leave the sequence, and a second function named almost exactly like
+TimescaleDB's.
 
-It is a debugging aid, not something gosk queries. Comparing a row's
-`uuid_v7_timestamp(uuid)` against its `time` shows the gap between arrival and
-measurement described in §7.1 — which is exactly the sort of discrepancy the
-count-based reconciliation in §3 cannot see.
+Check what a server has with:
+
+```sql
+SELECT current_setting('server_version') AS pg,
+       (SELECT extversion FROM pg_extension WHERE extname = 'timescaledb') AS timescaledb;
+```
+
+On TimescaleDB older than 2.23, where `uuid_timestamp` does not exist yet,
+this is the same answer inline — no DDL, correct for gosk's UUIDs, and NULL
+for any other version:
+
+```sql
+CASE WHEN substr(uuid::text, 15, 1) = '7' THEN
+    to_timestamp(
+        ('x' || lpad(substr(uuid::text, 1, 8) || substr(uuid::text, 10, 4), 16, '0'))
+            ::bit(64)::bigint / 1000.0
+    )
+END
+```
+
+All three — TimescaleDB 2.27.1, PostgreSQL 18.6, and the expression above on
+17.11 — were checked against the same UUIDs and agree to the millisecond,
+returning NULL for versions 1 and 4 and for the nil UUID.
+
+### 7.8 Do not use `uuid_timestamp_micros` on gosk's UUIDs
+
+TimescaleDB's `uuid_timestamp_micros` looks like the answer to §7.3's
+resolution problem. It is not, for two independent reasons.
+
+**The sub-millisecond encoding does not match.** Both implementations keep a
+sub-millisecond fraction in `rand_a`, but they scale it differently:
+TimescaleDB writes and reads 1/4096ths of a millisecond, while google/uuid —
+which generates every UUID gosk stores — writes units of 256 ns. So the field
+is read back against the wrong scale. Measured: a UUID whose real fraction is
+125 µs comes back as `.455119` rather than `.455125`, roughly 4.9% low, up to
+about 46 µs at the top of a millisecond. The error is silent, and it is not a
+TimescaleDB bug — its own `to_uuidv7` round-trips through
+`uuid_timestamp_micros` exactly. The two formats simply disagree about a field
+the specification leaves implementation-defined.
+
+**The fraction is not a clock anyway.** google/uuid bumps that same field to
+keep values monotonic, so for two UUIDs generated inside one 256 ns window it
+holds a counter, not a measurement. The burst pair in §7.3 shows it directly:
+`…7bda` and `…7bdb` report `.46774` and `.467741`, one microsecond apart — an
+artefact of the counter increment, not of anything that was timed.
+
+Milliseconds are the honest resolution. Use `uuid_timestamp`, not
+`uuid_timestamp_micros`.
+
+None of this is something gosk queries — it is for reading the database by
+hand. Comparing a row's `uuid_timestamp(uuid)` against its `time` shows the gap
+between arrival and measurement described in §7.1, which is exactly the sort of
+discrepancy the count-based reconciliation in §3 cannot see.
 
 Two properties worth knowing while using it. Resolution is milliseconds, so
 UUIDs from the same millisecond report the same time. And PostgreSQL's
-bytewise UUID ordering matches time ordering for version 7, so
-`WHERE uuid BETWEEN … AND …` is a valid range predicate — no TimescaleDB
-chunk pruning comes with it, though, since the chunks are partitioned on
-`time`.
+bytewise UUID ordering matches time ordering for version 7, so a range
+predicate on the UUID column is valid — TimescaleDB's
+`to_uuidv7_boundary(timestamptz)` builds the bounds for one, zeroing the random
+bits:
+
+```sql
+WHERE uuid >= to_uuidv7_boundary('2026-09-24 10:00+02')
+  AND uuid <  to_uuidv7_boundary('2026-09-24 11:00+02')
+```
+
+No chunk pruning comes with that, though, since these chunks are partitioned on
+`time` — so keep filtering on `time` as well, as §7.4 explains.

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/munnik/gosk/uuidv7"
 )
 
 type Raw struct {
@@ -38,9 +37,21 @@ const (
 	ConnectorStatusDisconnectedOrNoData = "disconnectedOrNoData"
 )
 
+// NewRaw generates a version 7 UUID, not version 4, and every other place
+// gosk generates one follows suit - keep it that way, a bare uuid.New()
+// anywhere undoes this for the rows it produces.
+//
+// This is the identifier that ends up in raw_data.uuid, follows the mapping
+// into mapped_data.uuid, and is indexed there by
+// mapped_data_origin_uuid_time_idx (origin, uuid, time). Version 4 is 122
+// bits of randomness, so consecutive messages scatter each insert to a
+// different part of that index: page splits, and a write working set far
+// larger than the rows actually being inserted. Version 7 leads with a
+// millisecond timestamp and a sequence counter, so values generated in
+// order append near one edge of the index instead.
 func NewRaw() *Raw {
 	return &Raw{
-		Uuid:      uuidv7.New(),
+		Uuid:      uuid.Must(uuid.NewV7()),
 		Timestamp: time.Now(),
 	}
 }

@@ -294,20 +294,23 @@ there by `mapped_data_origin_uuid_time_idx (origin, uuid, time)` — the index
 122 bits of randomness, so consecutive messages produce values that sort
 nowhere near each other.
 
-All generation now goes through one place, the `uuidv7` package, which returns
-version 7: a 48-bit millisecond timestamp in the high bits, then a 12-bit
-sequence counter, then randomness. Values generated in sequence sort in the
-order they were created.
+Every generation site now calls `uuid.Must(uuid.NewV7())`, which returns version 7:
+a 48-bit millisecond timestamp in the high bits, then a 12-bit sequence
+counter, then randomness. Values generated in sequence sort in the order they
+were created. `uuid.Must` panics if the system's source of randomness fails —
+the same behaviour, from the same cause, as `uuid.New`'s for version 4.
 
 ### No new dependency, and nothing hand-rolled
 
 `github.com/google/uuid` — already a direct dependency — has implemented
-version 7 since v1.6.0 as `uuid.NewV7()`. `uuidv7.New()` is a three-line shim
-over `uuid.Must(uuid.NewV7())`; its job is to be the single point the rule is
-enforced at, so `grep -r 'uuid\.New()'` proves the invariant, and to carry the
-reasoning below in one doc comment.
+version 7 since v1.6.0 as `uuid.NewV7()`.
 
-Worth noting that its implementation is **strictly monotonic**, not just
+The call is written out at each site rather than hidden behind a helper, so
+which version is in use is visible where it matters. `grep -rn 'uuid\.New()'`
+returning nothing is what says the rule holds; keep it that way when adding
+code.
+
+Worth noting that the implementation is **strictly monotonic**, not just
 timestamp-prefixed: `getV7Time` keeps a counter in the 12 bits below the
 timestamp, so two UUIDs created in the same millisecond still sort in creation
 order. That is what the index-locality argument below actually rests on. The

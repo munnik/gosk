@@ -9,11 +9,11 @@ import (
 	"time"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
+	"github.com/google/uuid"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/database"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/mqtt"
-	"github.com/munnik/gosk/uuidv7"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/zap"
@@ -187,7 +187,7 @@ func (t *TransferRequester) sendCountRequests() {
 			for _, period := range periods {
 				requestMessage := RequestMessage{
 					Command:     countCmd,
-					UUID:        uuidv7.New(),
+					UUID:        uuid.Must(uuid.NewV7()),
 					PeriodStart: period,
 				}
 				t.sendMQTTCommand(origin, requestMessage)
@@ -290,7 +290,7 @@ func (t *TransferRequester) sendDataRequestWorker(dataRequests <-chan database.I
 		)
 		requestMessage := RequestMessage{
 			Command:       dataCmd,
-			UUID:          uuidv7.New(),
+			UUID:          uuid.Must(uuid.NewV7()),
 			PeriodStart:   request.Period,
 			CountsPerUuid: countsPerUuid,
 		}

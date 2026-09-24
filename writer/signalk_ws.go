@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/lxzan/gws"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
-	"github.com/munnik/gosk/uuidv7"
 	"go.uber.org/zap"
 )
 
@@ -34,7 +34,7 @@ func (h *Handler) getName(socket *gws.Conn) string {
 	if exist {
 		return name.(string)
 	} else {
-		name = uuidv7.New().String()
+		name = uuid.Must(uuid.NewV7()).String()
 		socket.Session().Store("name", name)
 	}
 

@@ -11,7 +11,8 @@ the gaps the reconciliation loop chases are self-inflicted.
 **Status:** §1, §2 and §6 are implemented (see "Deploying §1" below for the two
 prerequisites this cannot enforce from the code). §3 and §4 are unchanged
 proposals; nothing in them has been built. §7 is a decision, recorded so it is
-not revisited from scratch; it changed no code.
+not revisited from scratch; it changed no code, and §7.9 revisits it against
+the microsecond-accurate UUIDs §6 ended up with.
 
 ---
 
@@ -387,8 +388,11 @@ which embeds the host's MAC address. That is now version 7 too.
 ## 7. Can the time column go, now that the UUID carries a timestamp?
 
 Asked once the UUIDs became time-ordered: drop `time` from `raw_data` and
-`mapped_data` and derive it from the UUID instead. The answer is no, and the
-first reason below is decisive on its own.
+`mapped_data` and derive it from the UUID instead. The answer is no.
+
+Asked again once §6 moved to RFC 9562 method 3 and the UUIDs became accurate
+to the microsecond, which removes §7.3 below. The answer is still no, for
+reasons the precision never touched — §7.9 revisits it.
 
 ### 7.1 mapped_data.time is not the UUID's creation time
 
@@ -481,7 +485,7 @@ One raw message produces many mapped rows — which is precisely what
 path is built on. A column that repeats across rows cannot carry a per-row
 timestamp even in principle.
 
-### 7.3 Millisecond against microsecond
+### 7.3 Millisecond against microsecond — *since resolved, see §7.9*
 
 A version 7 UUID embeds milliseconds; `timestamptz` stores microseconds.
 `message/raw.go`'s own comment describes "every 2kHz sample from the shaft
@@ -494,6 +498,9 @@ upsert over one another.
 google/uuid does hide sub-millisecond information in `rand_a`, but that is an
 implementation detail rather than part of the format, and it is perturbed
 whenever the monotonic counter has to be bumped. It is not a clock.
+
+That is what §6 fixed by moving to method 3, which writes that field on the
+scale the readers expect. This objection no longer stands.
 
 ### 7.4 time is the partitioning column — a cost, not a blocker
 
@@ -662,3 +669,153 @@ WHERE uuid >= to_uuidv7_boundary('2026-09-24 10:00+02')
 
 No chunk pruning comes with that, though, since these chunks are partitioned on
 `time` — so keep filtering on `time` as well, as §7.4 explains.
+
+### 7.9 Revisited, with microsecond-accurate UUIDs
+
+§6's move to RFC 9562 method 3 settles §7.3: a UUID now carries the time to
+about 244ns, finer than the microsecond `timestamptz` itself stores, and a
+row written through gosk's own database layer comes back with its `time`
+column and the timestamp extracted from its UUID agreeing exactly. Two
+samples 500µs apart — the 2kHz case that prompted the question — are 2048
+steps apart in `rand_a`, nowhere near colliding.
+
+So the precision objection is gone. The column still cannot go, for four
+reasons the precision never addressed.
+
+**Rows already written cannot be reconstructed, and `mapped_data` never
+expires.** Dropping the column requires *every* row's timestamp to be
+recoverable from its UUID, and three populations fail that:
+
+- rows from before §6, carrying version 4 UUIDs, which hold no time at all;
+- rows written between §6 and the move to the fork, carrying version 7 UUIDs
+  whose sub-millisecond field is on google/uuid's scale — read back by
+  `uuid_timestamp_micros` about 5% low, see §7.8;
+- rows carrying `uuid.Nil`, below.
+
+`raw_data` clears itself inside its 7-day retention. `mapped_data` has **no
+retention policy at all**, so it will hold all three indefinitely. There is
+no version of this that does not begin with either back-filling every
+historical row — which §7.6 explains is a re-keying that would break the
+transfer protocol — or accepting that rows before some cutover simply lose
+their timestamps.
+
+**Four mappers still emit `uuid.Nil`.** §7.1.1 found this and it is
+unchanged: `fft.go` sets it explicitly, and `meteohydro.go`,
+`notification.go` and `connector_status.go` never set a UUID at all, so
+`message.NewSource()`'s zero value stands. `aggregate.go` starts from
+`uuid.Nil` too but replaces it with the UUID of the value it took its
+timestamp from, so it is fine. Fixing the four is small — they know their
+own timestamp, so `uuid.Must(uuid.NewV7AtTimePrecise(t))` would do — but
+until it is done and those rows have aged through, a share of `mapped_data`
+has no time in its UUID at all.
+
+**`message.NewRaw` reads the clock twice.** It calls `NewV7Precise()` and
+`time.Now()` separately, so the UUID's embedded time is a microsecond or two
+behind `Timestamp`. That did not matter while the UUID was only accurate to
+a millisecond; at microsecond resolution it is a real, if tiny,
+disagreement between two fields that are meant to say the same thing. Worth
+fixing on its own merits: take one `time.Now()` and build the UUID from it
+with `NewV7AtTimePrecise`.
+
+**The storage argument still runs backwards**, and is now the strongest
+standing reason. §7.5: this trades away 8 bytes of `timestamptz` while
+keeping 16 bytes of UUID, and once the columnstore work lands an ordered
+timestamp column is the *most* compressible column in these tables, where a
+UUID's low bits are random and compress poorly. Dropping the cheap column to
+keep the expensive one does not become a better trade because the expensive
+one got more precise.
+
+### 7.10 What it would take, if the answer ever changes
+
+Roughly, and in this order:
+
+1. Give the four mappers of §7.1.1 real UUIDs, and make `NewRaw` derive both
+   fields from one clock read.
+2. Put a retention policy on `mapped_data`, or accept a permanent cutover
+   date before which rows have no recoverable timestamp.
+3. Wait out that retention, so that every remaining row carries a method 3
+   UUID.
+4. Repartition both hypertables on the UUID column — possible, see §7.4 —
+   and rewrite every retention policy, continuous aggregate,
+   `transfer_local_data`, the transfer period logic, Grafana and the SignalK
+   reads against it.
+5. Rewrite every time range predicate as a UUID range, via
+   `to_uuidv7_boundary`.
+
+The payoff at the end of that is 8 bytes a row before compression, and close
+to nothing after it. The reason to keep asking the question is not the bytes
+but the appeal of one column meaning one thing — which §7.1's change to
+`json.go` already delivers, without dropping anything.
+
+### 7.11 Re-keying historical rows as a pure function — this works
+
+Asked after §7.9: rather than back-filling with fresh randomness, rebuild
+each existing UUID *from what the row already has* — its `time` and its
+current UUID — with a pure function. Same inputs, same output, every time.
+
+It works, and it removes the objection §7.6 was built on.
+
+```sql
+CREATE FUNCTION public.uuid_v7_at(ts timestamptz, base uuid) RETURNS uuid
+  -- 48 bits of unix milliseconds from ts
+  -- version nibble, then ts's sub-millisecond fraction in 4096ths (method 3)
+  -- the variant nibble, forced
+  -- the remaining 60 bits taken from base, untouched
+```
+
+Verified on TimescaleDB 2.27.1 over every microsecond of a full second
+against three kinds of base — a version 4 UUID, a version 7 one, and
+`uuid.Nil` — 3,000,000 reconstructions in total. Every one recovers its
+exact microsecond through `uuid_timestamp_micros`, every one is version 7,
+and all million per base are distinct.
+
+**Why this defeats §7.6.** That section argued a re-key would desynchronise
+the transfer protocol, because vessel and cloud must agree on UUIDs and
+could not both be rewritten at once. That reasoning does not survive
+purity: both sides hold the same `(time, uuid)` for a row, so both compute
+the same new UUID independently, with no coordination and no message
+exchanged. The objection was to re-keying with *fresh randomness*; it does
+not apply here.
+
+**Two things testing caught**, both of which would have produced quietly
+wrong UUIDs:
+
+- `(extract(epoch from ts) * 1000)::bigint` **rounds**, while the
+  sub-millisecond fraction truncates. A timestamp in the last millisecond of
+  a second therefore got the next millisecond in the timestamp field and the
+  old fraction below it — off by a whole millisecond, for one microsecond in
+  every thousand. It needs `floor`.
+- The variant nibble has to be written, not inherited from `base`. Taking it
+  from `uuid.Nil` yields variant `0`, which is not a valid RFC 9562 UUID at
+  all.
+
+**What it does not solve.**
+
+*The rollout is still not atomic.* While the cloud has re-keyed and a vessel
+has not, `SelectCountPerUuid` compares new UUIDs against old ones, finds no
+overlap, and reads every period as entirely missing — triggering exactly the
+mass retransmission §7.6 warned about. Purity gives a way out that fresh
+randomness did not: the un-migrated side can apply the function at query
+time, so the two agree before either has rewritten anything. That needs
+designing, but it is a real path rather than a dead end.
+
+*The rewrite is still a full rewrite.* `UPDATE` over every row of
+`mapped_data`, with index rebuild and WAL to match, and decompression and
+recompression of any compressed chunk — on a table with no retention policy,
+so the whole history.
+
+*The raw-to-mapped link partly breaks.* A mapped row and the raw row it came
+from share a UUID today. After a re-key they share one only where they also
+share a timestamp; a row whose time came from `timestampExpression`, an FFT
+window or an aggregate gets a different result from its raw row. Mapped rows
+from one update still group together, which is what `SelectCountPerUuid`
+counts, but this wants checking against the transfer protocol before anyone
+runs it.
+
+*And §7.5 is untouched.* The compression argument does not care how the
+UUIDs were produced.
+
+**One pleasing side effect.** A re-keyed row's UUID would agree with its
+`time` *exactly* — better than newly written rows manage today, since
+`message.NewRaw` reads the clock twice (§7.9). Worth fixing that first, so
+that new data is not the worse of the two.

@@ -306,9 +306,18 @@ the same behaviour, from the same cause, as `uuid.New`'s for version 4.
 version 7 since v1.6.0 as `uuid.NewV7()`.
 
 The call is written out at each site rather than hidden behind a helper, so
-which version is in use is visible where it matters. `grep -rn 'uuid\.New()'`
-returning nothing is what says the rule holds; keep it that way when adding
-code.
+which version is in use is visible where it matters.
+
+The rule is enforced mechanically rather than by convention: `.golangci.yml`
+configures `forbidigo` to reject `uuid.New`, `uuid.NewString`, `uuid.NewRandom`
+(all version 4) and `uuid.NewUUID` (version 1), each with a message pointing
+back here. `git-hooks.hooks.golangci-lint` in `devenv.nix` runs it pre-commit
+over the directories whose Go files changed.
+
+Every other linter is off (`default: none`). That is deliberate — gosk has
+never been linted, so enabling golangci-lint's defaults would surface a
+backlog and block every commit until it was worked through. Turning more on is
+a separate decision from this one.
 
 Worth noting that the implementation is **strictly monotonic**, not just
 timestamp-prefixed: `getV7Time` keeps a counter in the 12 bits below the

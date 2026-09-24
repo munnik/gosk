@@ -1,5 +1,9 @@
 ---
-url: "postgres://gosk:gosk@localhost:5432/gosk_test"
+# sslmode=disable because a local test database is not normally set up with
+# TLS, and without it golang-migrate's driver refuses the connection
+# outright with "pq: SSL is not enabled on the server" before a single spec
+# runs. Every deployed configuration sets it too.
+url: "postgres://gosk:gosk@localhost:5432/gosk_test?sslmode=disable"
 # Flush every write immediately instead of waiting for the default 100-item
 # batch or 10s ticker, so tests that write then immediately read back don't
 # have to race the background flush.

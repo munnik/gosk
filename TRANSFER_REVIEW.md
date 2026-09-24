@@ -306,6 +306,44 @@ with those bytes. The flag therefore governs only what a process *sends*, and
 a vessel and the cloud can be switched over weeks apart without a payload
 being read as though it were the other format.
 
+#### Turning it on for a vessel that already has history
+
+Nothing is seeded, and the outbox is deliberately **forward-only**: it covers
+data written from the moment it is switched on, and the count protocol keeps
+closing gaps in what came before. The two run side by side so that switching
+over needs no migration at all.
+
+What settles it is how far back the count protocol actually reaches.
+`transfer_data` is bounded by the `MIN`/`MAX` of `transfer_local_data`, and
+those continuous aggregates are dropped after 365 days
+(`20250115144655_continuous_aggregate_policy_longer_period`). So "what does
+the far end already have" is only a live question for about the last year;
+older than that is outside its reach and always has been. Retire the count
+protocol once the pre-cutover window stops mattering.
+
+Two alternatives were considered and rejected.
+
+**Seeding the outbox with a bounded window** —
+`INSERT INTO transfer_outbox SELECT DISTINCT origin, uuid FROM mapped_data
+WHERE uuid >= <a version 7 uuid at the cutoff>` — is one statement and needs
+no protocol, because the far end's insert is already an upsert and re-sending
+a row it holds costs bandwidth and nothing else. Worth remembering if a
+particular vessel ever needs its recent history guaranteed rather than
+reconciled; the cutoff bounds the cost.
+
+**Asking the far end what it has**, as a digest: split the uuid space by
+leading hex characters — which are a millisecond timestamp, so a prefix is a
+time bucket with no time column involved — and exchange a `(count, sum of
+per-uuid hashes)` per bucket, drilling into the buckets that disagree. Exact,
+and the message is one row per bucket rather than one per source message. It
+was half built and then dropped, because it **saves most where it is needed
+least**: on a well-connected vessel the far end already holds nearly
+everything, so the digest avoids re-sending almost all of it - but that vessel
+has little to recover. On a badly-connected one the far end is missing a great
+deal, so the digest avoids re-sending little - and that is the vessel that
+matters. Against that it costs a second protocol and a full `DISTINCT uuid`
+scan at both ends.
+
 Not done: cutting over, and retiring the count protocol.
 
 ---

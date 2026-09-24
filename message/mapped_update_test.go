@@ -3,22 +3,22 @@ package message_test
 import (
 	"time"
 
-	"github.com/google/uuid"
 	. "github.com/munnik/gosk/message"
+	"github.com/munnik/gosk/uuidv7"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("Update", func() {
-	u1 := NewUpdate().WithSource(*NewSource().WithLabel("testsource").WithType("test").WithUuid(uuid.New())).WithTimestamp(time.Now())
+	u1 := NewUpdate().WithSource(*NewSource().WithLabel("testsource").WithType("test").WithUuid(uuidv7.New())).WithTimestamp(time.Now())
 	u1.AddValue(NewValue().WithPath("testpath").WithValue(42))
-	u2 := NewUpdate().WithSource(*NewSource().WithLabel("testsource").WithType("test").WithUuid(uuid.New())).WithTimestamp(time.Now())
+	u2 := NewUpdate().WithSource(*NewSource().WithLabel("testsource").WithType("test").WithUuid(uuidv7.New())).WithTimestamp(time.Now())
 	u2.AddValue(NewValue().WithPath("testpath").WithValue(42))
 	u2.AddValue(NewValue().WithPath("testpathpath").WithValue(false))
-	u3 := NewUpdate().WithSource(*NewSource().WithLabel("testsource").WithType("test").WithUuid(uuid.New())).WithTimestamp(time.Now())
+	u3 := NewUpdate().WithSource(*NewSource().WithLabel("testsource").WithType("test").WithUuid(uuidv7.New())).WithTimestamp(time.Now())
 	u3.AddValue(NewValue().WithPath("testpathpath").WithValue(false))
 	u3.AddValue(NewValue().WithPath("testpath").WithValue(42))
-	u4 := NewUpdate().WithSource(*NewSource().WithLabel("testsourcesource").WithType("test").WithUuid(uuid.New())).WithTimestamp(time.Now())
+	u4 := NewUpdate().WithSource(*NewSource().WithLabel("testsourcesource").WithType("test").WithUuid(uuidv7.New())).WithTimestamp(time.Now())
 	u4.AddValue(NewValue().WithPath("testpathpath").WithValue(false))
 	u4.AddValue(NewValue().WithPath("testpath").WithValue(42))
 	DescribeTable(

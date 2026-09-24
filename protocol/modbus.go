@@ -256,7 +256,7 @@ func (m *ModbusClient) Write(bytes []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	if header.FunctionCode != WriteSingleRegister || header.FunctionCode != WriteSingleCoil || header.FunctionCode != WriteMultipleRegisters || header.FunctionCode != WriteMultipleCoils {
+	if !(header.FunctionCode == WriteSingleRegister || header.FunctionCode == WriteSingleCoil || header.FunctionCode == WriteMultipleRegisters || header.FunctionCode == WriteMultipleCoils) {
 		return 0, fmt.Errorf("Fuction code must be a write")
 	}
 	return m.execute(header, bytes)

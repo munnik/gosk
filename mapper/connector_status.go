@@ -7,6 +7,7 @@ import (
 
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/message"
+	"github.com/munnik/uuid/v5"
 )
 
 // ConnectorStatusMapper is implemented by a mapper that can turn a
@@ -20,7 +21,7 @@ import (
 // them to DoMap, which would otherwise misinterpret them as malformed
 // protocol data.
 type ConnectorStatusMapper interface {
-	MapConnectorStatus(connector string, connected bool) *message.Mapped
+	MapConnectorStatus(connector string, connected bool, source uuid.UUID) *message.Mapped
 }
 
 // connectorStatusPath is the SignalK notification path a connector's own
@@ -42,10 +43,14 @@ func connectorStatusPath(connector string) string {
 // hysteresis-gated checks, this has no set/reset delay: the connector
 // layer's own timeout (see connector/main.go's process) is already the
 // debounce, there is no benefit to a second one on top of it.
-func NewConnectorStatusUpdate(context, connector string, connected bool) *message.Mapped {
+func NewConnectorStatusUpdate(context, connector string, connected bool, source uuid.UUID) *message.Mapped {
+	// source is the uuid of the connector's own status report, so the
+	// notification keeps a link to the message that caused it. These rows
+	// used to carry uuid.Nil.
+	now := time.Now()
 	u := message.NewUpdate().
-		WithSource(*message.NewSource().WithLabel("notification").WithType(config.SignalKType)).
-		WithTimestamp(time.Now())
+		WithSource(*message.NewSource().WithLabel("notification").WithType(config.SignalKType).WithUuid(uuidV7At(now, source))).
+		WithTimestamp(now)
 
 	path := connectorStatusPath(connector)
 	if connected {

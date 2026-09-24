@@ -47,6 +47,16 @@ func uuidV7At(t time.Time, base uuid.UUID) uuid.UUID {
 		return base
 	}
 
+	if base == uuid.Nil {
+		// Nothing to inherit. Keep the bits NewV7AtTimePrecise drew
+		// instead: copying base's would zero the randomness, and with it
+		// the variant nibble, producing a UUID that is not valid at all.
+		// This is the "no source data" case - a notification raised by the
+		// periodic sweep, a weather observation - where the timestamp is
+		// the only thing the UUID can be built from.
+		return u
+	}
+
 	copy(u[8:], base[8:])
 
 	return u

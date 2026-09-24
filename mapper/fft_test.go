@@ -7,6 +7,7 @@ import (
 	"github.com/munnik/gosk/config"
 	. "github.com/munnik/gosk/mapper"
 	"github.com/munnik/gosk/message"
+	"github.com/munnik/uuid/v5"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -156,12 +157,17 @@ var _ = Describe("DoMap fft", func() {
 		// plus one hop, so this feeds exactly enough for one.
 		samples := sineWave(windowLen+hopSize, signalFrequency)
 
+		// Every sample carries the same source uuid, so the spectrum's own
+		// uuid can be checked against it below.
+		source := uuid.Must(uuid.NewV7Precise())
+
 		m := newMapper()
 		timestamps := make([]time.Time, 0)
+		uuids := make([]uuid.UUID, 0)
 		for i, v := range samples {
 			input := message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType).WithUuid(source),
 				).WithTimestamp(
 					start.Add(time.Duration(i) * period),
 				).AddValue(
@@ -173,6 +179,7 @@ var _ = Describe("DoMap fft", func() {
 			for _, svm := range out.ToSingleValueMapped() {
 				if svm.Path == fftTestSpectrumPath {
 					timestamps = append(timestamps, svm.Timestamp)
+					uuids = append(uuids, svm.Source.Uuid)
 				}
 			}
 		}
@@ -181,6 +188,16 @@ var _ = Describe("DoMap fft", func() {
 		// windowLen samples were fed, so the window covers indices
 		// 0..windowLen-1 and the newest of them is the last.
 		Expect(timestamps[0]).To(BeTemporally("==", start.Add(time.Duration(windowLen-1)*period)))
+
+		// And the spectrum carries a real uuid rather than the uuid.Nil it
+		// used to - derived from the sample that completed the window, so
+		// it keeps that sample's randomness and takes its own timestamp.
+		// See section 7.1.1 of TRANSFER_REVIEW.md.
+		Expect(uuids).To(HaveLen(1))
+		Expect(uuids[0]).ToNot(Equal(uuid.Nil))
+		Expect(uuids[0].Version()).To(BeEquivalentTo(7))
+		Expect(uuids[0][8:]).To(Equal(source[8:]))
+		Expect(uuids[0][:8]).ToNot(Equal(source[:8]))
 	})
 
 	It("discards a non-numeric value instead of panicking", func() {

@@ -699,15 +699,35 @@ historical row — which §7.6 explains is a re-keying that would break the
 transfer protocol — or accepting that rows before some cutover simply lose
 their timestamps.
 
-**Four mappers still emit `uuid.Nil`.** §7.1.1 found this and it is
-unchanged: `fft.go` sets it explicitly, and `meteohydro.go`,
-`notification.go` and `connector_status.go` never set a UUID at all, so
-`message.NewSource()`'s zero value stands. `aggregate.go` starts from
-`uuid.Nil` too but replaces it with the UUID of the value it took its
-timestamp from, so it is fine. Fixing the four is small — they know their
-own timestamp, so `uuid.Must(uuid.NewV7AtTimePrecise(t))` would do — but
-until it is done and those rows have aged through, a share of `mapped_data`
-has no time in its UUID at all.
+**Four mappers emitted `uuid.Nil`** — ~~§7.1.1 found this~~ *since fixed*.
+`fft.go` set it explicitly, and `meteohydro.go`, `notification.go` and
+`connector_status.go` never set a UUID at all, so `message.NewSource()`'s
+zero value stood. `aggregate.go` starts from `uuid.Nil` too but replaces it
+with the UUID of the value it took its timestamp from, so it was already
+fine.
+
+All four now follow one rule: derive the UUID from the source data's UUID
+where there is source data, and from the row's own timestamp where there is
+not — which is what `uuidV7At` does, given `uuid.Nil` for the second case.
+
+- `fft.go` takes the UUID of the sample that completed the window, the same
+  sample the spectrum is now dated by.
+- `notification.go` takes the UUID of the value that triggered the check.
+  The periodic sweep has no such value and passes `uuid.Nil`.
+- `connector_status.go` takes the UUID of the connector's own status
+  report, which meant threading it through `MapConnectorStatus` — it was
+  available at the call site in `main.go` all along, just not passed.
+- `meteohydro.go` has no source message at all, being fetched rather than
+  mapped, so its UUID comes from the timestamp alone.
+
+This also closed a trap in `uuidV7At`: given `uuid.Nil` as the base it used
+to copy that base's zero bits over the freshly drawn ones, including the
+variant nibble, producing a UUID that is not valid at all. The same bug
+§7.11 found in the SQL. It now keeps its own random bits when there is
+nothing to inherit.
+
+The rows written before this still carry `uuid.Nil`, and `mapped_data` has
+no retention policy, so they remain until something removes them.
 
 **`message.NewRaw` reads the clock twice.** It calls `NewV7Precise()` and
 `time.Now()` separately, so the UUID's embedded time is a microsecond or two

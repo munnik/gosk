@@ -7,6 +7,7 @@ import (
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
+	"github.com/munnik/uuid/v5"
 )
 
 type BinaryMapper struct {
@@ -30,8 +31,8 @@ func NewBinaryMapper(c config.MapperConfig, mc []config.MappingConfig) (*BinaryM
 
 // MapConnectorStatus implements ConnectorStatusMapper - see its doc
 // comment and process in main.go.
-func (m *BinaryMapper) MapConnectorStatus(connector string, connected bool) *message.Mapped {
-	return NewConnectorStatusUpdate(m.config.Context, connector, connected)
+func (m *BinaryMapper) MapConnectorStatus(connector string, connected bool, source uuid.UUID) *message.Mapped {
+	return NewConnectorStatusUpdate(m.config.Context, connector, connected, source)
 }
 
 // GetTickerInterval returns the interval on which the mapper should

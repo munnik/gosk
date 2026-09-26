@@ -1,6 +1,7 @@
 package mapper_test
 
 import (
+	"math"
 	"testing"
 
 	. "github.com/munnik/gosk/mapper"
@@ -124,10 +125,17 @@ func TestCurrentToRatio(t *testing.T) {
 	}
 }
 
+// closeTo compares two floats with a tolerance, the results of these
+// conversions are not exactly representable in binary floating point.
+func closeTo(got float64, want float64) bool {
+	return math.Abs(got-want) < 1e-9
+}
+
 func TestPressureToHeight(t *testing.T) {
+	// 4810 Pa of diesel (840 kg/m3) stands 4810 / (840 * 9.8) m high
 	res := PressureToHeight(4810, 840)
-	if res != 0.583925 {
-		t.Logf("Expected 0.583925 but got %f", res)
+	if !closeTo(res, 0.5843051506316812) {
+		t.Logf("Expected 0.5843051506316812 but got %f", res)
 		t.Fail()
 	}
 }
@@ -185,8 +193,11 @@ func TestMilliAmpereToVolume(t *testing.T) {
 		t.Logf("Unexpected error %v", err)
 		t.Fail()
 	}
-	if res != 18 {
-		t.Logf("Expected 18 but got %f", res)
+	// 6408 uA is a ratio of 0.1505, so 4515 Pa, so a height of 0.548469 m.
+	// With the sensor 1.2 m above the bottom that is 1.748469 m, which sits
+	// between the 1.705 m / 16 m3 and 1.775 m / 18 m3 rows of the table.
+	if !closeTo(res, 17.241982507288625) {
+		t.Logf("Expected 17.241982507288625 but got %f", res)
 		t.Fail()
 	}
 }

@@ -18,6 +18,7 @@ var _ = Describe("DoMap nmea0183", func() {
 	now := time.Now()
 	m := "AIS: Antenna VSWR exceeds limit"
 	f := "normal"
+	a := "alarm"
 
 	DescribeTable("Messages",
 		func(m *Nmea0183Mapper, input *message.Raw, expected *message.Mapped, expectError bool) {
@@ -56,6 +57,27 @@ var _ = Describe("DoMap nmea0183", func() {
 					now,
 				).AddValue(
 					message.NewValue().WithPath("notifications.ais").WithValue(message.Notification{State: &f, Message: &m}),
+				),
+			),
+			false,
+		),
+		Entry("With an active AIS alarm message",
+			mapper,
+			func() *message.Raw {
+				// The same alarm as above but with its condition field set to
+				// A, the threshold is exceeded.
+				m := message.NewRaw().WithConnector("testingConnector").WithType(config.NMEA0183Type).WithValue([]byte("$AIALR,100615.00,002,A,V,AIS: Antenna VSWR exceeds limit*51"))
+				m.Uuid = uuid.Nil
+				m.Timestamp = now
+				return m
+			}(),
+			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+				message.NewUpdate().WithSource(
+					*message.NewSource().WithLabel("testingConnector").WithType(config.NMEA0183Type).WithUuid(uuid.Nil),
+				).WithTimestamp(
+					now,
+				).AddValue(
+					message.NewValue().WithPath("notifications.ais").WithValue(message.Notification{State: &a, Message: &m}),
 				),
 			),
 			false,

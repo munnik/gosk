@@ -58,6 +58,53 @@ func NewNmea0183Mapper(c config.MapperConfig) (*Nmea0183Mapper, error) {
 	return &Nmea0183Mapper{config: c, protocol: config.NMEA0183Type, parser: nmea.SentenceParser{CheckCRC: ccc.CheckCRC}}, nil
 }
 
+// wrappedALR adapts an nmea.ALR to signalk.Alarm. go-signalk declares that
+// interface and this mapper acts on it, but the library wraps only the
+// sentence types its own conversion switch knows about and ALR is not one of
+// them - so signalk.Parse rejects every ALR sentence outright and nothing
+// ever satisfies signalk.Alarm. Wrapping it here keeps alarms mapping until
+// the case can be added upstream.
+type wrappedALR struct {
+	nmea.ALR
+}
+
+// IsActive reports whether the alarm condition is currently present. Field 2
+// of an ALR is A when the alarm threshold is exceeded and V when it is not;
+// anything else fails to parse, so treat "not V" as active.
+func (w wrappedALR) IsActive() (bool, error) {
+	return w.Condition != nmea.StatusInvalid, nil
+}
+
+// IsUnacknowledged reports whether the alarm still needs acknowledging.
+// Field 3 of an ALR is A once acknowledged and V while it is not.
+func (w wrappedALR) IsUnacknowledged() (bool, error) {
+	return w.State != nmea.StatusValid, nil
+}
+
+func (w wrappedALR) GetDescription() (string, error) {
+	if w.Description == "" {
+		return "", fmt.Errorf("value is unavailable")
+	}
+	return w.Description, nil
+}
+
+// parse turns a raw sentence into one of go-signalk's wrapped sentences,
+// falling back to this package's own wrapper for the types go-signalk does
+// not cover. The fallback re-parses the sentence, which only costs anything
+// on sentences go-signalk has already refused.
+func (m *Nmea0183Mapper) parse(raw string) (nmea.Sentence, error) {
+	sentence, err := signalk.Parse(raw, m.parser)
+	if err == nil {
+		return sentence, nil
+	}
+	if unwrapped, parseErr := m.parser.Parse(raw); parseErr == nil {
+		if alr, ok := unwrapped.(nmea.ALR); ok {
+			return wrappedALR{alr}, nil
+		}
+	}
+	return nil, err
+}
+
 // MapConnectorStatus implements ConnectorStatusMapper - see its doc
 // comment and process in main.go.
 func (m *Nmea0183Mapper) MapConnectorStatus(connector string, connected bool) *message.Mapped {
@@ -76,7 +123,7 @@ func (m *Nmea0183Mapper) Map(subscriber *nanomsg.Subscriber[message.Raw], publis
 }
 
 func (m *Nmea0183Mapper) DoMap(r *message.Raw) (*message.Mapped, error) {
-	sentence, err := signalk.Parse(string(r.Value), m.parser)
+	sentence, err := m.parse(string(r.Value))
 	if err != nil {
 		return nil, err
 	}

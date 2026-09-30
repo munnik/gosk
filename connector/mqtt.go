@@ -33,7 +33,19 @@ func NewMQTTConnector(c *config.ConnectorConfig, mqttC *config.MQTTConfig) (*MQT
 func (m *MQTTConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
 	stream := make(chan []byte, 1)
 	defer close(stream)
-	m.mqttClient = mqtt.New(m.mqttConfig, m.handleMessageReceived(stream), m.mqttConfig.Topic)
+	// mqtt.New waits for the first connection before returning (see mqtt's
+	// initialConnectWait), so connecting inline delayed process - and with
+	// it this unit reporting itself started, and its first status report
+	// about the broker - by ten seconds whenever the broker was down. Let
+	// it connect in the background: it retries there anyway, and
+	// subscribes on every connection, so a broker that comes up later is
+	// picked up either way.
+	go func() {
+		client := mqtt.New(m.mqttConfig, m.handleMessageReceived(stream), m.mqttConfig.Topic)
+		m.lock.Lock()
+		defer m.lock.Unlock()
+		m.mqttClient = client
+	}()
 	process(stream, m.config.Name, m.config.Protocol, publisher, m.config.Timeout)
 }
 

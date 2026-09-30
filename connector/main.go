@@ -3,13 +3,38 @@ package connector
 import (
 	"time"
 
+	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
+	"github.com/munnik/gosk/sdnotify"
 	"go.uber.org/zap"
 )
 
 const bufferCapacity = 5000
+
+// retryConnectionInterval is how long a connector waits before dialling its
+// sensor again, after a dial failed or an established connection ended. A
+// sensor that is switched off, unplugged or not wired up yet fails to dial
+// immediately rather than after a timeout, so without this wait a redial
+// loop is a busy loop: it burns a core and floods the journal for as long
+// as the sensor stays absent, which - see process - is a condition gosk is
+// expected to sit in indefinitely rather than exit over.
+const retryConnectionInterval = 5 * time.Second
+
+// connectedHeartbeatFactor makes process re-announce ConnectedAndData that
+// many times less often than it repeats DisconnectedOrNoData - five minutes
+// apart at the default timeout.
+//
+// All the re-announcement has to do is bound how long a stale offline
+// notification can survive after a mapper restart (see the heartbeat in
+// process), for which minutes are ample. Matching the disconnected interval
+// instead would put a message on the bus, a delta on the SignalK server and
+// a row in the database every timeout for every connector on every vessel,
+// purely to say nothing has changed - and a fleet is almost entirely
+// healthy connectors. Repeating the offline report that often costs nothing
+// by comparison, because it only happens while something is wrong.
+const connectedHeartbeatFactor = 10
 
 // Connector interface
 type Connector[T nanomsg.Message] interface {
@@ -35,14 +60,46 @@ type Connector[T nanomsg.Message] interface {
 // node-deme-grinza6's Ampero TCP module).
 //
 // The DisconnectedOrNoData report repeats every timeoutDuration for as
-// long as the stream stays quiet, rather than firing once: config.Timeout
-// now defaults to 30s specifically so this keeps systemd satisfied
-// (gosk.nix's TimeoutStartSec is 40s, comfortably longer) for as long as
-// the sensor is genuinely absent, not just for the first 30s of it.
+// long as the stream stays quiet, rather than firing once, so that a
+// mapper which subscribed late still learns the sensor is missing -
+// nanomsg pub/sub is lossy and has no replay, see the heartbeat below for
+// the same problem in the other direction.
 func process(stream <-chan []byte, connector string, protocol string, publisher *nanomsg.Publisher[message.Raw], timeoutDuration time.Duration) {
+	// Both timers below are built from timeoutDuration, and NewTicker
+	// panics on a non-positive interval - so a config file that spells
+	// out `timeout: 0` (or a negative duration) would take the connector
+	// down at startup, exactly the thing this whole status mechanism
+	// exists to avoid. A zero timeout is meaningless anyway: it would
+	// report DisconnectedOrNoData continuously, as fast as the scheduler
+	// allows, however healthy the sensor is.
+	if timeoutDuration <= 0 {
+		logger.GetLogger().Warn(
+			"Timeout must be positive, using the default instead",
+			zap.String("connector", connector),
+			zap.Duration("Configured", timeoutDuration),
+			zap.Duration("Using", config.DefaultConnectorTimeout),
+		)
+		timeoutDuration = config.DefaultConnectorTimeout
+	}
+
 	sendBuffer := make(chan *message.Raw, bufferCapacity)
 	defer close(sendBuffer)
 	go publisher.Send(sendBuffer)
+
+	// Reaching here is what "gosk started" means for a connect-type
+	// processor, so report it to systemd now rather than leaving it to
+	// the publisher's first successful send (see nanomsg/pub.go's send).
+	// The publisher is already listening by the time Publish is called,
+	// so everything downstream can connect, and from here on this
+	// connector reports the truth about its sensor either way: data, or
+	// a DisconnectedOrNoData status. Whether the sensor answers is not
+	// this process's own health - that is precisely what the status
+	// reports are for - and tying readiness to it meant a connector with
+	// an absent sensor only became ready after a full timeoutDuration,
+	// which had to be kept under gosk.nix's TimeoutStartSec (40s) for
+	// the unit to start at all. That coupling is gone: a connector is
+	// ready in milliseconds now, whatever its timeout is set to.
+	sdnotify.Ready()
 
 	// The timeout is selected on here rather than run as an AfterFunc, so
 	// that the one goroutine which reads the stream is also the only one
@@ -61,6 +118,22 @@ func process(stream <-chan []byte, connector string, protocol string, publisher 
 	// timeout.
 	timeout := time.NewTimer(timeoutDuration)
 	defer timeout.Stop()
+
+	// ConnectedAndData is only published on the disconnected->connected
+	// transition, which for a healthy sensor happens once, in the first
+	// moments of the process. nanomsg pub/sub is lossy and has no replay
+	// for a late subscriber (see mapper/main.go's process), so any mapper
+	// that connected after that - or restarted later, which for a mapper
+	// unit is routine - never sees it, while DisconnectedOrNoData keeps
+	// repeating. A mapper that had raised the offline notification and
+	// then restarted would therefore leave that alarm up forever, on a
+	// connector that has been fine for weeks. Re-announcing the healthy
+	// state periodically makes the report eventually truthful in both
+	// directions; the timeout above already covers the disconnected case,
+	// so this only has to cover the other - and can be far rarer than it,
+	// see connectedHeartbeatFactor.
+	heartbeat := time.NewTicker(connectedHeartbeatFactor * timeoutDuration)
+	defer heartbeat.Stop()
 
 	connected := false
 	for {
@@ -85,6 +158,10 @@ func process(stream <-chan []byte, connector string, protocol string, publisher 
 			connected = false
 			sendBuffer <- connectorStatus(connector, false)
 			timeout.Reset(timeoutDuration)
+		case <-heartbeat.C:
+			if connected {
+				sendBuffer <- connectorStatus(connector, true)
+			}
 		}
 	}
 }

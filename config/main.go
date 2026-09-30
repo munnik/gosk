@@ -41,6 +41,11 @@ const (
 	ParityMap string = "NOE" // None, Odd, Even
 )
 
+// DefaultConnectorTimeout is ConnectorConfig.Timeout's default, and what
+// connector/main.go's process falls back to when it is configured
+// non-positive.
+const DefaultConnectorTimeout = 30 * time.Second
+
 type ConnectorConfig struct {
 	Name      string   `mapstructure:"name"`
 	URL       *url.URL `mapstructure:"_"`
@@ -52,14 +57,22 @@ type ConnectorConfig struct {
 	Parity    string   `mapstructure:"parity"`
 	Protocol  string   `mapstructure:"protocol"`
 	// Timeout is how long connector/main.go's process waits without any
-	// data before reporting DisconnectedOrNoData (repeating that report
-	// every Timeout for as long as it stays true - see process's doc
-	// comment). Keep this under gosk.nix's systemd TimeoutStartSec (40s)
-	// for every connect-type processor: systemd only considers a
-	// Type=notify unit "started" once it publishes something at all, and
-	// a Timeout longer than that leaves it stuck "activating" - and
-	// deploy-rs/nixos-rebuild switch failing the whole fleet's deploy
-	// over it - for the gap between the two.
+	// data before reporting DisconnectedOrNoData, and how often it repeats
+	// that report for as long as the sensor stays quiet - as well as,
+	// scaled up by connector.connectedHeartbeatFactor, how often it
+	// re-announces the healthy state; see process's doc comment. It
+	// therefore sets how quickly a sensor going quiet turns
+	// into a SignalK notification, and nothing else: process reports the
+	// unit ready to systemd as soon as it starts, so unlike before, a
+	// Timeout longer than gosk.nix's TimeoutStartSec (40s) no longer
+	// leaves a connector with an absent sensor stuck "activating" until
+	// deploy-rs/nixos-rebuild switch gives up on the whole fleet's
+	// deploy. Pick it from how bursty the sensor legitimately is: shorter
+	// than the longest gap it may leave between values and the connector
+	// raises a false alarm every time it pauses.
+	//
+	// Must be positive; process falls back to DefaultConnectorTimeout,
+	// with a warning, if it is not.
 	Timeout time.Duration `mapstructure:"timeout"`
 }
 
@@ -70,7 +83,7 @@ func NewConnectorConfig(configFilePath string) *ConnectorConfig {
 		DataBits: 8,
 		StopBits: "1",
 		Parity:   "N",
-		Timeout:  30 * time.Second,
+		Timeout:  DefaultConnectorTimeout,
 	}
 	readConfigFile(result, configFilePath)
 

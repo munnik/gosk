@@ -21,6 +21,10 @@ import (
 type LineConnector struct {
 	config *config.ConnectorConfig
 
+	// listener is only used when config.Listen is set, and only ever from
+	// the goroutine Publish starts - see listener.
+	listener listener
+
 	lock       sync.Mutex
 	connection io.ReadWriter
 }
@@ -98,8 +102,15 @@ func (l *LineConnector) receive(stream chan<- []byte) error {
 	l.setConnection(connection)
 	// Whatever ends the scan ends this connection with it, so the next call
 	// dials a fresh one rather than scanning a socket the peer has gone away
-	// from.
-	defer l.setConnection(nil)
+	// from - and this one has to be closed, or a sensor that drops every
+	// few seconds leaks a file descriptor per reconnect until the process
+	// can no longer open anything at all.
+	defer func() {
+		l.setConnection(nil)
+		if closer, ok := connection.(io.Closer); ok {
+			closer.Close()
+		}
+	}()
 	return l.scan(connection, stream)
 }
 
@@ -156,17 +167,12 @@ func (l *LineConnector) createConnection() io.ReadWriter {
 
 func (l *LineConnector) createNetworkConnection() (io.ReadWriter, error) {
 	if l.config.Listen {
-		if l.config.URL.Scheme == "tcp" {
-			listener, err := net.Listen(l.config.URL.Scheme, net.JoinHostPort(l.config.URL.Hostname(), l.config.URL.Port()))
-			if err != nil {
-				return nil, fmt.Errorf("unable to listen on %v, the error that occurred was %v", l.config.URL.String(), err)
-			}
-			conn, err := listener.Accept()
-			if err != nil {
-				return nil, fmt.Errorf("unable to accept a connection on %v, the error that occurred was %v", l.config.URL.String(), err)
-			}
-			return conn, nil
-		} else if l.config.URL.Scheme == "udp" {
+		switch l.config.URL.Scheme {
+		case "tcp":
+			// Accepted from a listener that stays bound for the life of
+			// this connector, so the sensor can reconnect - see listener.
+			return l.listener.accept(l.config.URL)
+		case "udp":
 			conn, err := net.ListenPacket(l.config.URL.Scheme, net.JoinHostPort(l.config.URL.Hostname(), l.config.URL.Port()))
 			if err != nil {
 				return nil, fmt.Errorf("unable to listen on %v, the error that occurred was %v", l.config.URL.String(), err)
@@ -254,9 +260,16 @@ func (l *LineConnector) scan(reader io.Reader, stream chan<- []byte) error {
 	return nil
 }
 
-// UdpListenerConnection implements the io.ReadWriter interface
+// UdpListenerConnection implements the io.ReadWriteCloser interface
 type UdpListenerConnection struct {
 	conn net.PacketConn
+}
+
+// Close releases the socket. Without it this was not an io.Closer at all,
+// so the connectors' reconnect paths silently skipped closing it and leaked
+// a socket per reconnect.
+func (u UdpListenerConnection) Close() error {
+	return u.conn.Close()
 }
 
 func (u UdpListenerConnection) Read(p []byte) (n int, err error) {

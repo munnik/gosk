@@ -36,6 +36,36 @@ const retryConnectionInterval = 5 * time.Second
 // by comparison, because it only happens while something is wrong.
 const connectedHeartbeatFactor = 10
 
+// resolveTimeout is the timeout a connector that polls on pollingIntervals
+// should hand to process: whatever its config file asked for, or one sized
+// from those intervals when it asked for nothing (see
+// config.DefaultTimeoutFor). A connector with no configured intervals to go
+// on - anything reading a stream rather than polling - passes none, and gets
+// config.DefaultConnectorTimeout.
+//
+// Which it settled on is logged, because it decides when an alarm is raised
+// for this sensor, and an operator looking at an alarm that fires too eagerly
+// or too late should not have to work out whether a default was involved.
+func resolveTimeout(c *config.ConnectorConfig, pollingIntervals []time.Duration) time.Duration {
+	if c.Timeout > 0 {
+		return c.Timeout
+	}
+	if c.Timeout < 0 {
+		logger.GetLogger().Warn(
+			"Configured timeout is negative, deriving one instead",
+			zap.String("connector", c.Name),
+			zap.Duration("Configured", c.Timeout),
+		)
+	}
+	timeout := config.DefaultTimeoutFor(pollingIntervals...)
+	logger.GetLogger().Info(
+		"No timeout configured, using one derived from how this connector polls",
+		zap.String("connector", c.Name),
+		zap.Duration("Timeout", timeout),
+	)
+	return timeout
+}
+
 // Connector interface
 type Connector[T nanomsg.Message] interface {
 	Publish(publisher *nanomsg.Publisher[T])
@@ -65,18 +95,22 @@ type Connector[T nanomsg.Message] interface {
 // nanomsg pub/sub is lossy and has no replay, see the heartbeat below for
 // the same problem in the other direction.
 func process(stream <-chan []byte, connector string, protocol string, publisher *nanomsg.Publisher[message.Raw], timeoutDuration time.Duration) {
-	// Both timers below are built from timeoutDuration, and NewTicker
-	// panics on a non-positive interval - so a config file that spells
-	// out `timeout: 0` (or a negative duration) would take the connector
-	// down at startup, exactly the thing this whole status mechanism
-	// exists to avoid. A zero timeout is meaningless anyway: it would
-	// report DisconnectedOrNoData continuously, as fast as the scheduler
-	// allows, however healthy the sensor is.
+	// Both timers below are built from timeoutDuration, and NewTicker panics
+	// on a non-positive interval - which would take the connector down at
+	// startup, exactly the thing this whole status mechanism exists to
+	// avoid. A zero timeout is meaningless anyway: it would report
+	// DisconnectedOrNoData continuously, as fast as the scheduler allows,
+	// however healthy the sensor is.
+	//
+	// Every connector resolves its timeout before calling this (see
+	// resolveTimeout), so a non-positive one reaching here is a caller that
+	// skipped that, not a config file - which is why it is worth saying out
+	// loud rather than quietly correcting.
 	if timeoutDuration <= 0 {
 		logger.GetLogger().Warn(
 			"Timeout must be positive, using the default instead",
 			zap.String("connector", connector),
-			zap.Duration("Configured", timeoutDuration),
+			zap.Duration("Given", timeoutDuration),
 			zap.Duration("Using", config.DefaultConnectorTimeout),
 		)
 		timeoutDuration = config.DefaultConnectorTimeout

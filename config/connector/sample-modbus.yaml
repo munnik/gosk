@@ -39,3 +39,12 @@ registerGroups:  # groups of registers that should be read in one request
       numberOfCoilsOrRegisters: 1
       values: [0, 128]  # array of bytes containing the value to write
       delay: "10000ms"
+
+# how long to wait without any data before raising the "no data received"
+# Signal K notification for this connector, and how often to repeat it while
+# it stays quiet [optional]
+# left unset, this is twice the slowest pollingInterval above, or 30s when
+# that is shorter - so a register group read once a minute gets 2m without
+# saying anything here. Set it when the sensor's real pace is slower than the
+# interval it is polled on.
+# timeout: 2m

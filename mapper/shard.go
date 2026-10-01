@@ -7,6 +7,7 @@ import (
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
+	"github.com/munnik/gosk/sdnotify"
 	"go.uber.org/zap"
 )
 
@@ -121,6 +122,14 @@ func processSharded(subscriber *nanomsg.Subscriber[message.Mapped], publisher *n
 
 	go subscriber.Receive(receiveBuffer)
 	go publisher.Send(sendBuffer)
+	// Readiness, for the same reasons process reports it where it does -
+	// see its doc comment. This path reported none of its own at all, so a
+	// sharded mapper fell back to the publisher's first successful send
+	// (nanomsg/pub.go), the weaker signal process stopped relying on: a
+	// sharded NotificationMapper whose checks all happen to be quiet
+	// publishes nothing, and so never became ready, however correctly it
+	// was running.
+	sdnotify.Ready()
 
 	runSharded(receiveBuffer, sendBuffer, shards, shardOfPath, ignoreEmptyUpdates)
 }

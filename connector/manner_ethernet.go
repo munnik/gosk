@@ -18,6 +18,10 @@ import (
 // MannerEthernetConnector reads from a socket and extracts the induvidual dataframes and sends it on the mangos socket
 type MannerEthernetConnector struct {
 	config *config.ConnectorConfig
+	// timeout is resolved once at construction - see resolveTimeout. This
+	// connector reads a stream rather than polling, so there is no interval
+	// to size it from.
+	timeout time.Duration
 
 	// listener is only used when config.Listen is set, and only ever from
 	// the goroutine readToChannel starts - see listener.
@@ -44,7 +48,7 @@ func NewMannerEthernetConnector(c *config.ConnectorConfig) (*MannerEthernetConne
 	default:
 		return nil, fmt.Errorf("unsupported connection scheme %v", c.URL.Scheme)
 	}
-	return &MannerEthernetConnector{config: c}, nil
+	return &MannerEthernetConnector{config: c, timeout: resolveTimeout(c, nil)}, nil
 }
 
 func (r *MannerEthernetConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
@@ -65,7 +69,7 @@ func (r *MannerEthernetConnector) Publish(publisher *nanomsg.Publisher[message.R
 			}
 		}
 	}()
-	process(stream, r.config.Name, r.config.Protocol, publisher, r.config.Timeout)
+	process(stream, r.config.Name, r.config.Protocol, publisher, r.timeout)
 }
 
 func extractValue(streamBuffer chan byte) int {

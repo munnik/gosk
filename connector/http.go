@@ -17,6 +17,8 @@ import (
 type HttpConnector struct {
 	config    *config.ConnectorConfig
 	urlGroups []config.UrlGroupConfig
+	// timeout is resolved once at construction - see resolveTimeout.
+	timeout time.Duration
 }
 
 // NewHttpConnector validates the url groups it will poll. A group with no
@@ -42,7 +44,21 @@ func NewHttpConnector(c *config.ConnectorConfig, ugc []config.UrlGroupConfig) (*
 			return nil, fmt.Errorf("polling interval for %v must be positive, got %v", url.Url, url.PollingInterval)
 		}
 	}
-	return &HttpConnector{config: c, urlGroups: ugc}, nil
+	return &HttpConnector{
+		config:    c,
+		urlGroups: ugc,
+		timeout:   resolveTimeout(c, urlPollingIntervals(ugc)),
+	}, nil
+}
+
+// urlPollingIntervals is every interval this connector polls a url group on,
+// for resolveTimeout to size the timeout from.
+func urlPollingIntervals(ugcs []config.UrlGroupConfig) []time.Duration {
+	result := make([]time.Duration, 0, len(ugcs))
+	for _, ugc := range ugcs {
+		result = append(result, ugc.PollingInterval)
+	}
+	return result
 }
 
 func (r *HttpConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
@@ -59,7 +75,7 @@ func (r *HttpConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
 			}
 		}
 	}()
-	process(stream, r.config.Name, r.config.Protocol, publisher, r.config.Timeout)
+	process(stream, r.config.Name, r.config.Protocol, publisher, r.timeout)
 }
 
 func (*HttpConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw]) {

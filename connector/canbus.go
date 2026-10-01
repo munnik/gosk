@@ -15,6 +15,10 @@ import (
 
 type CanBusConnector struct {
 	config *config.ConnectorConfig
+	// timeout is resolved once at construction - see resolveTimeout. Frames
+	// arrive as a stream rather than on a configured interval, so there is
+	// none to size it from.
+	timeout time.Duration
 }
 
 // NewCanBusConnector does not open the CAN interface - receive does, from
@@ -23,7 +27,8 @@ type CanBusConnector struct {
 // NewLineConnector for what opening it up front cost.
 func NewCanBusConnector(c *config.ConnectorConfig) (*CanBusConnector, error) {
 	return &CanBusConnector{
-		config: c,
+		config:  c,
+		timeout: resolveTimeout(c, nil),
 	}, nil
 }
 
@@ -69,7 +74,7 @@ func (r *CanBusConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
 			time.Sleep(retryConnectionInterval)
 		}
 	}()
-	process(stream, r.config.Name, r.config.Protocol, publisher, r.config.Timeout)
+	process(stream, r.config.Name, r.config.Protocol, publisher, r.timeout)
 }
 
 func (*CanBusConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw]) {

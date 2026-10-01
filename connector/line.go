@@ -20,6 +20,10 @@ import (
 // LineConnector reads lines from the connection and sends it on the mangos socket
 type LineConnector struct {
 	config *config.ConnectorConfig
+	// timeout is resolved once at construction - see resolveTimeout. This
+	// connector reads a stream rather than polling, so there is no interval
+	// to size it from.
+	timeout time.Duration
 
 	// listener is only used when config.Listen is set, and only ever from
 	// the goroutine Publish starts - see listener.
@@ -54,7 +58,7 @@ func NewLineConnector(c *config.ConnectorConfig) (*LineConnector, error) {
 	default:
 		return nil, fmt.Errorf("unsupported connection scheme %v", c.URL.Scheme)
 	}
-	return &LineConnector{config: c}, nil
+	return &LineConnector{config: c, timeout: resolveTimeout(c, nil)}, nil
 }
 
 func (r *LineConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
@@ -71,7 +75,7 @@ func (r *LineConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
 			}
 		}
 	}()
-	process(stream, r.config.Name, r.config.Protocol, publisher, r.config.Timeout)
+	process(stream, r.config.Name, r.config.Protocol, publisher, r.timeout)
 }
 
 func (r *LineConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw]) {

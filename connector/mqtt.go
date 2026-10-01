@@ -3,6 +3,7 @@ package connector
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/munnik/gosk/config"
@@ -16,6 +17,10 @@ type MQTTConnector struct {
 	mqttConfig *config.MQTTConfig
 	mqttClient *mqtt.Client
 	lock       *sync.Mutex
+	// timeout is resolved once at construction - see resolveTimeout.
+	// Messages arrive when the broker has them rather than on an interval
+	// this connector sets, so there is none to size it from.
+	timeout time.Duration
 }
 
 func NewMQTTConnector(c *config.ConnectorConfig, mqttC *config.MQTTConfig) (*MQTTConnector, error) {
@@ -23,6 +28,7 @@ func NewMQTTConnector(c *config.ConnectorConfig, mqttC *config.MQTTConfig) (*MQT
 		config:     c,
 		mqttConfig: mqttC,
 		lock:       &sync.Mutex{},
+		timeout:    resolveTimeout(c, nil),
 	}
 	if mqttC.Topic == "" {
 		return nil, fmt.Errorf("Topic can't be empty")
@@ -46,7 +52,7 @@ func (m *MQTTConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
 		defer m.lock.Unlock()
 		m.mqttClient = client
 	}()
-	process(stream, m.config.Name, m.config.Protocol, publisher, m.config.Timeout)
+	process(stream, m.config.Name, m.config.Protocol, publisher, m.timeout)
 }
 
 func (m *MQTTConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw]) {

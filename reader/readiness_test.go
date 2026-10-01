@@ -43,7 +43,10 @@ func TestMqttReaderReportsReadyWithoutAnyMessage(t *testing.T) {
 	broker := probe.Addr().String()
 	probe.Close()
 
-	reader := NewMqttReader(&config.MQTTConfig{URLString: "tcp://" + broker, Compress: true})
+	reader := NewMqttReader(
+		&config.MQTTConfig{URLString: "tcp://" + broker, Compress: true},
+		&config.ReaderConfig{Context: "vessels.self", Timeout: time.Minute},
+	)
 	go reader.ReadMapped(nanomsg.NewPublisher[message.Mapped]("inproc://" + t.Name()))
 
 	notify.SetReadDeadline(time.Now().Add(2 * time.Second))

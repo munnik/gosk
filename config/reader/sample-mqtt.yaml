@@ -2,3 +2,20 @@
 username: "unknown"
 password: "unknown"
 url: "mqtt://broker.mqtt.cool:1883"
+
+# Identifies this reader in the notification it raises when its source goes
+# quiet, published as notifications.readers.<name>.connected with spaces
+# stripped. Defaults to the broker's host when omitted.
+name: "fleet broker"
+
+# The Signal K context that notification is published under. A reader
+# aggregates data for many vessels and so has no vessel of its own; name the
+# installation it runs on to attribute the notification to it. Defaults to
+# "vessels.self".
+context: "servers.hetzner-otap01"
+
+# How long to wait without receiving anything from the broker before raising
+# that notification, and how often to repeat it while the source stays quiet.
+# Set it from how long the fleet may legitimately stay silent - anything
+# shorter raises a false alarm every quiet spell. Defaults to 5m.
+timeout: 5m

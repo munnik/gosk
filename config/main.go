@@ -404,6 +404,54 @@ func NewMappingConfig(configFilePath string) []MappingConfig {
 	return result
 }
 
+// DefaultReaderTimeout is ReaderConfig.Timeout's default, and what
+// MqttReader falls back to when it is configured non-positive.
+//
+// Far longer than DefaultConnectorTimeout, because a reader's source is a
+// whole fleet rather than one sensor: the writers feeding it flush their
+// cache every MQTTConfig.Interval (30s by default), so a handful of missed
+// flushes - a vessel losing its uplink for a moment, a broker restart -
+// must not be enough to call the source gone.
+const DefaultReaderTimeout = 5 * time.Minute
+
+// ReaderConfig is the part of a reader's configuration that is about the
+// reader itself rather than its transport (see MQTTConfig for that). It is
+// read from the same config file.
+type ReaderConfig struct {
+	// Name identifies this reader in the notification it raises when its
+	// source goes quiet - see mapper.NewReaderStatusUpdate. Defaults to
+	// the broker it reads from when left unset, so the notification is
+	// never published under an empty path.
+	Name string `mapstructure:"name"`
+	// Context is the SignalK context that notification is published under.
+	// A reader aggregates data for many vessels and so has no vessel of
+	// its own; name the installation it runs on (e.g.
+	// "servers.hetzner-otap01") to attribute the notification to it. The
+	// default is the SignalK alias for "this installation", which both
+	// NotificationMapper and MeteoHydroMapper already pass through.
+	Context string `mapstructure:"context"`
+	// Timeout is how long the reader waits without receiving anything from
+	// its source before raising that notification, and how often it repeats
+	// it while the source stays quiet - the same role
+	// ConnectorConfig.Timeout plays for a connector, and read the same way:
+	// set it from how long the fleet may legitimately stay silent, since
+	// anything shorter raises a false alarm every quiet spell.
+	//
+	// Must be positive; MqttReader falls back to DefaultReaderTimeout, with
+	// a warning, if it is not.
+	Timeout time.Duration `mapstructure:"timeout"`
+}
+
+func NewReaderConfig(configFilePath string) *ReaderConfig {
+	result := &ReaderConfig{
+		Context: "vessels.self",
+		Timeout: DefaultReaderTimeout,
+	}
+	readConfigFile(result, configFilePath)
+
+	return result
+}
+
 type MQTTConfig struct {
 	URLString  string        `mapstructure:"url"`
 	Username   string        `mapstructure:"username"`

@@ -125,8 +125,13 @@ func TestReaderSurvivesANonPositiveTimeout(t *testing.T) {
 
 func TestBrokerNameNamesAnUnnamedReader(t *testing.T) {
 	for _, test := range []struct{ url, want string }{
-		{"mqtt://broker.mqtt.cool:1883", "broker.mqtt.cool:1883"},
-		{"tcp://127.0.0.1:1883", "127.0.0.1:1883"},
+		// The dots and colons have to go: this name becomes one segment of a
+		// SignalK path, where a dot is the segment separator, so leaving them
+		// in would bury "connected" under a tree of hostname fragments
+		// instead of naming a reader.
+		{"mqtt://broker.mqtt.cool:1883", "broker-mqtt-cool-1883"},
+		{"tcp://127.0.0.1:1883", "127-0-0-1-1883"},
+		{"mqtt://hetzner-prod01.vpn.sustainablemotion.io:1883", "hetzner-prod01-vpn-sustainablemotion-io-1883"},
 		// Not a url at all: naming the reader after the whole string beats
 		// leaving it unnamed, which would publish under a path naming
 		// nothing and collide with every other unnamed reader.

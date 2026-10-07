@@ -3,6 +3,7 @@ package reader
 import (
 	"encoding/json"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -183,11 +184,19 @@ func (r *MqttReader) status(connected bool) *message.Mapped {
 // configured: the broker's host, or the whole url when it cannot be parsed
 // (it is only ever used to name the reader, so an odd-looking name beats no
 // name).
+//
+// The dots and colons of a host:port are replaced, because this name becomes
+// one segment of a SignalK path (see mapper.NewReaderStatusUpdate) and a dot
+// is what separates segments there. Left in, a default name like
+// "hetzner-prod01.vpn.sustainablemotion.io:1883" would not name a reader at
+// all - it would bury "connected" five levels deep under a tree of hostname
+// fragments, where nothing looking for the reader's status would find it.
 func brokerName(urlString string) string {
+	name := urlString
 	if u, err := url.Parse(urlString); err == nil && u.Host != "" {
-		return u.Host
+		name = u.Host
 	}
-	return urlString
+	return strings.NewReplacer(".", "-", ":", "-").Replace(name)
 }
 
 func (r *MqttReader) messageHandler(c paho.Client, m paho.Message) {

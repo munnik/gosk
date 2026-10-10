@@ -36,6 +36,12 @@ type DBC map[uint32]*dbc.MessageDef
 func NewCanBusMapper(c config.CanBusMapperConfig, cmc []config.CanBusMappingConfig) (*CanBusMapper, error) {
 	// parse DBC file and store mappings
 	dbc := readDBC(c.DbcFile, c.IsJ1939)
+	// Before the loop below copies them into the map - a struct stored
+	// in a map is not addressable, so this cannot be done afterwards.
+	for i := range cmc {
+		precompileMapping(&cmc[i].MappingConfig)
+	}
+
 	mappings := make(map[string]map[string]config.CanBusMappingConfig)
 	for _, m := range cmc {
 		_, present := mappings[m.Origin]

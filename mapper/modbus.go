@@ -22,6 +22,9 @@ type ModbusMapper struct {
 }
 
 func NewModbusMapper(c config.MapperConfig, mmc []config.ModbusMappingsConfig) (*ModbusMapper, error) {
+	for i := range mmc {
+		precompileMapping(&mmc[i].MappingConfig)
+	}
 	return &ModbusMapper{
 		config:               c,
 		protocol:             config.ModbusType,

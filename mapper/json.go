@@ -19,6 +19,12 @@ type JSONMapper struct {
 }
 
 func NewJSONMapper(c config.MapperConfig, jmc []config.JSONMappingConfig) (*JSONMapper, error) {
+	// By index: precompileMapping has to write into the slice's own
+	// elements, so that the copies DoMap's range loop takes later carry
+	// the compiled program. See precompileMapping.
+	for i := range jmc {
+		precompileMapping(&jmc[i].MappingConfig)
+	}
 	return &JSONMapper{config: c, protocol: config.JSONType, jsonMappingConfig: jmc}, nil
 }
 

@@ -22,6 +22,9 @@ type CSVMapper struct {
 }
 
 func NewCSVMapper(c config.CSVMapperConfig, cmc []config.CSVMappingConfig) (*CSVMapper, error) {
+	for i := range cmc {
+		precompileMapping(&cmc[i].MappingConfig)
+	}
 	return &CSVMapper{config: c, protocol: config.CSVType, csvMappingConfig: cmc}, nil
 }
 

@@ -29,4 +29,13 @@
 -- migrations that create the risk, and so a node and a server cannot drift
 -- apart on it. It applies to connections opened after this runs, which is why
 -- it is ordered ahead of the migrations that enable the columnstore.
-ALTER DATABASE gosk SET timescaledb.enable_bulk_decompression = off;
+-- Dynamic SQL because ALTER DATABASE takes a literal name, not an
+-- expression, and the name is not the same everywhere: the test suite
+-- migrates a throwaway database of its own (gosk_test).
+DO $$
+BEGIN
+    EXECUTE format(
+        'ALTER DATABASE %I SET timescaledb.enable_bulk_decompression = off',
+        current_database()
+    );
+END $$;

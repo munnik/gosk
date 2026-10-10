@@ -45,6 +45,13 @@ type AggregateMapper struct {
 }
 
 func NewAggregateMapper(c config.MapperConfig, emc []*config.ExpressionMappingConfig) (*AggregateMapper, error) {
+	// These are pointers, so the lazy cache in runExpr would have stuck -
+	// but compiling here keeps the shards below from racing to write it,
+	// and reports a bad expression once at startup.
+	for _, mc := range emc {
+		precompileMapping(&mc.MappingConfig)
+	}
+
 	m := newAggregateMapper(c, emc)
 
 	shardOfPath, shardCount := partitionByPaths(emc, func(mc *config.ExpressionMappingConfig) []string { return mc.SourcePaths })

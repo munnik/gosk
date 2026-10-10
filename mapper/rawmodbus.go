@@ -21,6 +21,11 @@ type RawModbusMapper struct {
 
 func NewModbusRawMapper(c config.MapperConfig, mmc []config.ModbusMappingsConfig) (*RawModbusMapper, error) {
 
+	// Before the loop below copies them into the map.
+	for i := range mmc {
+		precompileMapping(&mmc[i].MappingConfig)
+	}
+
 	mappings := make(map[string][]config.ModbusMappingsConfig)
 	for _, m := range mmc {
 		s := m.Path

@@ -63,6 +63,14 @@ func (s *notificationState) reset() (changed bool) {
 }
 
 func NewNotificationMapper(c config.MapperConfig, nmcs []*config.NotificationMappingConfig) (*NotificationMapper, error) {
+	// Compiled up front rather than on first use, so a bad expression is
+	// reported once at startup and the shards below never race to write
+	// the cache. See precompileMapping.
+	for _, nmc := range nmcs {
+		precompileMapping(&nmc.MappingConfig)
+		precompileWhen(nmc)
+	}
+
 	s := newNotificationMapper(c, nmcs)
 
 	shardOfPath, shardCount := partitionByPaths(nmcs, func(nmc *config.NotificationMappingConfig) []string { return nmc.SourcePaths })
@@ -310,6 +318,25 @@ func (s *NotificationMapper) staleSourcePath(check *config.NotificationMappingCo
 		}
 	}
 	return "", false
+}
+
+// precompileWhen compiles a notification's optional when expression, the
+// counterpart to precompileMapping for the one expression that lives
+// outside config.MappingConfig.
+func precompileWhen(nmc *config.NotificationMappingConfig) {
+	if nmc.When == "" || nmc.CompiledWhen != nil {
+		return
+	}
+
+	var err error
+	if nmc.CompiledWhen, err = expr.Compile(nmc.When); err != nil {
+		logger.GetLogger().Error(
+			"Could not compile the when expression of a notification",
+			zap.String("When", nmc.When),
+			zap.String("Path", nmc.Path),
+			zap.String("Error", err.Error()),
+		)
+	}
 }
 
 func (s *NotificationMapper) applies(nmc *config.NotificationMappingConfig) (bool, error) {

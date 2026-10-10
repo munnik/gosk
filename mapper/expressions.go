@@ -256,6 +256,58 @@ func IsBitSet(input uint16, position int) bool {
 	return BitwiseContains(input, 1<<position)
 }
 
+// precompileMapping compiles a mapping's expressions once, while the
+// mapper is being constructed, instead of leaving runExpr and
+// runTimestampExpr to do it lazily on first use.
+//
+// Lazy compilation looks free, because both of them cache the compiled
+// program on the config they are handed. The catch is what they are
+// handed: most mappers iterate their configs by value
+//
+//	for _, jmc := range m.jsonMappingConfig {
+//	    output, err := runExpr(env, &jmc.MappingConfig)
+//
+// so the pointer is to that iteration's copy, and the cache is written
+// into a value discarded at the end of the iteration. Every expression was
+// therefore recompiled for every message - on the json path that is once
+// per mapping per message, at up to a couple of kHz. cmd/test.go carries a
+// TODO noting the same thing.
+//
+// Compiling here, before any of those copies are taken, means the copies
+// carry an already-compiled program and the lazy branch never runs. It
+// also means a bad expression is reported once at startup rather than
+// once per message, and that nothing mutates a shared config while
+// messages are being processed.
+//
+// A failure is logged and leaves the program nil, which is what the lazy
+// path would have produced anyway - the mapping then fails per message as
+// before, rather than preventing the process from starting.
+func precompileMapping(mc *config.MappingConfig) {
+	if mc.Expression != "" && mc.CompiledExpression == nil {
+		var err error
+		if mc.CompiledExpression, err = expr.Compile(mc.Expression); err != nil {
+			logger.GetLogger().Error(
+				"Could not compile the mapping expression",
+				zap.String("Expression", mc.Expression),
+				zap.String("Path", mc.Path),
+				zap.String("Error", err.Error()),
+			)
+		}
+	}
+
+	if mc.TimestampExpression != "" && mc.CompiledTimestampExpression == nil {
+		var err error
+		if mc.CompiledTimestampExpression, err = expr.Compile(mc.TimestampExpression); err != nil {
+			logger.GetLogger().Error(
+				"Could not compile the timestamp expression",
+				zap.String("Expression", mc.TimestampExpression),
+				zap.String("Path", mc.Path),
+				zap.String("Error", err.Error()),
+			)
+		}
+	}
+}
+
 func runExpr(env ExpressionEnvironment, mappingConfig *config.MappingConfig) (interface{}, error) {
 	for key, value := range mappingConfig.ExpressionEnvironment {
 		env[key] = value

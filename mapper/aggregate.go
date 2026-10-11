@@ -1,6 +1,8 @@
 package mapper
 
 import (
+	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -24,8 +26,17 @@ type AggregateMapper struct {
 	// other path's buffer, including a 2kHz sensor's, to hold the same
 	// window's worth of history for no reason.
 	pathRetentionTime map[string]time.Duration
+	// aggregateMappings is keyed by source path: the mappings that read
+	// that path, and so the mappings a new value for it triggers. A path
+	// this same aggregate computes is looked up here exactly like a path
+	// arriving from a sensor is, which is what lets one mapping of an
+	// aggregate feed another.
 	aggregateMappings map[string][]*config.ExpressionMappingConfig
-	env               ExpressionEnvironment
+	// evalOrder is every mapping of this mapper, ordered so that the
+	// mapping computing a path always comes before the mappings reading
+	// it - see evaluationOrder, and DoMap for what that ordering buys.
+	evalOrder []*config.ExpressionMappingConfig
+	env       ExpressionEnvironment
 
 	// shards, when there's more than one, partitions this mapper's own
 	// mappings into independent AggregateMapper instances - each with a
@@ -44,6 +55,93 @@ type AggregateMapper struct {
 	shardOfPath map[string]int
 }
 
+// evaluationOrder returns emc ordered so that the mapping computing a path
+// always comes before every mapping reading that path. consumersOfPath is
+// aggregateMappings, i.e. keyed by source path.
+//
+// That ordering is what lets a chain of aggregates resolve within a single
+// DoMap call: fuel.rate computed from its supply and return readings, and
+// then - in the same pass, from the value just computed - a fuelToDistance
+// that reads fuel.rate. It equally fixes the order of an in-place
+// transform against its readers: propulsion.mainEngine.drive.revolutions
+// in config/mapper/aggregate.yaml sign-corrects that path with
+// overwrite: true, and engineLoad and drive.power, which both read it, are
+// guaranteed to run after the correction and so to see the corrected
+// value - not whichever value the evaluation happened to reach them with.
+// Mappings that don't depend on each other keep their config order, so
+// what an input produces never depends on Go's map iteration order, and
+// moving an in-place transform further down the config file cannot change
+// the result.
+//
+// The one edge deliberately not drawn is a mapping's edge to itself: an
+// in-place transform lists its own output path among its sourcePaths, and
+// reads the value as it arrived rather than the one it is about to write.
+// That is what makes a transform a single evaluation instead of a
+// self-feeding loop, and it is the only self-reference allowed - a mapping
+// reading its own output through *another* mapping is a cycle and is
+// rejected below.
+//
+// There is deliberately no repeated or fixpoint iteration anywhere in
+// this, and therefore no way for a chain of aggregates to loop: every
+// mapping is evaluated at most once per input, and a config in which that
+// isn't enough - a mapping that reads, through one or more other mappings,
+// a path computed from its own output - is a cycle, which is rejected here
+// while the mapper is being constructed. cmd/map.go turns the error into a
+// startup failure naming the mappings involved, so such a config never
+// runs at all rather than live-locking a mapper once it's live.
+func evaluationOrder(emc []*config.ExpressionMappingConfig, consumersOfPath map[string][]*config.ExpressionMappingConfig) ([]*config.ExpressionMappingConfig, error) {
+	indexOf := make(map[*config.ExpressionMappingConfig]int, len(emc))
+	for i, mc := range emc {
+		indexOf[mc] = i
+	}
+
+	consumers := make([][]int, len(emc))
+	indegree := make([]int, len(emc))
+	for i, mc := range emc {
+		if mc.Path == "" {
+			continue // nothing to compute, so nothing can read it either
+		}
+		for _, consumer := range consumersOfPath[mc.Path] {
+			j, ok := indexOf[consumer]
+			if !ok || j == i { // j == i is the self-edge, see the doc comment
+				continue
+			}
+			consumers[i] = append(consumers[i], j)
+			indegree[j]++
+		}
+	}
+
+	// Kahn's algorithm, always taking the lowest-numbered mapping that is
+	// ready rather than whatever a queue happens to hand back, so the
+	// result is the config order wherever the dependencies allow it.
+	order := make([]*config.ExpressionMappingConfig, 0, len(emc))
+	emitted := make([]bool, len(emc))
+	for len(order) < len(emc) {
+		next := -1
+		for i := range emc {
+			if !emitted[i] && indegree[i] == 0 {
+				next = i
+				break
+			}
+		}
+		if next == -1 {
+			stuck := make([]string, 0, len(emc)-len(order))
+			for i, mc := range emc {
+				if !emitted[i] {
+					stuck = append(stuck, fmt.Sprintf("%s from [%s]", mc.Path, strings.Join(mc.SourcePaths, " ")))
+				}
+			}
+			return nil, fmt.Errorf("the aggregate mappings contain a cycle, each of these mappings depends on a path derived from its own output so no finite number of evaluations could settle them: %s", strings.Join(stuck, "; "))
+		}
+		emitted[next] = true
+		order = append(order, emc[next])
+		for _, j := range consumers[next] {
+			indegree[j]--
+		}
+	}
+	return order, nil
+}
+
 func NewAggregateMapper(c config.MapperConfig, emc []*config.ExpressionMappingConfig) (*AggregateMapper, error) {
 	// These are pointers, so the lazy cache in runExpr would have stuck -
 	// but compiling here keeps the shards below from racing to write it,
@@ -52,9 +150,31 @@ func NewAggregateMapper(c config.MapperConfig, emc []*config.ExpressionMappingCo
 		precompileMapping(&mc.MappingConfig)
 	}
 
-	m := newAggregateMapper(c, emc)
+	m, err := newAggregateMapper(c, emc)
+	if err != nil {
+		return nil, err
+	}
 
-	shardOfPath, shardCount := partitionByPaths(emc, func(mc *config.ExpressionMappingConfig) []string { return mc.SourcePaths })
+	// A path that one mapping computes and another reads has to end up in
+	// the same shard as both of them: a shard evaluates its own mappings
+	// against its own private env, so a reader sitting in a different
+	// shard would look for that path in an env nothing ever writes it to.
+	// Tying a mapping's output path to its source paths here is what keeps
+	// the two together. For an output path no other mapping reads, this
+	// adds nothing at all - hence the `consumed` check - so configs
+	// without chained aggregates shard exactly as they did before.
+	consumed := make(map[string]struct{})
+	for _, mc := range emc {
+		for _, s := range mc.SourcePaths {
+			consumed[s] = struct{}{}
+		}
+	}
+	shardOfPath, shardCount := partitionByPaths(emc, func(mc *config.ExpressionMappingConfig) []string {
+		if _, ok := consumed[mc.Path]; !ok {
+			return mc.SourcePaths
+		}
+		return append(slices.Clone(mc.SourcePaths), mc.Path)
+	})
 	if shardCount > 1 {
 		byShard := make([][]*config.ExpressionMappingConfig, shardCount)
 		for _, mc := range emc {
@@ -70,7 +190,12 @@ func NewAggregateMapper(c config.MapperConfig, emc []*config.ExpressionMappingCo
 		}
 		m.shards = make([]*AggregateMapper, shardCount)
 		for i, ms := range byShard {
-			m.shards[i] = newAggregateMapper(c, ms)
+			// a subset of an acyclic set of mappings can't contain a cycle
+			// the whole didn't, so this can't fail where the mapper above
+			// succeeded - it's propagated rather than ignored all the same.
+			if m.shards[i], err = newAggregateMapper(c, ms); err != nil {
+				return nil, err
+			}
 		}
 		m.shardOfPath = shardOfPath
 	}
@@ -78,7 +203,7 @@ func NewAggregateMapper(c config.MapperConfig, emc []*config.ExpressionMappingCo
 	return m, nil
 }
 
-func newAggregateMapper(c config.MapperConfig, emc []*config.ExpressionMappingConfig) *AggregateMapper {
+func newAggregateMapper(c config.MapperConfig, emc []*config.ExpressionMappingConfig) (*AggregateMapper, error) {
 	env := NewExpressionEnvironment()
 	env["history"] = make(map[string][]message.SingleValueMapped, 0)
 	pathRetentionTime := make(map[string]time.Duration)
@@ -91,7 +216,11 @@ func newAggregateMapper(c config.MapperConfig, emc []*config.ExpressionMappingCo
 			}
 		}
 	}
-	return &AggregateMapper{config: c, protocol: config.SignalKType, pathRetentionTime: pathRetentionTime, aggregateMappings: mappings, env: env}
+	order, err := evaluationOrder(emc, mappings)
+	if err != nil {
+		return nil, err
+	}
+	return &AggregateMapper{config: c, protocol: config.SignalKType, pathRetentionTime: pathRetentionTime, aggregateMappings: mappings, evalOrder: order, env: env}, nil
 }
 
 // GetTickerInterval returns the interval on which the mapper should
@@ -133,6 +262,7 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 	// evaluation a moment later replaces it before this Update is ever
 	// returned), but it's still evaluated for nothing.
 	triggered := make(map[*config.ExpressionMappingConfig]struct{})
+	appended := make(map[string]int)
 	for _, svm := range input.ToSingleValueMapped() {
 		mappings, ok := m.aggregateMappings[svm.Path]
 		if !ok {
@@ -142,30 +272,59 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 			u.WithTimestamp(svm.Timestamp)
 		}
 		u.Source.Uuid = svm.Source.Uuid // take the uuid from the message that updated this value
-		path := strings.ReplaceAll(svm.Path, ".", "_")
-
-		// remove old data from buffer
-		retention := m.pathRetentionTime[svm.Path]
-		for len(historyMap[path]) > 0 && historyMap[path][0].Timestamp.Before(time.Now().Add(-retention)) {
-			historyMap[path] = historyMap[path][1:]
-		}
-		historyMap[path] = append(historyMap[path], svm)
-
-		m.env[path] = svm
+		m.remember(historyMap, appended, svm, false)
 		for _, mapping := range mappings {
 			triggered[mapping] = struct{}{}
 		}
 	}
 
 	// Second pass: each triggered mapping now sees every source path this
-	// input updated, evaluated exactly once.
-	for mapping := range triggered {
+	// input updated, evaluated exactly once - in dependency order (see
+	// evaluationOrder), so a mapping reading a path another mapping of
+	// this same aggregate computes sees the value computed from *this*
+	// input rather than the previous one's. Whatever a mapping computes is
+	// folded straight back into env and history, and the mappings reading
+	// that path are triggered in turn; they are guaranteed to still be
+	// ahead of this loop, so a chain of any depth - supply and return to a
+	// fuel rate, that fuel rate to a fuel-per-distance - settles in this
+	// one pass, with every mapping evaluated at most once and nothing
+	// re-run.
+	//
+	// That holds for an in-place transform too (a mapping whose output path
+	// is one of its own source paths, drive.revolutions sign-corrected
+	// from torque being the shipped example): it reads the value as it
+	// arrived, and from here on env, history and every later mapping hold
+	// and see the corrected value - the same value the rest of the
+	// pipeline sees, since overwrite: true strips the raw one from the
+	// output. Re-triggering the transform's own path is harmless: the only
+	// mapping that could be is the transform itself, which this loop has
+	// already passed.
+	for _, mapping := range m.evalOrder {
+		if _, ok := triggered[mapping]; !ok {
+			continue
+		}
 		output, err := runExpr(m.env, &mapping.MappingConfig)
-		if err == nil {
-			if mapping.Overwrite {
-				overwrites[mapping.Path] = struct{}{}
-			}
-			u.AddValue(message.NewValue().WithPath(mapping.Path).WithValue(output))
+		if err != nil {
+			continue
+		}
+		if mapping.Overwrite {
+			overwrites[mapping.Path] = struct{}{}
+		}
+		u.AddValue(message.NewValue().WithPath(mapping.Path).WithValue(output))
+
+		if mapping.Path == "" {
+			continue
+		}
+		m.remember(historyMap, appended, message.SingleValueMapped{
+			Context:   input.Context,
+			Origin:    input.Origin,
+			Source:    u.Source,
+			Timestamp: u.Timestamp,
+			Path:      mapping.Path,
+			Value:     output,
+		}, true)
+		for _, consumer := range m.aggregateMappings[mapping.Path] {
+			triggered[consumer] = struct{}{}
 		}
 	}
 
@@ -174,6 +333,42 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 	} else {
 		return input, nil
 	}
+}
+
+// remember makes svm the current value of its path in env and adds it to
+// that path's history buffer, first dropping whatever has fallen outside
+// the retention window the mappings reading the path asked for (see
+// pathRetentionTime). It's used both for a value arriving in an input and
+// for one a mapping of this same aggregate computed, so a computed path is
+// readable from an expression - directly and through history,
+// movingAverage included - in exactly the same way a sensor's path is.
+//
+// appended counts, per path, the entries the current input has already
+// added to history. A computed value for a path the same input also
+// carried - an in-place transform's corrected value, over the raw reading
+// the first pass folded in - replaces those entries rather than joining
+// them: a movingAverage over that path would otherwise average raw and
+// corrected samples together, and the raw one is exactly what the
+// transform exists to get rid of. The entries to replace are always the
+// newest ones (this input's), so dropping them from the tail is right;
+// the retention eviction above may already have removed some or all of
+// them (retentionTime 0 evicts a path's previous entry as soon as real
+// time moves past its timestamp), hence the min.
+func (m *AggregateMapper) remember(historyMap map[string][]message.SingleValueMapped, appended map[string]int, svm message.SingleValueMapped, computed bool) {
+	path := strings.ReplaceAll(svm.Path, ".", "_")
+	cutoff := time.Now().Add(-m.pathRetentionTime[svm.Path])
+	for len(historyMap[path]) > 0 && historyMap[path][0].Timestamp.Before(cutoff) {
+		historyMap[path] = historyMap[path][1:]
+	}
+	if computed {
+		if drop := min(appended[svm.Path], len(historyMap[path])); drop > 0 {
+			historyMap[path] = historyMap[path][:len(historyMap[path])-drop]
+		}
+		appended[svm.Path] = 0
+	}
+	historyMap[path] = append(historyMap[path], svm)
+	appended[svm.Path]++
+	m.env[path] = svm
 }
 
 func (*AggregateMapper) removeOverWrites(input *message.Mapped, overwrites map[string]struct{}) *message.Mapped {

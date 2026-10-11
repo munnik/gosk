@@ -83,6 +83,7 @@ type PostgresqlDatabase struct {
 	lastFlushGauge  prometheus.Gauge
 	writesCounter   prometheus.Counter
 	timeoutsCounter prometheus.Counter
+	dropsCounter    prometheus.Counter
 	batchSizeGauge  prometheus.Gauge
 }
 
@@ -98,6 +99,7 @@ func NewPostgresqlDatabase(c *config.PostgresqlConfig) *PostgresqlDatabase {
 		lastFlushGauge:  promauto.NewGauge(prometheus.GaugeOpts{Name: "gosk_psql_last_flush_time", Help: "last db flush"}),
 		writesCounter:   promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_writes_total", Help: "total number of deltas added to queue"}),
 		timeoutsCounter: promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_timeouts_total", Help: "total number timeouts"}),
+		dropsCounter:    promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_drops_total", Help: "total number of deltas dropped because they can never be written"}),
 		batchSizeGauge:  promauto.NewGauge(prometheus.GaugeOpts{Name: "gosk_psql_batch_length", Help: "number of deltas in current batch"}),
 	}
 	go func() {
@@ -231,6 +233,37 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 	} else if str, ok := svm.Value.(string); ok {
 		svm.Value = strconv.Quote(str)
 	}
+
+	// The "value" column is jsonb, so pgx encodes this argument with
+	// encoding/json. If that cannot be done it fails client-side at flush
+	// time, with no SQLSTATE for retryIndividually to recognise as
+	// permanent, so the row used to be requeued and retried forever -
+	// making it immortal and forcing every later flush down the
+	// one-query-at-a-time path, which is what wedged a vessel's writer for
+	// ten hours. Marshal it here instead, where the path and source are
+	// still around to name whichever sensor or expression produced it.
+	//
+	// The realistic cause is a non-finite float, which JSON cannot
+	// represent. runExpr already rejects an expression that evaluates to a
+	// bare NaN or Inf (see mapper/expressions.go), but only at the top
+	// level: one nested in a struct - a Position's latitude, say - reaches
+	// here untouched.
+	if _, err := json.Marshal(svm.Value); err != nil {
+		db.dropsCounter.Inc()
+		logger.GetLogger().Error(
+			"Dropping a value that cannot be encoded as jsonb",
+			zap.String("value", fmt.Sprint(svm.Value)),
+			zap.Time("time", svm.Timestamp),
+			zap.String("path", path),
+			zap.String("context", svm.Context),
+			zap.String("origin", svm.Origin),
+			zap.String("source.label", svm.Source.Label),
+			zap.String("source.type", svm.Source.Type),
+			zap.Error(err),
+		)
+		return
+	}
+
 	table := "mapped_data_matching_context"
 	if svm.Context != svm.Origin {
 		table = "mapped_data_other_context"
@@ -816,9 +849,10 @@ func (db *PostgresqlDatabase) invalidateConnection() {
 // the same underlying queue. Queries whose failure is classified as a
 // Postgres data or integrity error (SQLSTATE class 22 or 23 - the kind
 // that will never succeed no matter how many times it's retried) are
-// logged and dropped. Anything else (connectivity issues, a still-stale
-// prepared statement, timeouts, ...) is requeued for the next flush, same
-// as the whole-batch retry used to do.
+// logged and dropped, as are failures to encode a query's arguments, which
+// never reach postgres at all. Anything else (connectivity issues, a
+// still-stale prepared statement, timeouts, ...) is requeued for the next
+// flush, same as the whole-batch retry used to do.
 func (db *PostgresqlDatabase) retryIndividually(batch *pgx.Batch) {
 	conn := db.GetConnection()
 	for _, query := range batch.QueuedQueries {
@@ -831,10 +865,37 @@ func (db *PostgresqlDatabase) retryIndividually(batch *pgx.Batch) {
 
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && (strings.HasPrefix(pgErr.Code, "22") || strings.HasPrefix(pgErr.Code, "23")) {
+			db.dropsCounter.Inc()
 			logger.GetLogger().Error(
 				"Dropping a query that permanently fails with a data/integrity error, it would otherwise block every other queued query forever",
 				zap.String("sql", query.SQL),
 				zap.String("sqlstate", pgErr.Code),
+				zap.Error(err),
+			)
+			continue
+		}
+
+		// An argument that fails to encode never reached the server, so
+		// there's no PgError to classify above - and because encoding is a
+		// pure function of the arguments, it will fail identically on every
+		// future flush. Requeuing such a row makes it immortal, and every
+		// flush that carries it then fails as a batch and comes back here to
+		// retry its queries one at a time; that is what wedged a vessel's
+		// writer for ten hours on a single NaN. WriteSingleValueMapped
+		// marshals a mapped value before queueing it, so this is the
+		// backstop for every other query - static_data's, and anything a
+		// future caller queues without that check.
+		var unsupportedValue *json.UnsupportedValueError
+		var unsupportedType *json.UnsupportedTypeError
+		var marshalerError *json.MarshalerError
+		if errors.As(err, &unsupportedValue) || errors.As(err, &unsupportedType) || errors.As(err, &marshalerError) {
+			db.dropsCounter.Inc()
+			logger.GetLogger().Error(
+				"Dropping a query whose arguments cannot be encoded, it would otherwise block every other queued query forever",
+				zap.String("sql", query.SQL),
+				// Not zap.Any: encoding these is what just failed, so
+				// let fmt render them instead of json.
+				zap.String("arguments", fmt.Sprint(query.Arguments)),
 				zap.Error(err),
 			)
 			continue

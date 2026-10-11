@@ -181,6 +181,17 @@ func TestAggregateRejectsCyclicMappings(t *testing.T) {
 				SourcePaths:   []string{"test.a"},
 			},
 		},
+		"a transform reading a path derived from its own output": {
+			{
+				MappingConfig: config.MappingConfig{Path: "test.a", Expression: "test_a.Value + test_b.Value"},
+				SourcePaths:   []string{"test.a", "test.b"},
+				Overwrite:     true,
+			},
+			{
+				MappingConfig: config.MappingConfig{Path: "test.b", Expression: "test_a.Value * 2"},
+				SourcePaths:   []string{"test.a"},
+			},
+		},
 		"a longer circle through a third mapping": {
 			{
 				MappingConfig: config.MappingConfig{Path: "test.a", Expression: "test_c.Value + 1"},
@@ -322,25 +333,120 @@ func TestAggregateOverwriteReplacesRawInHistory(t *testing.T) {
 	}
 }
 
-// TestAggregateRejectsTransformsReadingEachOther is the cycle a transform
-// can still form: its own self-edge is allowed, but two transforms that
-// each also read the other's path have no order in which both read the
-// corrected value, and are refused like any other cycle.
-func TestAggregateRejectsTransformsReadingEachOther(t *testing.T) {
+// revolutionsAndTorqueTransforms is the pair the fleet's engine mappings
+// ship (aggregateForManner in the nix repo): the revolutions take their
+// sign from the torque, the torque takes its sign from the revolutions -
+// each from the reading as the sensor delivered it. Two in-place transforms
+// reading each other's path, which the mapper has to evaluate without
+// treating them as a cycle, and without letting whichever runs second see
+// the other's corrected value.
+func revolutionsAndTorqueTransforms() (revolutions, torque *config.ExpressionMappingConfig) {
+	return &config.ExpressionMappingConfig{
+			MappingConfig: config.MappingConfig{
+				Path:       "propulsion.mainEngine.drive.revolutions",
+				Expression: "copySign(propulsion_mainEngine_drive_revolutions.Value, propulsion_mainEngine_drive_torque.Value)",
+			},
+			SourcePaths: []string{"propulsion.mainEngine.drive.revolutions", "propulsion.mainEngine.drive.torque"},
+			Overwrite:   true,
+		}, &config.ExpressionMappingConfig{
+			MappingConfig: config.MappingConfig{
+				Path:       "propulsion.mainEngine.drive.torque",
+				Expression: "propulsion_mainEngine_drive_revolutions.Value < 0 ? -propulsion_mainEngine_drive_torque.Value : propulsion_mainEngine_drive_torque.Value",
+			},
+			SourcePaths: []string{"propulsion.mainEngine.drive.revolutions", "propulsion.mainEngine.drive.torque"},
+			Overwrite:   true,
+		}
+}
+
+// TestAggregateTransformsReadingEachOtherSeeArrivedValues pins what two
+// in-place transforms correcting each other's path compute: each from the
+// values as they arrived, in either config order - so the torque's sign
+// follows the *raw* revolutions, not the already sign-corrected ones - while
+// a plain mapping reading both paths sees both corrections.
+func TestAggregateTransformsReadingEachOtherSeeArrivedValues(t *testing.T) {
+	revolutions, torque := revolutionsAndTorqueTransforms()
+	product := &config.ExpressionMappingConfig{
+		MappingConfig: config.MappingConfig{
+			Path:       "propulsion.mainEngine.drive.product",
+			Expression: "propulsion_mainEngine_drive_revolutions.Value * propulsion_mainEngine_drive_torque.Value",
+		},
+		SourcePaths: []string{"propulsion.mainEngine.drive.revolutions", "propulsion.mainEngine.drive.torque"},
+	}
+	for name, mappings := range map[string][]*config.ExpressionMappingConfig{
+		"revolutions first": {revolutions, torque, product},
+		"torque first":      {product, torque, revolutions},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m, err := NewAggregateMapper(config.MapperConfig{Context: "testingContext"}, mappings)
+			if err != nil {
+				t.Fatalf("NewAggregateMapper: %v", err)
+			}
+			out, err := m.DoMap(multiValueUpdate(time.Now(),
+				"propulsion.mainEngine.drive.revolutions", -10.0,
+				"propulsion.mainEngine.drive.torque", 5.0,
+			))
+			if err != nil {
+				t.Fatalf("DoMap: %v", err)
+			}
+			if got := mustValueOf(t, out, "propulsion.mainEngine.drive.revolutions"); got != 10.0 {
+				t.Errorf("revolutions = %v, want 10 (the raw -10 given the sign of the raw torque 5)", got)
+			}
+			if got := mustValueOf(t, out, "propulsion.mainEngine.drive.torque"); got != -5.0 {
+				t.Errorf("torque = %v, want -5 (negated because the *raw* revolutions were negative; +5 means it saw the corrected revolutions)", got)
+			}
+			if got := mustValueOf(t, out, "propulsion.mainEngine.drive.product"); got != -50.0 {
+				t.Errorf("product = %v, want -50 (corrected revolutions 10 times corrected torque -5)", got)
+			}
+		})
+	}
+}
+
+// TestAggregateTransformOfDerivedPathRunsAfterIt covers a transform applied
+// to a path this same aggregate derives rather than a sensor delivers: a
+// clamp on a fuel rate computed from the supply and return meters. It has to
+// run after the rate is derived (that edge is kept, unlike the ones between
+// transforms), read the derived value, and feed the clamped value to the
+// mappings reading the rate.
+func TestAggregateTransformOfDerivedPathRunsAfterIt(t *testing.T) {
 	mappings := []*config.ExpressionMappingConfig{
 		{
-			MappingConfig: config.MappingConfig{Path: "test.a", Expression: "test_a.Value + test_b.Value"},
-			SourcePaths:   []string{"test.a", "test.b"},
-			Overwrite:     true,
+			MappingConfig: config.MappingConfig{
+				Path:       "propulsion.mainEngine.fuel.scaled",
+				Expression: "propulsion_mainEngine_fuel_rate.Value * 100",
+			},
+			SourcePaths: []string{"propulsion.mainEngine.fuel.rate"},
 		},
 		{
-			MappingConfig: config.MappingConfig{Path: "test.b", Expression: "test_b.Value + test_a.Value"},
-			SourcePaths:   []string{"test.b", "test.a"},
-			Overwrite:     true,
+			MappingConfig: config.MappingConfig{
+				Path:       "propulsion.mainEngine.fuel.rate",
+				Expression: "propulsion_mainEngine_fuel_rate.Value < 0 ? 0.0 : propulsion_mainEngine_fuel_rate.Value",
+			},
+			SourcePaths: []string{"propulsion.mainEngine.fuel.rate"},
+			Overwrite:   true,
 		},
+		fuelChainMappings()[0], // the rate from supply and return, listed last on purpose
 	}
-	if _, err := NewAggregateMapper(config.MapperConfig{Context: "testingContext"}, mappings); err == nil {
-		t.Fatal("expected two in-place transforms reading each other's path to be rejected, got no error")
+	m, err := NewAggregateMapper(config.MapperConfig{Context: "testingContext"}, mappings)
+	if err != nil {
+		t.Fatalf("NewAggregateMapper: %v", err)
+	}
+	for _, tc := range []struct{ supply, ret, wantRate, wantScaled float64 }{
+		{30, 10, 20, 2000},
+		{10, 30, 0, 0}, // the return exceeds the supply, the clamp takes over
+	} {
+		out, err := m.DoMap(multiValueUpdate(time.Now(),
+			"propulsion.mainEngine.fuel.rate.supply", tc.supply,
+			"propulsion.mainEngine.fuel.rate.return", tc.ret,
+		))
+		if err != nil {
+			t.Fatalf("DoMap: %v", err)
+		}
+		if got := mustValueOf(t, out, "propulsion.mainEngine.fuel.rate"); got != tc.wantRate {
+			t.Errorf("supply %v return %v: rate = %v, want %v", tc.supply, tc.ret, got, tc.wantRate)
+		}
+		if got := mustValueOf(t, out, "propulsion.mainEngine.fuel.scaled"); got != tc.wantScaled {
+			t.Errorf("supply %v return %v: scaled = %v, want %v (from the clamped rate)", tc.supply, tc.ret, got, tc.wantScaled)
+		}
 	}
 }
 

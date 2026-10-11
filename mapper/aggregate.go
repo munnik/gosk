@@ -55,6 +55,16 @@ type AggregateMapper struct {
 	shardOfPath map[string]int
 }
 
+// isTransform reports whether mc is an in-place transform: a mapping that
+// lists its own output path among its source paths, and so rewrites a path
+// (sign-correcting drive.revolutions from the torque, clamping a rate)
+// rather than deriving a new one. Such a mapping reads every path that
+// arrived in the input as it arrived - its own, and any other transform's -
+// see evaluationOrder and DoMap for what that buys and how it's arranged.
+func isTransform(mc *config.ExpressionMappingConfig) bool {
+	return mc.Path != "" && slices.Contains(mc.SourcePaths, mc.Path)
+}
+
 // evaluationOrder returns emc ordered so that the mapping computing a path
 // always comes before every mapping reading that path. consumersOfPath is
 // aggregateMappings, i.e. keyed by source path.
@@ -73,13 +83,21 @@ type AggregateMapper struct {
 // moving an in-place transform further down the config file cannot change
 // the result.
 //
-// The one edge deliberately not drawn is a mapping's edge to itself: an
-// in-place transform lists its own output path among its sourcePaths, and
-// reads the value as it arrived rather than the one it is about to write.
-// That is what makes a transform a single evaluation instead of a
-// self-feeding loop, and it is the only self-reference allowed - a mapping
-// reading its own output through *another* mapping is a cycle and is
-// rejected below.
+// The edges deliberately not drawn are the ones between in-place
+// transforms (see isTransform). A transform lists its own output path
+// among its sourcePaths and reads it as it arrived rather than as the
+// value it is about to write - that self-edge is what would otherwise make
+// every transform a self-feeding loop. The same goes for a transform
+// reading a path *another* transform corrects: it reads that path as it
+// arrived too (DoMap arranges that), so there is no dependency between the
+// two in either direction. The shipped engine mappings need exactly this -
+// drive.revolutions takes its sign from the torque and drive.torque takes
+// its sign from the revolutions, each from the reading as the sensor
+// delivered it - and drawing those edges would turn every engine config in
+// the fleet into a cycle. A transform reading a path a *non*-transform
+// computes does depend on it (a clamp applied to a derived fuel rate has to
+// run after the rate is derived), so that edge is kept, as is the edge from
+// any transform to every non-transform reading its path.
 //
 // There is deliberately no repeated or fixpoint iteration anywhere in
 // this, and therefore no way for a chain of aggregates to loop: every
@@ -103,8 +121,8 @@ func evaluationOrder(emc []*config.ExpressionMappingConfig, consumersOfPath map[
 		}
 		for _, consumer := range consumersOfPath[mc.Path] {
 			j, ok := indexOf[consumer]
-			if !ok || j == i { // j == i is the self-edge, see the doc comment
-				continue
+			if !ok || j == i || (isTransform(mc) && isTransform(consumer)) {
+				continue // see the doc comment for the edges not drawn
 			}
 			consumers[i] = append(consumers[i], j)
 			indegree[j]++
@@ -263,6 +281,7 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 	// returned), but it's still evaluated for nothing.
 	triggered := make(map[*config.ExpressionMappingConfig]struct{})
 	appended := make(map[string]int)
+	arrived := make(map[string]message.SingleValueMapped)
 	for _, svm := range input.ToSingleValueMapped() {
 		mappings, ok := m.aggregateMappings[svm.Path]
 		if !ok {
@@ -273,6 +292,7 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 		}
 		u.Source.Uuid = svm.Source.Uuid // take the uuid from the message that updated this value
 		m.remember(historyMap, appended, svm, false)
+		arrived[svm.Path] = svm
 		for _, mapping := range mappings {
 			triggered[mapping] = struct{}{}
 		}
@@ -290,20 +310,33 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 	// one pass, with every mapping evaluated at most once and nothing
 	// re-run.
 	//
-	// That holds for an in-place transform too (a mapping whose output path
-	// is one of its own source paths, drive.revolutions sign-corrected
-	// from torque being the shipped example): it reads the value as it
-	// arrived, and from here on env, history and every later mapping hold
-	// and see the corrected value - the same value the rest of the
-	// pipeline sees, since overwrite: true strips the raw one from the
-	// output. Re-triggering the transform's own path is harmless: the only
-	// mapping that could be is the transform itself, which this loop has
-	// already passed.
+	// An in-place transform (isTransform: a mapping whose output path is one
+	// of its own source paths, drive.revolutions sign-corrected from the
+	// torque being the shipped example) reads the paths that arrived in
+	// this input as they arrived - its own, and any other transform's
+	// output path. From here on env, history and every later non-transform
+	// mapping hold and see the corrected value - the same value the rest of
+	// the pipeline sees, since overwrite: true strips the raw one from the
+	// output. Two transforms can therefore correct each other's paths from
+	// the raw readings (the shipped torque/revolutions pair does), and run
+	// in config order; whichever runs second finds the other's corrected
+	// value already in env, which is why the arrived values are swapped
+	// back in around its evaluation. Re-triggering a transform's own path
+	// is harmless: the only mapping that could be is a transform of that
+	// path, which either already ran or reads the path as it arrived.
+	transformed := make(map[string]struct{})
 	for _, mapping := range m.evalOrder {
 		if _, ok := triggered[mapping]; !ok {
 			continue
 		}
-		output, err := runExpr(m.env, &mapping.MappingConfig)
+		var output any
+		var err error
+		if isTransform(mapping) {
+			output, err = m.runTransform(mapping, arrived, transformed)
+			transformed[mapping.Path] = struct{}{}
+		} else {
+			output, err = runExpr(m.env, &mapping.MappingConfig)
+		}
 		if err != nil {
 			continue
 		}
@@ -333,6 +366,40 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 	} else {
 		return input, nil
 	}
+}
+
+// runTransform evaluates an in-place transform against the values of its
+// source paths as they arrived in the current input. Only a path that both
+// arrived in this input and has since been rewritten by another transform
+// (transformed) can differ from what env holds, so only those are swapped
+// for the arrived value for the duration of the evaluation and put back
+// afterwards - every later non-transform reader keeps seeing the corrected
+// value. A path a transform reads that no transform rewrote, or that a
+// non-transform mapping derived rather than a sensor delivered, is read
+// from env as any other mapping would read it.
+func (m *AggregateMapper) runTransform(mapping *config.ExpressionMappingConfig, arrived map[string]message.SingleValueMapped, transformed map[string]struct{}) (any, error) {
+	type swapped struct {
+		key   string
+		value any
+	}
+	var restore []swapped
+	for _, sourcePath := range mapping.SourcePaths {
+		if _, ok := transformed[sourcePath]; !ok {
+			continue
+		}
+		raw, ok := arrived[sourcePath]
+		if !ok {
+			continue
+		}
+		key := strings.ReplaceAll(sourcePath, ".", "_")
+		restore = append(restore, swapped{key, m.env[key]})
+		m.env[key] = raw
+	}
+	output, err := runExpr(m.env, &mapping.MappingConfig)
+	for _, r := range restore {
+		m.env[r.key] = r.value
+	}
+	return output, err
 }
 
 // remember makes svm the current value of its path in env and adds it to

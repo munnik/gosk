@@ -31,7 +31,10 @@ mappings:
   # the sign-corrected drive.revolutions in aggregate.yaml): it reads the
   # value as it arrived, and every other mapping reading that path runs
   # after it and sees the corrected value - wherever in this file the
-  # correction is listed.
+  # correction is listed. Two such corrections may read each other's path
+  # (revolutions signed from the torque, torque signed from the
+  # revolutions): each reads the other's path as it arrived, so that is not
+  # a cycle, and the result is the same in either order.
   - path: "propulsion.mainEngine.fuel.rate"
     expression: >
       propulsion_mainEngine_fuel_rate_supply.Value -

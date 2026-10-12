@@ -147,6 +147,70 @@ func TestKalmanParametersMayBeInts(t *testing.T) {
 	}
 }
 
+func TestFreshValue(t *testing.T) {
+	fresh := message.SingleValueMapped{Path: "x", Timestamp: time.Now(), Value: 7.5}
+	stale := message.SingleValueMapped{Path: "x", Timestamp: time.Now().Add(-2 * time.Minute), Value: 7.5}
+	if v := FreshValue(nil, "30s", 0); v != 0 {
+		t.Errorf("never reported: %v, want the fallback 0", v)
+	}
+	if v := FreshValue(fresh, "30s", 0); v != 7.5 {
+		t.Errorf("fresh: %v, want 7.5", v)
+	}
+	if v := FreshValue(&fresh, "30s", 0); v != 7.5 {
+		t.Errorf("fresh pointer: %v, want 7.5", v)
+	}
+	if v := FreshValue(stale, "30s", 0); v != 0 {
+		t.Errorf("stale: %v, want the fallback 0", v)
+	}
+	if v := FreshValue(stale, 300, 0); v != 7.5 {
+		t.Errorf("a numeric window is seconds: %v, want 7.5", v)
+	}
+	if v := FreshValue(fresh, "not a duration", -1); v != -1 {
+		t.Errorf("an unparsable window falls back: %v, want -1", v)
+	}
+	if v := FreshValue("junk", "30s", 0); v != 0 {
+		t.Errorf("a non-value falls back: %v, want 0", v)
+	}
+}
+
+// A sum of two generators where one of them has never answered: with a
+// plain a.Value + b.Value the whole mapping errors and the onboard network
+// is never published; with freshValue the missing generator counts as 0.
+func TestFreshValueSumsOverADeadGenerator(t *testing.T) {
+	mappings := []*config.ExpressionMappingConfig{
+		{
+			MappingConfig: config.MappingConfig{
+				Path:       "electrical.ac.onboardNetwork.phase.A.realPower",
+				Expression: "freshValue(electrical_ac_generatorFwd_phase_A_realPower, '30s', 0) + freshValue(electrical_ac_generatorAft_phase_A_realPower, '30s', 0)",
+			},
+			SourcePaths: []string{"electrical.ac.generatorFwd.phase.A.realPower", "electrical.ac.generatorAft.phase.A.realPower"},
+		},
+	}
+	m, err := NewAggregateMapper(config.MapperConfig{Context: "testingContext"}, mappings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := m.DoMap(message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
+		message.NewUpdate().WithSource(
+			*message.NewSource().WithLabel("testingConnector").WithType(config.ModbusType).WithUuid(uuid.Nil),
+		).WithTimestamp(time.Now()).AddValue(
+			message.NewValue().WithPath("electrical.ac.generatorFwd.phase.A.realPower").WithValue(4200.0),
+		),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got any
+	for _, svm := range result.ToSingleValueMapped() {
+		if svm.Path == "electrical.ac.onboardNetwork.phase.A.realPower" {
+			got = svm.Value
+		}
+	}
+	if f, ok := got.(float64); !ok || f != 4200 {
+		t.Errorf("onboard network with the aft generator dead: %v, want 4200", got)
+	}
+}
+
 // The functions are only useful if an aggregate expression can reach them
 // through history['path'] and read the result's fields, so run one through
 // the real mapper.

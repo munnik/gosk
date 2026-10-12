@@ -2,6 +2,7 @@ package mapper
 
 import (
 	"math"
+	"os"
 	"testing"
 	"time"
 
@@ -525,10 +526,17 @@ func TestAggregateChainSharesOneShard(t *testing.T) {
 // TestShippedAggregateConfigsBuild checks the aggregate configs that ship
 // in the repository against the cycle rejection above - a config that
 // cannot settle is a startup failure, so it is worth knowing here rather
-// than on a vessel.
+// than on a vessel. Only sample-aggregate.yaml is tracked; the other
+// config/mapper/*.yaml are gitignored working copies a developer may have
+// lying around, so aggregate.yaml is checked when present and skipped on a
+// clean checkout, where readConfigFile would otherwise exit the test binary
+// on the missing file.
 func TestShippedAggregateConfigsBuild(t *testing.T) {
 	for _, path := range []string{"../config/mapper/aggregate.yaml", "../config/mapper/sample-aggregate.yaml"} {
 		t.Run(path, func(t *testing.T) {
+			if _, err := os.Stat(path); err != nil {
+				t.Skipf("%s is not in this checkout: %v", path, err)
+			}
 			if _, err := NewAggregateMapper(config.MapperConfig{Context: "testingContext"}, config.NewExpressionMappingConfig(path)); err != nil {
 				t.Fatalf("NewAggregateMapper(%s): %v", path, err)
 			}

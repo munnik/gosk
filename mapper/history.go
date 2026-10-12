@@ -94,6 +94,51 @@ func RateOfChange(values []message.SingleValueMapped) float64 {
 	return (xs[len(xs)-1] - xs[0]) / dt
 }
 
+// FreshValue is the value of a source path if it reported within maxAge,
+// and fallback otherwise. value is the path's entry in the expression
+// environment: nil when the path has never reported since the mapper
+// started, or the SingleValueMapped it last reported, which stays in the
+// environment however long ago that was. Both are what a meter on a
+// generator that is not running looks like - it is powered by the
+// generator, so it answers nothing - and both would otherwise sink the
+// whole expression: a sum of two generators with one of them nil is an
+// error, not a sum, and a sum with one of them stale is wrong.
+//
+// maxAge is a duration string ("30s") or a number of seconds.
+func FreshValue(value any, maxAge any, fallback any) any {
+	var svm message.SingleValueMapped
+	switch v := value.(type) {
+	case message.SingleValueMapped:
+		svm = v
+	case *message.SingleValueMapped:
+		if v == nil {
+			return fallback
+		}
+		svm = *v
+	default:
+		return fallback
+	}
+	var window time.Duration
+	switch a := maxAge.(type) {
+	case string:
+		d, err := time.ParseDuration(a)
+		if err != nil {
+			return fallback
+		}
+		window = d
+	default:
+		seconds, ok := asFloat64(maxAge)
+		if !ok {
+			return fallback
+		}
+		window = time.Duration(seconds * float64(time.Second))
+	}
+	if time.Since(svm.Timestamp) > window {
+		return fallback
+	}
+	return svm.Value
+}
+
 // KalmanResult is what Kalman says about the newest sample of a window.
 //
 // Prediction is where the filter expected the newest sample to be from the

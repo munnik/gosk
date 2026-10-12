@@ -41,6 +41,7 @@ func NewExpressionEnvironment() ExpressionEnvironment {
 		"delta":              Delta,
 		"rateOfChange":       RateOfChange,
 		"kalman":             Kalman,
+		"freshValue":         FreshValue,
 		"copySign":           CopySign,
 		"powerW":             PowerW,
 		"toFloat":            ToFloat,

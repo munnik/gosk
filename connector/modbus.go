@@ -21,6 +21,12 @@ type ModbusConnector struct {
 	registerGroupsConfig []config.RegisterGroupConfig
 	connection           *protocol.ModbusConnection
 	ready                *sync.Once
+	// timeout is config.ConnectorConfig.Timeout, or - when the config file
+	// leaves it unset - one derived from how slowly this connector is
+	// configured to poll. Resolved once here rather than read from the
+	// config at Publish time so that the config the caller handed us is
+	// left as it wrote it.
+	timeout time.Duration
 }
 
 func NewModbusConnector(c *config.ConnectorConfig, rgcs []config.RegisterGroupConfig) (*ModbusConnector, error) {
@@ -95,7 +101,18 @@ func NewModbusConnector(c *config.ConnectorConfig, rgcs []config.RegisterGroupCo
 		registerGroupsConfig: rgcs,
 		connection:           protocol.NewModbusConnection(realClient),
 		ready:                &sync.Once{},
+		timeout:              resolveTimeout(c, pollingIntervals(rgcs)),
 	}, nil
+}
+
+// pollingIntervals is every interval this connector polls a register group
+// on, for resolveTimeout to size the timeout from.
+func pollingIntervals(rgcs []config.RegisterGroupConfig) []time.Duration {
+	result := make([]time.Duration, 0, len(rgcs))
+	for _, rgc := range rgcs {
+		result = append(result, rgc.PollingInterval)
+	}
+	return result
 }
 
 func (m *ModbusConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
@@ -112,7 +129,7 @@ func (m *ModbusConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
 			}
 		}
 	}()
-	process(stream, m.config.Name, m.config.Protocol, publisher, m.config.Timeout)
+	process(stream, m.config.Name, m.config.Protocol, publisher, m.timeout)
 }
 
 func (m *ModbusConnector) Subscribe(subscriber *nanomsg.Subscriber[message.Raw]) {

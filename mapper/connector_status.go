@@ -43,16 +43,45 @@ func connectorStatusPath(connector string) string {
 // layer's own timeout (see connector/main.go's process) is already the
 // debounce, there is no benefit to a second one on top of it.
 func NewConnectorStatusUpdate(context, connector string, connected bool) *message.Mapped {
+	return newSourceStatusUpdate(context, connectorStatusPath(connector), connector, connected)
+}
+
+// readerStatusPath is the SignalK notification path a reader's own status is
+// published under - see NewReaderStatusUpdate. A separate namespace from
+// connectorStatusPath on purpose: a reader's source is a broker carrying a
+// whole fleet's data, not a sensor on one vessel, so "the reader's source is
+// gone" and "a vessel's sensor is gone" want to be told apart by whatever is
+// alarming on them.
+func readerStatusPath(reader string) string {
+	return "notifications.readers." + strings.ReplaceAll(reader, " ", "") + ".connected"
+}
+
+// NewReaderStatusUpdate is NewConnectorStatusUpdate for a reader (see
+// reader/mqtt.go), whose source going quiet means the broker is unreachable
+// or the fleet has stopped publishing.
+//
+// A reader publishes this itself rather than handing a Raw status report to
+// a mapper the way a connector does, because a reader publishes
+// message.Mapped already - there is no mapping stage downstream of it to do
+// the converting. context is config.ReaderConfig.Context, since a reader
+// aggregates many vessels and has no vessel context of its own.
+func NewReaderStatusUpdate(context, reader string, connected bool) *message.Mapped {
+	return newSourceStatusUpdate(context, readerStatusPath(reader), reader, connected)
+}
+
+// newSourceStatusUpdate is the notification both of the above publish, so
+// that a connector's and a reader's reports stay the same shape - only the
+// path differs. name is what the alarm message names as the silent source.
+func newSourceStatusUpdate(context, path, name string, connected bool) *message.Mapped {
 	u := message.NewUpdate().
 		WithSource(*message.NewSource().WithLabel("notification").WithType(config.SignalKType)).
 		WithTimestamp(time.Now())
 
-	path := connectorStatusPath(connector)
 	if connected {
 		u.AddValue(message.NewValue().WithPath(path).WithValue(nil))
 	} else {
 		state := "alarm"
-		msg := fmt.Sprintf("no data received from %s", connector)
+		msg := fmt.Sprintf("no data received from %s", name)
 		u.AddValue(message.NewValue().WithPath(path).WithValue(message.Notification{State: &state, Message: &msg}))
 	}
 

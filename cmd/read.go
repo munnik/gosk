@@ -48,6 +48,7 @@ func init() {
 
 func doMQTTRead(cmd *cobra.Command, args []string) {
 	c := config.NewMQTTConfig(cfgFile)
-	r := reader.NewMqttReader(c)
+	rc := config.NewReaderConfig(cfgFile)
+	r := reader.NewMqttReader(c, rc)
 	r.ReadMapped(nanomsg.NewPublisher[message.Mapped](publishURL))
 }

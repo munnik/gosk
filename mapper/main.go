@@ -1,7 +1,6 @@
 package mapper
 
 import (
-	"sync"
 	"time"
 
 	"github.com/munnik/gosk/logger"
@@ -47,21 +46,28 @@ type periodicMapper interface {
 // the ticker at all, so mappers that do not opt in behave exactly as
 // before.
 //
-// Readiness (see sdnotify.Ready) is signalled here directly, on the first
-// message consumed from receiveBuffer, rather than left to fire implicitly
-// via publisher's first successful send (see nanomsg/pub.go's send) as
-// every other processor type does. A mapper fed real but permanently
-// undecodable input - e.g. an NMEA0183 sentence type this mapper has no
-// case for - would otherwise never publish anything at all and so never
-// become ready, even though it is correctly doing its job: this was
-// observed live on node-deme-grinza6's mapEchoSounder, stuck restarting
-// under TimeoutStartSec forever on a stream of unsupported $GPBWC
-// sentences. Consuming a connector's ConnectorStatusType report doesn't by
-// itself guarantee ready fires either - the connector only sends
-// ConnectedAndData once, on its disconnected->connected transition, and if
-// that happens before this mapper's subscriber has connected, nanomsg's
-// lossy pub/sub simply drops it with no replay for a late subscriber - so
-// readiness can't safely be left to depend on that message either.
+// Readiness (see sdnotify.Ready) is signalled here directly, as soon as
+// this mapper is subscribed and publishing, rather than left to fire
+// implicitly via publisher's first successful send (see nanomsg/pub.go's
+// send). A mapper fed real but permanently undecodable input - e.g. an
+// NMEA0183 sentence type this mapper has no case for - would otherwise
+// never publish anything at all and so never become ready, even though it
+// is correctly doing its job: this was observed live on
+// node-deme-grinza6's mapEchoSounder, stuck restarting under
+// TimeoutStartSec forever on a stream of unsupported $GPBWC sentences.
+//
+// It does not wait for the first message to arrive either, which it used
+// to. That only moved the coupling one hop upstream: with a sensor that is
+// absent, the first message a mapper ever receives is its connector's
+// DisconnectedOrNoData report, which arrives a whole
+// config.ConnectorConfig.Timeout after the connector started (30s by
+// default, against gosk.nix's 40s TimeoutStartSec) and repeats on that
+// interval - so raising a connector's timeout past TimeoutStartSec started
+// the connect unit fine but failed every map and notify unit behind it,
+// and each further stage in a chain could add another timeout's wait of
+// its own, since nanomsg pub/sub has no replay for a subscriber that
+// connected after a report was published. Whether anything upstream has
+// something to say is not this process's own health.
 func process[T nanomsg.Message](subscriber *nanomsg.Subscriber[T], publisher *nanomsg.Publisher[message.Mapped], mapper RealMapper[T], ignoreEmptyUpdates bool) {
 	receiveBuffer := make(chan *T, bufferSize)
 	sendBuffer := make(chan *message.Mapped, bufferSize)
@@ -69,8 +75,7 @@ func process[T nanomsg.Message](subscriber *nanomsg.Subscriber[T], publisher *na
 
 	go subscriber.Receive(receiveBuffer)
 	go publisher.Send(sendBuffer)
-
-	var ready sync.Once
+	sdnotify.Ready()
 
 	// tick is left nil, and is therefore never selected, unless the mapper
 	// implements periodicMapper and was configured with a positive interval
@@ -89,7 +94,6 @@ func process[T nanomsg.Message](subscriber *nanomsg.Subscriber[T], publisher *na
 			if !ok {
 				return
 			}
-			ready.Do(sdnotify.Ready)
 			// A connector status report (see message.ConnectorStatusType)
 			// isn't protocol data - DoMap doesn't know how to decode it,
 			// and shouldn't have to. Hand it to MapConnectorStatus instead,
@@ -136,7 +140,7 @@ func process[T nanomsg.Message](subscriber *nanomsg.Subscriber[T], publisher *na
 }
 
 // processRaw signals readiness the same way process does, and for the same
-// reason - see process's doc comment.
+// reasons - see process's doc comment.
 func processRaw[T nanomsg.Message](subscriber *nanomsg.Subscriber[T], publisher *nanomsg.Publisher[message.Raw], mapper RealRawMapper[T]) {
 	receiveBuffer := make(chan *T, bufferSize)
 	sendBuffer := make(chan *message.Raw, bufferSize)
@@ -144,12 +148,11 @@ func processRaw[T nanomsg.Message](subscriber *nanomsg.Subscriber[T], publisher 
 
 	go subscriber.Receive(receiveBuffer)
 	go publisher.Send(sendBuffer)
+	sdnotify.Ready()
 
-	var ready sync.Once
 	var err error
 
 	for in := range receiveBuffer {
-		ready.Do(sdnotify.Ready)
 		var out *message.Raw
 		if out, err = mapper.DoMap(in); err != nil {
 			logger.GetLogger().Warn(

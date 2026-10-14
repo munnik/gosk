@@ -2,3 +2,10 @@
 name: "CanBus"
 protocol: "canbus"
 url: "sock://vcan0"
+
+# how long to wait without any data before raising the "no data received"
+# Signal K notification for this connector, and how often to repeat it while
+# it stays quiet [optional default is 30s]
+# there is no polling interval to size this from, so set it whenever this
+# source may legitimately stay silent for longer than the default
+# timeout: 2m

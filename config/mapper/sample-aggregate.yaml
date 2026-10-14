@@ -10,3 +10,49 @@ mappings:
     sourcePaths:
       - "testdata"
     retentionTime: 60s
+
+  # A mapping can read a path another mapping of this same aggregate
+  # derives, so a value computed from raw readings can itself feed the next
+  # calculation - one aggregate stage, not two chained after each other.
+  # Here a fuel rate is the difference between the supply and the return
+  # flow meter, and the fuel used per metre travelled is derived from that
+  # rate and the speed over ground. No connector ever publishes
+  # propulsion.mainEngine.fuel.rate; this config does.
+  #
+  # The whole chain is resolved within the handling of a single incoming
+  # message, in dependency order, each mapping evaluated at most once - so
+  # a new supply reading yields both the fuel rate and the fuel per
+  # distance immediately, not one message later. A config in which the
+  # mappings feed each other in a circle can never settle and is therefore
+  # refused at startup, naming the mappings involved.
+  #
+  # The same ordering applies to a mapping that corrects a path in place
+  # (its own path listed among its sourcePaths, with overwrite: true, like
+  # the sign-corrected drive.revolutions in aggregate.yaml): it reads the
+  # value as it arrived, and every other mapping reading that path runs
+  # after it and sees the corrected value - wherever in this file the
+  # correction is listed. Two such corrections may read each other's path
+  # (revolutions signed from the torque, torque signed from the
+  # revolutions): each reads the other's path as it arrived, so that is not
+  # a cycle, and the result is the same in either order.
+  - path: "propulsion.mainEngine.fuel.rate"
+    expression: >
+      propulsion_mainEngine_fuel_rate_supply.Value -
+      propulsion_mainEngine_fuel_rate_return.Value
+    sourcePaths:
+      - "propulsion.mainEngine.fuel.rate.supply"
+      - "propulsion.mainEngine.fuel.rate.return"
+  - path: "propulsion.mainEngine.fuel.fuelToDistance"
+    expression: >
+      propulsion_mainEngine_fuel_rate.Value /
+      navigation_speedOverGround.Value
+    sourcePaths:
+      - "propulsion.mainEngine.fuel.rate"
+      - "navigation.speedOverGround"
+  # A derived path goes into history the same way an incoming one does, so
+  # retentionTime and movingAverage work on it unchanged.
+  - path: "propulsion.mainEngine.fuel.averageRate"
+    expression: "movingAverage(history['propulsion_mainEngine_fuel_rate'])"
+    sourcePaths:
+      - "propulsion.mainEngine.fuel.rate"
+    retentionTime: 60s

@@ -244,7 +244,7 @@ func (t *TransferRequester) sendDataRequestWorker(dataRequests <-chan database.I
 			CountsPerUuid: countsPerUuid,
 		}
 		t.sendMQTTCommand(request.Origin, requestMessage)
-		t.db.LogTransferRequest(request.Origin, requestMessage)
+		t.db.LogTransferRequest(request.Origin, requestMessage.ForLog())
 		t.dataRequestsSent.With(prometheus.Labels{"origin": request.Origin}).Inc()
 	}
 }

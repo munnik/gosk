@@ -261,6 +261,11 @@ func (m *AggregateMapper) Map(subscriber *nanomsg.Subscriber[message.Mapped], pu
 }
 
 func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) {
+	// AIS also carries other vessels. Pass those reports through without
+	// mixing their values into this vessel's expressions or history.
+	if input.Context != m.config.Context && input.Context != "vessels.self" {
+		return input, nil
+	}
 	s := message.NewSource().WithLabel("signalk").WithType(m.protocol).WithUuid(uuid.Nil)
 	u := message.NewUpdate().WithSource(*s).WithTimestamp(time.Time{}) // initialize with empty timestamp instead of hidden now
 

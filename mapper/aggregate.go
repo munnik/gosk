@@ -37,6 +37,11 @@ type AggregateMapper struct {
 	// it - see evaluationOrder, and DoMap for what that ordering buys.
 	evalOrder []*config.ExpressionMappingConfig
 	env       ExpressionEnvironment
+	// transformInputs holds, per path an in-place transform rewrites, the
+	// latest value as it arrived or was derived - before the transform
+	// corrected it. env holds the corrected one; see runTransform.
+	transformInputs map[string]message.SingleValueMapped
+	transformPaths  map[string]bool
 
 	// shards, when there's more than one, partitions this mapper's own
 	// mappings into independent AggregateMapper instances - each with a
@@ -234,11 +239,17 @@ func newAggregateMapper(c config.MapperConfig, emc []*config.ExpressionMappingCo
 			}
 		}
 	}
+	transformPaths := make(map[string]bool)
+	for _, mapping := range emc {
+		if isTransform(mapping) {
+			transformPaths[mapping.Path] = true
+		}
+	}
 	order, err := evaluationOrder(emc, mappings)
 	if err != nil {
 		return nil, err
 	}
-	return &AggregateMapper{config: c, protocol: config.SignalKType, pathRetentionTime: pathRetentionTime, aggregateMappings: mappings, evalOrder: order, env: env}, nil
+	return &AggregateMapper{config: c, protocol: config.SignalKType, pathRetentionTime: pathRetentionTime, aggregateMappings: mappings, evalOrder: order, env: env, transformPaths: transformPaths, transformInputs: make(map[string]message.SingleValueMapped)}, nil
 }
 
 // GetTickerInterval returns the interval on which the mapper should
@@ -286,7 +297,6 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 	// returned), but it's still evaluated for nothing.
 	triggered := make(map[*config.ExpressionMappingConfig]struct{})
 	appended := make(map[string]int)
-	arrived := make(map[string]message.SingleValueMapped)
 	for _, svm := range input.ToSingleValueMapped() {
 		mappings, ok := m.aggregateMappings[svm.Path]
 		if !ok {
@@ -297,7 +307,9 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 		}
 		u.Source.Uuid = svm.Source.Uuid // take the uuid from the message that updated this value
 		m.remember(historyMap, appended, svm, false)
-		arrived[svm.Path] = svm
+		if m.transformPaths[svm.Path] {
+			m.transformInputs[svm.Path] = svm
+		}
 		for _, mapping := range mappings {
 			triggered[mapping] = struct{}{}
 		}
@@ -317,19 +329,22 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 	//
 	// An in-place transform (isTransform: a mapping whose output path is one
 	// of its own source paths, drive.revolutions sign-corrected from the
-	// torque being the shipped example) reads the paths that arrived in
-	// this input as they arrived - its own, and any other transform's
-	// output path. From here on env, history and every later non-transform
-	// mapping hold and see the corrected value - the same value the rest of
-	// the pipeline sees, since overwrite: true strips the raw one from the
-	// output. Two transforms can therefore correct each other's paths from
-	// the raw readings (the shipped torque/revolutions pair does), and run
-	// in config order; whichever runs second finds the other's corrected
-	// value already in env, which is why the arrived values are swapped
-	// back in around its evaluation. Re-triggering a transform's own path
-	// is harmless: the only mapping that could be is a transform of that
-	// path, which either already ran or reads the path as it arrived.
-	transformed := make(map[string]struct{})
+	// torque being the shipped example) reads every transform path among
+	// its sources as the sensor delivered it - the latest raw sample of
+	// each, whether it arrived in this input or an earlier one
+	// (transformInputs). From here on env, history and every later
+	// non-transform mapping hold and see the corrected value - the same
+	// value the rest of the pipeline sees, since overwrite: true strips the
+	// raw one from the output. Two transforms can therefore correct each
+	// other's paths from the raw readings (the shipped torque/revolutions
+	// pair does), in config order and whether the two readings arrive
+	// together or one at a time: the second to run finds the other's
+	// corrected value in env, which is why the raw sample is swapped back
+	// in around its evaluation. Reading env instead would correct the
+	// torque against revolutions already corrected by the torque as soon
+	// as the two stopped sharing an input. Re-triggering a transform's own
+	// path is harmless: the only mapping that could be is a transform of
+	// that path, which either already ran or reads the path as it arrived.
 	for _, mapping := range m.evalOrder {
 		if _, ok := triggered[mapping]; !ok {
 			continue
@@ -337,8 +352,7 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 		var output any
 		var err error
 		if isTransform(mapping) {
-			output, err = m.runTransform(mapping, arrived, transformed)
-			transformed[mapping.Path] = struct{}{}
+			output, err = m.runTransform(mapping)
 		} else {
 			output, err = runExpr(m.env, &mapping.MappingConfig)
 		}
@@ -353,14 +367,18 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 		if mapping.Path == "" {
 			continue
 		}
-		m.remember(historyMap, appended, message.SingleValueMapped{
+		computed := message.SingleValueMapped{
 			Context:   input.Context,
 			Origin:    input.Origin,
 			Source:    u.Source,
 			Timestamp: u.Timestamp,
 			Path:      mapping.Path,
 			Value:     output,
-		}, true)
+		}
+		if m.transformPaths[mapping.Path] && !isTransform(mapping) {
+			m.transformInputs[mapping.Path] = computed
+		}
+		m.remember(historyMap, appended, computed, true)
 		for _, consumer := range m.aggregateMappings[mapping.Path] {
 			triggered[consumer] = struct{}{}
 		}
@@ -373,26 +391,22 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 	}
 }
 
-// runTransform evaluates an in-place transform against the values of its
-// source paths as they arrived in the current input. Only a path that both
-// arrived in this input and has since been rewritten by another transform
-// (transformed) can differ from what env holds, so only those are swapped
-// for the arrived value for the duration of the evaluation and put back
-// afterwards - every later non-transform reader keeps seeing the corrected
-// value. A path a transform reads that no transform rewrote, or that a
-// non-transform mapping derived rather than a sensor delivered, is read
-// from env as any other mapping would read it.
-func (m *AggregateMapper) runTransform(mapping *config.ExpressionMappingConfig, arrived map[string]message.SingleValueMapped, transformed map[string]struct{}) (any, error) {
+// runTransform evaluates an in-place transform against the raw values of
+// its source paths: for every source path that is itself a transform's
+// output, the latest sample as it arrived (or, for a path a non-transform
+// mapping derives and a transform then clamps, as it was derived before the
+// clamp) is swapped into env for the duration of the evaluation and the
+// corrected value put back afterwards - every later non-transform reader
+// keeps seeing the corrected value. A source path no transform rewrites is
+// read from env as any other mapping would read it.
+func (m *AggregateMapper) runTransform(mapping *config.ExpressionMappingConfig) (any, error) {
 	type swapped struct {
 		key   string
 		value any
 	}
 	var restore []swapped
 	for _, sourcePath := range mapping.SourcePaths {
-		if _, ok := transformed[sourcePath]; !ok {
-			continue
-		}
-		raw, ok := arrived[sourcePath]
+		raw, ok := m.transformInputs[sourcePath]
 		if !ok {
 			continue
 		}

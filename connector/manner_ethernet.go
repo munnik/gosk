@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"sync"
 	"time"
 
@@ -13,20 +12,20 @@ import (
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
-	"github.com/munnik/gosk/sdnotify"
 	"go.uber.org/zap"
 )
-
-// warmupTimeoutExtension is how far ExtendTimeout pushes systemd's start
-// timeout out on each call while readToChannel is still receiving bytes
-// but Publish hasn't decoded (and published) a full 6-value frame yet -
-// see readToChannel. Comfortably longer than sdnotify.ExtendTimeoutMinInterval
-// so the extension never lapses between calls.
-const warmupTimeoutExtension = 15 * time.Second
 
 // MannerEthernetConnector reads from a socket and extracts the induvidual dataframes and sends it on the mangos socket
 type MannerEthernetConnector struct {
 	config *config.ConnectorConfig
+	// timeout is resolved once at construction - see resolveTimeout. This
+	// connector reads a stream rather than polling, so there is no interval
+	// to size it from.
+	timeout time.Duration
+
+	// listener is only used when config.Listen is set, and only ever from
+	// the goroutine readToChannel starts - see listener.
+	listener listener
 
 	lock       sync.Mutex
 	connection io.ReadWriter
@@ -49,7 +48,7 @@ func NewMannerEthernetConnector(c *config.ConnectorConfig) (*MannerEthernetConne
 	default:
 		return nil, fmt.Errorf("unsupported connection scheme %v", c.URL.Scheme)
 	}
-	return &MannerEthernetConnector{config: c}, nil
+	return &MannerEthernetConnector{config: c, timeout: resolveTimeout(c, nil)}, nil
 }
 
 func (r *MannerEthernetConnector) Publish(publisher *nanomsg.Publisher[message.Raw]) {
@@ -70,7 +69,7 @@ func (r *MannerEthernetConnector) Publish(publisher *nanomsg.Publisher[message.R
 			}
 		}
 	}()
-	process(stream, r.config.Name, r.config.Protocol, publisher, r.config.Timeout)
+	process(stream, r.config.Name, r.config.Protocol, publisher, r.timeout)
 }
 
 func extractValue(streamBuffer chan byte) int {
@@ -104,46 +103,67 @@ func (r *MannerEthernetConnector) Subscribe(subscriber *nanomsg.Subscriber[messa
 		}
 	}()
 }
+
+// readToChannel feeds every byte the meter sends into streamBuffer,
+// redialling whenever the connection ends.
+//
+// A read error used to exit the process, on the grounds that systemd
+// restarting the unit was the only way to get a fresh connection, since
+// createConnection ran once at construction. That made a meter that merely
+// went away - unplugged, power-cycled, or a switch rebooting - look exactly
+// like a crash: the unit flapped through restart after restart, and a
+// deploy landing in one of those windows saw a unit that was not running.
+// Reconnecting here instead keeps the process up, and process goes on
+// reporting DisconnectedOrNoData for as long as the meter stays gone, which
+// is what turns it into a notification rather than a restart loop.
 func (r *MannerEthernetConnector) readToChannel(streamBuffer chan byte) {
 	go func() {
-		// Blocks until the meter answers. process is already running by
-		// then, so the unit becomes ready - reporting DisconnectedOrNoData -
-		// instead of hanging here; see NewMannerEthernetConnector.
-		connection := r.createConnection()
-		r.setConnection(connection)
-
-		buffer := make([]byte, 1024)
 		for {
-			n, err := connection.Read(buffer)
-			if err != nil {
-				logger.GetLogger().Error("Error reading from the network stream", zap.Error(err))
+			// Blocks until the meter answers. process is already running by
+			// then, so the unit becomes ready - reporting
+			// DisconnectedOrNoData - instead of hanging here; see
+			// NewMannerEthernetConnector.
+			connection := r.createConnection()
+			r.setConnection(connection)
+			r.read(connection, streamBuffer)
+			// Whatever ended the read ended this connection with it, so
+			// stop handing writes to it (see Subscribe) and let the next
+			// pass dial a fresh one.
+			r.setConnection(nil)
+			if closer, ok := connection.(io.Closer); ok {
+				closer.Close()
 			}
-			// Any read error means this connection is finished, not just
-			// io.ErrUnexpectedEOF: a TCP peer that goes away reports plain
-			// io.EOF, which this used to log and then retry immediately,
-			// forever - a hot loop pinning a core and flooding the journal
-			// rather than reconnecting. Exiting lets systemd restart the
-			// unit, which is how the connection gets rebuilt (createConnection
-			// only runs at construction).
-			if err != nil {
-				os.Exit(0)
-			}
-			if n > 0 {
-				// Publish only calls sdnotify.Ready() once a full 6-value
-				// frame has been found and decoded (see the marker scan in
-				// Publish) - on a cold start that can take a while to reach
-				// if there's a backlog of data to scan through first, well
-				// past systemd's Type=notify start timeout. Extend it for
-				// as long as bytes are genuinely still arriving, so a
-				// process making real progress doesn't get killed and
-				// forced to reconnect and start scanning from zero again.
-				sdnotify.ExtendTimeout(warmupTimeoutExtension)
-			}
-			for i := 0; i < n; i++ {
-				streamBuffer <- buffer[i]
-			}
+			time.Sleep(retryConnectionInterval)
 		}
 	}()
+}
+
+// read copies bytes from connection into streamBuffer until the connection
+// fails, and returns so its caller can dial a new one.
+func (r *MannerEthernetConnector) read(connection io.ReadWriter, streamBuffer chan byte) {
+	buffer := make([]byte, 1024)
+	for {
+		n, err := connection.Read(buffer)
+		// Read may return data and an error together, so hand over what
+		// did arrive before acting on the error.
+		for i := 0; i < n; i++ {
+			streamBuffer <- buffer[i]
+		}
+		// Any read error means this connection is finished, not just
+		// io.ErrUnexpectedEOF: a TCP peer that goes away reports plain
+		// io.EOF, which this used to log and then immediately retry on the
+		// same dead connection, forever - a hot loop pinning a core and
+		// flooding the journal.
+		if err != nil {
+			logger.GetLogger().Warn(
+				"Error reading from the network stream, reconnecting",
+				zap.String("URL", r.config.URL.String()),
+				zap.Duration("Retrying in", retryConnectionInterval),
+				zap.Error(err),
+			)
+			return
+		}
+	}
 }
 
 // createConnection returns a connection, retrying until it has one. The url
@@ -190,17 +210,12 @@ func (r *MannerEthernetConnector) currentConnection() io.ReadWriter {
 
 func (r *MannerEthernetConnector) createNetworkConnection() (io.ReadWriter, error) {
 	if r.config.Listen {
-		if r.config.URL.Scheme == "tcp" {
-			listener, err := net.Listen(r.config.URL.Scheme, net.JoinHostPort(r.config.URL.Hostname(), r.config.URL.Port()))
-			if err != nil {
-				return nil, fmt.Errorf("unable to listen on %v, the error that occurred was %v", r.config.URL.String(), err)
-			}
-			conn, err := listener.Accept()
-			if err != nil {
-				return nil, fmt.Errorf("unable to accept a connection on %v, the error that occurred was %v", r.config.URL.String(), err)
-			}
-			return conn, nil
-		} else if r.config.URL.Scheme == "udp" {
+		switch r.config.URL.Scheme {
+		case "tcp":
+			// Accepted from a listener that stays bound for the life of
+			// this connector, so the sensor can reconnect - see listener.
+			return r.listener.accept(r.config.URL)
+		case "udp":
 			conn, err := net.ListenPacket(r.config.URL.Scheme, net.JoinHostPort(r.config.URL.Hostname(), r.config.URL.Port()))
 			if err != nil {
 				return nil, fmt.Errorf("unable to listen on %v, the error that occurred was %v", r.config.URL.String(), err)

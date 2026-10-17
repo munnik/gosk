@@ -2,6 +2,8 @@ package connector
 
 import (
 	"fmt"
+	"net"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -221,5 +223,150 @@ func receiveWithTimeout(t *testing.T, ch <-chan *message.Raw) *message.Raw {
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for a message")
 		return nil
+	}
+}
+
+// TestProcessReportsReadyBeforeAnySensorData covers the readiness half of
+// what makes an absent sensor a notification rather than a failed deploy:
+// process tells systemd the unit has started as soon as it is running,
+// without waiting for the sensor, for a status report, or for a timeout.
+//
+// Readiness used to arrive implicitly, on the publisher's first successful
+// send (see nanomsg/pub.go's send), which for a connector whose sensor is
+// absent is a whole Timeout after start - so Timeout had to be kept under
+// gosk.nix's TimeoutStartSec (40s) or the unit never started at all, and
+// the MQTT connector, which waited up to ten seconds for its broker before
+// process even began, sat right on that boundary. Nothing about how long a
+// connector waits before calling a sensor missing should be able to decide
+// whether the unit starts.
+func TestProcessReportsReadyBeforeAnySensorData(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "notify.sock")
+	listener, err := net.ListenUnixgram("unixgram", &net.UnixAddr{Name: socketPath, Net: "unixgram"})
+	if err != nil {
+		t.Fatalf("could not listen on a test unixgram socket: %v", err)
+	}
+	defer listener.Close()
+	t.Setenv("NOTIFY_SOCKET", socketPath)
+
+	stream := make(chan []byte)
+	defer close(stream)
+	// An hour is far longer than this test waits below, so a READY
+	// datagram arriving at all can only have come from process starting -
+	// not from a timeout, a status report or any data.
+	go process(stream, "Ampero modules", "modbus", nanomsg.NewPublisher[message.Raw](uniqueInprocURL(t)), time.Hour)
+
+	listener.SetReadDeadline(time.Now().Add(2 * time.Second))
+	buf := make([]byte, 64)
+	n, err := listener.Read(buf)
+	if err != nil {
+		t.Fatalf("expected a READY datagram from a connector with no sensor, got error: %v", err)
+	}
+	if got := string(buf[:n]); got != "READY=1" {
+		t.Fatalf("got %q, want %q", got, "READY=1")
+	}
+}
+
+// TestProcessRepeatsConnectedStatus guards the recovery direction of the
+// status reports. ConnectedAndData is only published on the
+// disconnected->connected transition, which for a healthy sensor happens
+// once in the first moments of the process; nanomsg pub/sub is lossy and
+// has no replay for a late subscriber (see mapper/main.go's process), so a
+// mapper that had raised the offline notification and then restarted -
+// routine for a mapper unit - would never hear that the connector is fine
+// again, and would leave that alarm up indefinitely on a healthy sensor.
+// So the healthy state has to be re-announced on the same interval the
+// unhealthy one already was, even while data flows continuously and the
+// timeout therefore never fires.
+func TestProcessRepeatsConnectedStatus(t *testing.T) {
+	url := uniqueInprocURL(t)
+	pub := nanomsg.NewPublisher[message.Raw](url)
+	sub, err := nanomsg.NewSubscriber[message.Raw]([]string{url}, []byte{})
+	if err != nil {
+		t.Fatalf("NewSubscriber: %v", err)
+	}
+
+	recvCh := make(chan *message.Raw, 64)
+	go sub.Receive(recvCh)
+	warmUpPubSub(t, pub, recvCh)
+
+	// stream is deliberately never closed: the feeder below owns it, and
+	// stopping the feeder and closing the channel cannot be ordered
+	// against each other without racing its in-flight send.
+	stream := make(chan []byte)
+	go process(stream, "Ampero modules", "modbus", pub, 50*time.Millisecond)
+
+	// Keep data arriving far faster than the timeout, so the timeout is
+	// reset before it ever fires and every status report below can only
+	// have come from the heartbeat.
+	stop := make(chan struct{})
+	t.Cleanup(func() { close(stop) })
+	go func() {
+		ticker := time.NewTicker(5 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+				select {
+				case stream <- []byte{0x01, 0x02, 0x03}:
+				case <-stop:
+					return
+				}
+			}
+		}
+	}()
+
+	connectedReports := 0
+	deadline := time.After(5 * time.Second)
+	for connectedReports < 3 {
+		select {
+		case got := <-recvCh:
+			if got.Type != message.ConnectorStatusType {
+				continue // a real value
+			}
+			if string(got.Value) != message.ConnectorStatusConnectedAndData {
+				t.Fatalf("got status %q while data was flowing, want %q", got.Value, message.ConnectorStatusConnectedAndData)
+			}
+			connectedReports++
+		case <-deadline:
+			t.Fatalf("got %d ConnectedAndData reports, want the healthy state re-announced periodically", connectedReports)
+		}
+	}
+}
+
+// TestProcessSurvivesANonPositiveTimeout covers a config file that spells
+// out `timeout: 0` - or anything negative. Both of process's timers are
+// built from it and time.NewTicker panics on a non-positive interval, so
+// this took the connector down at startup, which is the one outcome this
+// whole status mechanism exists to prevent. It has to fall back to the
+// default instead.
+func TestProcessSurvivesANonPositiveTimeout(t *testing.T) {
+	url := uniqueInprocURL(t)
+	pub := nanomsg.NewPublisher[message.Raw](url)
+	sub, err := nanomsg.NewSubscriber[message.Raw]([]string{url}, []byte{})
+	if err != nil {
+		t.Fatalf("NewSubscriber: %v", err)
+	}
+
+	recvCh := make(chan *message.Raw, 8)
+	go sub.Receive(recvCh)
+	warmUpPubSub(t, pub, recvCh)
+
+	stream := make(chan []byte, 1)
+	defer close(stream)
+	go process(stream, "Ampero modules", "modbus", pub, 0)
+
+	// config.DefaultConnectorTimeout is far longer than this test takes,
+	// so the value below - not a timeout - is what produces both messages.
+	stream <- []byte{0x01, 0x02, 0x03}
+
+	first := receiveWithTimeout(t, recvCh)
+	if first.Type != message.ConnectorStatusType || string(first.Value) != message.ConnectorStatusConnectedAndData {
+		t.Fatalf("first message = %+v, want a ConnectedAndData status report", first)
+	}
+	second := receiveWithTimeout(t, recvCh)
+	if second.Type != "modbus" || string(second.Value) != "\x01\x02\x03" {
+		t.Fatalf("second message = %+v, want the real value", second)
 	}
 }

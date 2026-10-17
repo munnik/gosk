@@ -362,7 +362,16 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 		if mapping.Overwrite {
 			overwrites[mapping.Path] = struct{}{}
 		}
-		u.AddValue(message.NewValue().WithPath(mapping.Path).WithValue(output))
+		switch mapping.Path {
+		case "name":
+			name := output.(string)
+			u.AddValue(message.NewValue().WithPath("").WithValue(message.VesselInfo{Name: &name}))
+		case "mmsi":
+			mmsi := output.(string)
+			u.AddValue(message.NewValue().WithPath("").WithValue(message.VesselInfo{MMSI: &mmsi}))
+		default:
+			u.AddValue(message.NewValue().WithPath(mapping.Path).WithValue(output))
+		}
 
 		if mapping.Path == "" {
 			continue

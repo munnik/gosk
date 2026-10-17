@@ -1,9 +1,17 @@
-{ pkgs, ... }:
+{ pkgs, inputs, ... }:
+let
+  # Keep AI coding tools current independently of devenv's main package set.
+  unstable = import inputs.nixpkgs-unstable {
+    inherit (pkgs) config;
+    system = pkgs.stdenv.hostPlatform.system;
+  };
+in
 {
   claude.code.enable = true;
 
   packages = with pkgs; [
-    claude-code
+    unstable.claude-code
+    unstable.codex
     goreleaser
     prettierd
     shellcheck

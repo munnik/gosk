@@ -41,6 +41,43 @@ const (
 	ParityMap string = "NOE" // None, Odd, Even
 )
 
+// DefaultConnectorTimeout is the ConnectorConfig.Timeout a connector with
+// nothing better to go on uses - see DefaultTimeoutFor, which is what a
+// connector that polls on a configured interval derives its own from, and
+// which never returns anything shorter than this.
+const DefaultConnectorTimeout = 30 * time.Second
+
+// DefaultTimeoutFor returns the ConnectorConfig.Timeout to use for a
+// connector that polls on pollingIntervals and whose config file sets no
+// Timeout of its own: twice the longest of them, or DefaultConnectorTimeout
+// when that is longer (or when the connector polls nothing at all).
+//
+// Twice the *longest* interval, not the shortest. A connector publishes one
+// status for all of its register or url groups together (see
+// connector/main.go's process), so any group still answering keeps the whole
+// connector looking alive - which means the longest gap it can legitimately
+// leave between two messages is the one left by its slowest group, once the
+// faster ones have stopped. A timeout shorter than that flaps: it fires in
+// every gap between the slow group's polls and clears on each one. Doubling
+// it, rather than taking it exactly, keeps a single late or dropped response
+// from raising an alarm on its own.
+//
+// This is what makes the common case need no configuration: a connector
+// reading tank levels once a minute gets a two minute timeout, one polling
+// twice a second gets DefaultConnectorTimeout, and neither has to say so.
+func DefaultTimeoutFor(pollingIntervals ...time.Duration) time.Duration {
+	var slowest time.Duration
+	for _, interval := range pollingIntervals {
+		if interval > slowest {
+			slowest = interval
+		}
+	}
+	if doubled := 2 * slowest; doubled > DefaultConnectorTimeout {
+		return doubled
+	}
+	return DefaultConnectorTimeout
+}
+
 type ConnectorConfig struct {
 	Name      string   `mapstructure:"name"`
 	URL       *url.URL `mapstructure:"_"`
@@ -51,15 +88,27 @@ type ConnectorConfig struct {
 	StopBits  string   `mapstructure:"stopBits"`
 	Parity    string   `mapstructure:"parity"`
 	Protocol  string   `mapstructure:"protocol"`
-	// Timeout is how long connector/main.go's process waits without any
-	// data before reporting DisconnectedOrNoData (repeating that report
-	// every Timeout for as long as it stays true - see process's doc
-	// comment). Keep this under gosk.nix's systemd TimeoutStartSec (40s)
-	// for every connect-type processor: systemd only considers a
-	// Type=notify unit "started" once it publishes something at all, and
-	// a Timeout longer than that leaves it stuck "activating" - and
-	// deploy-rs/nixos-rebuild switch failing the whole fleet's deploy
-	// over it - for the gap between the two.
+	// Timeout is how long connector/main.go's process waits without any data
+	// before reporting DisconnectedOrNoData, and how often it repeats that
+	// report for as long as the sensor stays quiet - as well as, scaled up by
+	// connector.connectedHeartbeatFactor, how often it re-announces the
+	// healthy state; see process's doc comment. It therefore sets how quickly
+	// a sensor going quiet turns into a SignalK notification, and nothing
+	// else: process reports the unit ready to systemd as soon as it starts,
+	// so unlike before, a Timeout longer than gosk.nix's TimeoutStartSec
+	// (40s) no longer leaves a connector with an absent sensor stuck
+	// "activating" until deploy-rs/nixos-rebuild switch gives up on the whole
+	// fleet's deploy. A tank level read once a minute is free to say
+	// `timeout: 2m`.
+	//
+	// Set it from the longest gap the sensor may legitimately leave between
+	// values, with room to spare: anything shorter raises an alarm every time
+	// it pauses. Left unset, that is worked out from how the connector is
+	// configured to poll - see DefaultTimeoutFor - so only a sensor whose
+	// pace this cannot be read off the config needs to say it here.
+	//
+	// Zero means unset. A negative value is a mistake, and process falls back
+	// to DefaultConnectorTimeout with a warning.
 	Timeout time.Duration `mapstructure:"timeout"`
 }
 
@@ -70,7 +119,13 @@ func NewConnectorConfig(configFilePath string) *ConnectorConfig {
 		DataBits: 8,
 		StopBits: "1",
 		Parity:   "N",
-		Timeout:  30 * time.Second,
+		// Deliberately left unset, so that a connector which polls on a
+		// configured interval can derive a Timeout that suits it (see
+		// DefaultTimeoutFor) and one that cannot falls back to
+		// DefaultConnectorTimeout in process. A default filled in here would
+		// be indistinguishable from the operator having asked for exactly
+		// that.
+		Timeout: 0,
 	}
 	readConfigFile(result, configFilePath)
 
@@ -388,6 +443,54 @@ func NewMappingConfig(configFilePath string) []MappingConfig {
 	for _, rmc := range result {
 		rmc.verify()
 	}
+	return result
+}
+
+// DefaultReaderTimeout is ReaderConfig.Timeout's default, and what
+// MqttReader falls back to when it is configured non-positive.
+//
+// Far longer than DefaultConnectorTimeout, because a reader's source is a
+// whole fleet rather than one sensor: the writers feeding it flush their
+// cache every MQTTConfig.Interval (30s by default), so a handful of missed
+// flushes - a vessel losing its uplink for a moment, a broker restart -
+// must not be enough to call the source gone.
+const DefaultReaderTimeout = 5 * time.Minute
+
+// ReaderConfig is the part of a reader's configuration that is about the
+// reader itself rather than its transport (see MQTTConfig for that). It is
+// read from the same config file.
+type ReaderConfig struct {
+	// Name identifies this reader in the notification it raises when its
+	// source goes quiet - see mapper.NewReaderStatusUpdate. Defaults to
+	// the broker it reads from when left unset, so the notification is
+	// never published under an empty path.
+	Name string `mapstructure:"name"`
+	// Context is the SignalK context that notification is published under.
+	// A reader aggregates data for many vessels and so has no vessel of
+	// its own; name the installation it runs on (e.g.
+	// "servers.hetzner-otap01") to attribute the notification to it. The
+	// default is the SignalK alias for "this installation", which both
+	// NotificationMapper and MeteoHydroMapper already pass through.
+	Context string `mapstructure:"context"`
+	// Timeout is how long the reader waits without receiving anything from
+	// its source before raising that notification, and how often it repeats
+	// it while the source stays quiet - the same role
+	// ConnectorConfig.Timeout plays for a connector, and read the same way:
+	// set it from how long the fleet may legitimately stay silent, since
+	// anything shorter raises a false alarm every quiet spell.
+	//
+	// Must be positive; MqttReader falls back to DefaultReaderTimeout, with
+	// a warning, if it is not.
+	Timeout time.Duration `mapstructure:"timeout"`
+}
+
+func NewReaderConfig(configFilePath string) *ReaderConfig {
+	result := &ReaderConfig{
+		Context: "vessels.self",
+		Timeout: DefaultReaderTimeout,
+	}
+	readConfigFile(result, configFilePath)
+
 	return result
 }
 

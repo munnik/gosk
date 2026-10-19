@@ -38,16 +38,22 @@ Five commits, four of them migrations:
    that works around a TimescaleDB crash. Must run before the next two.
 4. **`20261017130100_columnstore_mapped_data`** - columnstore on both
    `mapped_data` hypertables, after 60 days.
-5. **`20261017130200_columnstore_continuous_aggregates`** - columnstore on the
-   two continuous aggregates, after 200 days. Guarded, so it is a no-op on a
-   vessel node where those aggregates do not exist.
+5. columnstore on the two continuous aggregates, after 200 days: not a
+   gosk migration any more. `mapped_data_5min_hidden` and
+   `mapped_data_1hour_hidden` are created by the nix repo's container
+   migrations, in `public` and owned by `postgres`, so gosk's migration
+   found no such relation on its search path - and would have been refused
+   as not the owner had it found them. It lives in the nix repo now:
+   `hosts/the-production-server/services/postgresql-17/migrations/20261020100100_columnstore_continuous_aggregates`,
+   run as `postgres` at container start, and on the-test-server's clone by the
+   nightly clone upgrade.
 
 The three were first numbered `20260924*`, after the day they were written.
 That was wrong for every database that already ran master's
 `20261015120000`: golang-migrate applies only versions above the current
 one, so on the-test-server's clone of production (2026-10-19) the chain went
 from there straight to the outbox migrations and these were skipped without
-a word - while a fresh database ran them. Numbered `20261017130000`-`130200`
+a word - while a fresh database ran them. Numbered `20261017130000`-`130100`
 they sort after everything else on the branch and run everywhere - also on
 a database that took the outbox migrations before they were renumbered. A
 database that ran them under the old numbers runs them again, which they

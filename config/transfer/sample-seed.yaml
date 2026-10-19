@@ -1,0 +1,25 @@
+---
+# gosk transfer seed - on a vessel, by hand. Compares this vessel's history
+# with the central server's by summary and puts the minutes the server is
+# missing into the outbox. Same database and mqtt settings as "send".
+#
+#   gosk transfer seed --config seed.yaml --from 2026-09-01 --to 2026-10-01
+database:
+  # add &application_name=gosk_transfer_seed to tell the processes apart
+  # in pg_stat_activity
+  url: "postgres://gosk:password@127.0.0.1:5432/gosk?sslmode=disable"
+  timeout: 5m
+mqtt:
+  username: "111111111"
+  password: "secret"
+  url: "mqtt://broker.vpn.example.org:1883"
+  compress: true
+origin: "vessels.urn:mrn:imo:mmsi:111111111"
+# How long one summary may go unanswered before it is sent again (three
+# times, then that part of history is skipped and the run exits non-zero).
+seed_timeout: 10m
+# A pause after every exchange, so the run does not crowd out the writes
+# the vessel is still taking.
+seed_pause: 100ms
+# At most this many buckets in one summary message.
+seed_max_buckets: 4096

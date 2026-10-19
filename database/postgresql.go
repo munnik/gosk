@@ -30,30 +30,16 @@ import (
 
 // rawDataColumns is both raw_data's COPY column list (see WriteRaw) and
 // the column order rawRow's fields must be produced in.
-var rawDataColumns = []string{"time", "connector", "value", "uuid", "type"}
+var rawDataColumns = []string{"time", "connector", "value", "type"}
 
 const (
-	mappedInsertQuery              = `INSERT INTO "%s" ("time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT ("time", "origin", "context", "connector", "path") DO UPDATE SET value = EXCLUDED.value`
-	selectMappedQuery              = `SELECT "time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid" FROM "mapped_data"`
-	selectMostRecentMappedQuery    = `SELECT DISTINCT ON ("context", "path") "time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid" FROM "mapped_data" WHERE "time" > $1 ORDER BY "context", "path", "time" DESC`
-	selectLocalCountQuery          = `SELECT "count" FROM "transfer_local_data" WHERE "origin" = $1 AND "start" = $2`
-	selectExistingRemoteCounts     = `SELECT "origin", "start" FROM "transfer_remote_data" WHERE "start" >= $1`
-	selectIncompletePeriodsQuery   = `SELECT "origin", "start", "local_count", "remote_count" FROM "transfer_data" WHERE "local_count" < "remote_count" * $1::double precision ORDER BY "start" DESC`
-	insertOrUpdateRemoteData       = `INSERT INTO "transfer_remote_data" ("start", "origin", "count") VALUES ($1, $2, $3) ON CONFLICT ("start", "origin") DO UPDATE SET "count" = EXCLUDED.count`
-	logTransferInsertQuery         = `INSERT INTO "transfer_log" ("time", "origin", "message") VALUES (NOW(), $1, $2)`
-	selectMappedCountPerUuid       = `SELECT "uuid", COUNT("uuid") FROM "mapped_data" WHERE "origin" = $1 AND "time" BETWEEN $2 AND $2 + '5m'::interval GROUP BY 1`
-	selectFirstMappedDataPerOrigin = `SELECT "origin", MIN("start") FROM "transfer_local_data" GROUP BY 1`
+	mappedInsertQuery           = `INSERT INTO "%s" ("time", "connector", "type", "context", "path", "value", "origin") VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT ("time", "origin", "context", "connector", "path") DO UPDATE SET value = EXCLUDED.value`
+	selectMappedQuery           = `SELECT "time", "connector", "type", "context", "path", "value", "origin" FROM "mapped_data"`
+	selectMostRecentMappedQuery = `SELECT DISTINCT ON ("context", "path") "time", "connector", "type", "context", "path", "value", "origin" FROM "mapped_data" WHERE "time" > $1 ORDER BY "context", "path", "time" DESC`
 )
 
 //go:embed migrations/*.sql
 var fs embed.FS
-
-type IncompletePeriod struct {
-	Origin      string
-	Period      time.Time
-	LocalCount  int
-	RemoteCount int
-}
 
 // rawRow holds one raw_data row waiting to be COPYed in, in rawDataColumns
 // order.
@@ -61,7 +47,6 @@ type rawRow struct {
 	timestamp time.Time
 	connector string
 	value     []byte
-	uuid      uuid.UUID
 	type_     string
 }
 
@@ -69,7 +54,7 @@ type PostgresqlDatabase struct {
 	url             string
 	connection      *pgxpool.Pool
 	connectionMutex sync.Mutex
-	batch           *pgx.Batch
+	queue           []queuedQuery
 	batchSize       int
 	rawBatch        []rawRow
 	rawBatchMutex   sync.Mutex
@@ -79,6 +64,13 @@ type PostgresqlDatabase struct {
 	batchMutex      sync.Mutex
 	upgradeDone     bool
 	databaseTimeout time.Duration
+	// backoff paces the flushes after one that failed as a whole, see
+	// retryBackoff. One for both queues: a writer process fills one or
+	// the other, never both (see cmd/write.go).
+	backoff retryBackoff
+	// outboxEnabled has WriteSingleValueMapped attach the bucket of every
+	// row it queues, see outbox.go; guarded by batchMutex.
+	outboxEnabled   bool
 	flushesCounter  prometheus.Counter
 	lastFlushGauge  prometheus.Gauge
 	writesCounter   prometheus.Counter
@@ -91,10 +83,10 @@ func NewPostgresqlDatabase(c *config.PostgresqlConfig) *PostgresqlDatabase {
 	result := &PostgresqlDatabase{
 		url:             c.URLString,
 		batchSize:       c.BatchFlushLength,
-		batch:           &pgx.Batch{},
 		lastFlush:       time.Now(),
 		upgradeDone:     false,
 		databaseTimeout: c.Timeout,
+		outboxEnabled:   c.Outbox,
 		flushesCounter:  promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_flushes_total", Help: "total number batches flushed"}),
 		lastFlushGauge:  promauto.NewGauge(prometheus.GaugeOpts{Name: "gosk_psql_last_flush_time", Help: "last db flush"}),
 		writesCounter:   promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_writes_total", Help: "total number of deltas added to queue"}),
@@ -183,7 +175,6 @@ func (db *PostgresqlDatabase) WriteRaw(raw *message.Raw) {
 		timestamp: raw.Timestamp,
 		connector: raw.Connector,
 		value:     raw.Value,
-		uuid:      raw.Uuid,
 		type_:     raw.Type,
 	})
 	length := len(db.rawBatch)
@@ -201,6 +192,32 @@ func (db *PostgresqlDatabase) WriteMapped(mapped *message.Mapped) {
 
 func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapped) {
 	db.writesCounter.Inc()
+	query, arguments, ok := db.mappedInsert(svm)
+	if !ok {
+		return
+	}
+
+	queued := queuedQuery{sql: query, args: arguments}
+	db.batchMutex.Lock()
+	// The row's bucket travels with the row from here on, so that it is
+	// marked in the same transaction as the row whichever way the row ends
+	// up being written (see pgxBatch and retryIndividually): a row can
+	// never exist without its bucket being marked.
+	if db.outboxEnabled {
+		queued.mark = &outboxMark{origin: svm.Origin, time: svm.Timestamp}
+	}
+	db.queue = append(db.queue, queued)
+	length := len(db.queue)
+	db.batchMutex.Unlock()
+
+	db.batchSizeGauge.Inc()
+	db.flushIfNeeded(length)
+}
+
+// mappedInsert turns one mapped row into the INSERT that stores it, or
+// reports that the row cannot be stored. It also queues the static_data
+// update a vessel's name, mmsi and dimensions are kept in.
+func (db *PostgresqlDatabase) mappedInsert(svm message.SingleValueMapped) (query string, arguments []any, ok bool) {
 	path := svm.Path
 	if path == "" {
 		switch v := svm.Value.(type) {
@@ -261,38 +278,16 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 			zap.String("source.type", svm.Source.Type),
 			zap.Error(err),
 		)
-		return
+		return "", nil, false
 	}
 
 	table := "mapped_data_matching_context"
 	if svm.Context != svm.Origin {
 		table = "mapped_data_other_context"
 	}
-	query := fmt.Sprintf(mappedInsertQuery, table)
-	db.batchMutex.Lock()
-	db.batch.Queue(query, svm.Timestamp, svm.Source.Label, svm.Source.Type, svm.Context, path, svm.Value, svm.Source.Uuid, svm.Origin, svm.Source.TransferUuid).Exec(func(ct pgconn.CommandTag) error {
-		if ct.RowsAffected() == 0 {
-			logger.GetLogger().Warn("0 rows affected",
-				zap.String("query", query),
-				zap.Time("timestamp", svm.Timestamp),
-				zap.String("source.label", svm.Source.Label),
-				zap.String("source.type", svm.Source.Type),
-				zap.String("context", svm.Context),
-				zap.String("path", path),
-				zap.Any("value", svm.Value),
-				zap.String("source.uuid", svm.Source.Uuid.String()),
-				zap.String("origin", svm.Origin),
-				zap.String("source.transferuuid", svm.Source.TransferUuid.String()),
-			)
-		}
-
-		return nil
-	})
-	length := db.batch.Len()
-	db.batchMutex.Unlock()
-
-	db.batchSizeGauge.Inc()
-	db.flushIfNeeded(length)
+	query = fmt.Sprintf(mappedInsertQuery, table)
+	arguments = []any{svm.Timestamp, svm.Source.Label, svm.Source.Type, svm.Context, path, svm.Value, svm.Origin}
+	return query, arguments, true
 }
 
 func (db *PostgresqlDatabase) updateStaticData(context, path string, value any) {
@@ -342,18 +337,8 @@ func (db *PostgresqlDatabase) updateStaticData(context, path string, value any) 
 
 	query := fmt.Sprintf(`INSERT INTO "static_data" ("context", "%s") VALUES ($1, $2) ON CONFLICT("context") DO UPDATE SET "%s" = EXCLUDED."%s";`, column, column, column)
 	db.batchMutex.Lock()
-	db.batch.Queue(query, context, v).Exec(func(ct pgconn.CommandTag) error {
-		if ct.RowsAffected() == 0 {
-			logger.GetLogger().Warn("0 rows affected",
-				zap.String("query", query),
-				zap.String("context", context),
-				zap.Any("v", v),
-			)
-		}
-
-		return nil
-	})
-	length := db.batch.Len()
+	db.queue = append(db.queue, queuedQuery{sql: query, args: []any{context, v}})
+	length := len(db.queue)
 	db.batchMutex.Unlock()
 
 	db.batchSizeGauge.Inc()
@@ -384,9 +369,7 @@ func (db *PostgresqlDatabase) ReadMostRecentMapped(fromTime time.Time) ([]*messa
 			&m.Context,
 			&m.Path,
 			&m.Value,
-			&m.Source.Uuid,
 			&m.Origin,
-			&m.Source.TransferUuid,
 		)
 		if err != nil {
 			return nil, err
@@ -414,7 +397,28 @@ func (db *PostgresqlDatabase) ReadMostRecentMapped(fromTime time.Time) ([]*messa
 func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...interface{}) ([]*message.Mapped, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
 	defer cancel()
-	rows, err := db.GetConnection().Query(ctx, fmt.Sprintf("%s %s", selectMappedQuery, appendToQuery), arguments...)
+	rows, err := db.readSingleValueMapped(ctx, db.GetConnection(), appendToQuery, arguments...)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*message.Mapped, 0, len(rows))
+	for i := range rows {
+		result = append(result, rows[i].ToMapped())
+	}
+	return result, nil
+}
+
+// queryer is what readSingleValueMapped needs from a connection, so it can
+// read inside a transaction (the outbox sender, see outbox.go) as well as
+// straight from the pool.
+type queryer interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}
+
+// readSingleValueMapped runs selectMappedQuery with appendToQuery after
+// it and decodes the rows, one SingleValueMapped per row.
+func (db *PostgresqlDatabase) readSingleValueMapped(ctx context.Context, q queryer, appendToQuery string, arguments ...interface{}) ([]message.SingleValueMapped, error) {
+	rows, err := q.Query(ctx, fmt.Sprintf("%s %s", selectMappedQuery, appendToQuery), arguments...)
 	if err != nil {
 		return nil, err
 	} else if ctx.Err() != nil {
@@ -424,7 +428,7 @@ func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...inte
 	}
 	defer rows.Close()
 
-	result := make([]*message.Mapped, 0)
+	result := make([]message.SingleValueMapped, 0)
 	for rows.Next() {
 		m := message.NewSingleValueMapped()
 		err := rows.Scan(
@@ -434,9 +438,7 @@ func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...inte
 			&m.Context,
 			&m.Path,
 			&m.Value,
-			&m.Source.Uuid,
 			&m.Origin,
-			&m.Source.TransferUuid,
 		)
 		if err != nil {
 			return nil, err
@@ -451,7 +453,7 @@ func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...inte
 		if m.Path == "mmsi" || m.Path == "name" {
 			m.Path = ""
 		}
-		result = append(result, m.ToMapped())
+		result = append(result, *m)
 	}
 	// check for errors after last call to .Next()
 	if err := rows.Err(); err != nil {
@@ -459,192 +461,6 @@ func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...inte
 	}
 
 	return result, nil
-}
-
-// Returns the start timestamp of each period that has local count but no remote count
-func (db *PostgresqlDatabase) SelectFirstMappedDataPerOrigin() (map[string]time.Time, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
-	defer cancel()
-	rows, err := db.GetConnection().Query(ctx, selectFirstMappedDataPerOrigin)
-	if err != nil {
-		return nil, err
-	} else if ctx.Err() != nil {
-		logger.GetLogger().Error("Timeout during database lookup")
-		db.timeoutsCounter.Inc()
-		return nil, ctx.Err()
-	}
-	defer rows.Close()
-
-	result := make(map[string]time.Time)
-	var origin string
-	var minStart time.Time
-	for rows.Next() {
-		err := rows.Scan(&origin, &minStart)
-		if err != nil {
-			return nil, err
-		}
-		result[origin] = minStart
-	}
-	// check for errors after last call to .Next()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return result, nil
-}
-
-func (db *PostgresqlDatabase) SelectExistingRemoteCounts(from time.Time) (map[string]map[time.Time]struct{}, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
-	defer cancel()
-	rows, err := db.GetConnection().Query(ctx, selectExistingRemoteCounts, from)
-	if err != nil {
-		return nil, err
-	} else if ctx.Err() != nil {
-		logger.GetLogger().Error("Timeout during database lookup")
-		db.timeoutsCounter.Inc()
-		return nil, ctx.Err()
-	}
-	defer rows.Close()
-
-	result := make(map[string]map[time.Time]struct{})
-	var origin string
-	var start time.Time
-	for rows.Next() {
-		err := rows.Scan(&origin, &start)
-		if err != nil {
-			return nil, err
-		}
-		if _, ok := result[origin]; !ok {
-			result[origin] = make(map[time.Time]struct{})
-		}
-		result[origin][start] = struct{}{}
-	}
-	// check for errors after last call to .Next()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return result, nil
-}
-
-// Returns the start timestamp of each period that has the same or more local rows than remote
-func (db *PostgresqlDatabase) SelectIncompletePeriods(completenessFactor float64) ([]IncompletePeriod, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
-	defer cancel()
-	rows, err := db.GetConnection().Query(ctx, selectIncompletePeriodsQuery, completenessFactor)
-	if err != nil {
-		return nil, err
-	} else if ctx.Err() != nil {
-		logger.GetLogger().Error("Timeout during database lookup")
-		db.timeoutsCounter.Inc()
-		return nil, ctx.Err()
-	}
-	defer rows.Close()
-
-	result := make([]IncompletePeriod, 0)
-	var origin string
-	var period time.Time
-	var localCount int
-	var remoteCount int
-	for rows.Next() {
-		err := rows.Scan(&origin, &period, &localCount, &remoteCount)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, IncompletePeriod{
-			Origin:      origin,
-			Period:      period,
-			LocalCount:  localCount,
-			RemoteCount: remoteCount,
-		})
-	}
-	// check for errors after last call to .Next()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return result, nil
-}
-
-func (db *PostgresqlDatabase) SelectCountMapped(origin string, start time.Time) (int, error) {
-	var result int
-	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
-	defer cancel()
-	err := db.GetConnection().QueryRow(ctx, selectLocalCountQuery, origin, start).Scan(&result)
-	if errors.Is(err, pgx.ErrNoRows) {
-		logger.GetLogger().Warn(
-			"No rows found so returning 0 count",
-			zap.Error(err),
-		)
-		return 0, nil
-	}
-	if err != nil {
-		return 0, err
-	} else if ctx.Err() != nil {
-		logger.GetLogger().Error("Timeout during database lookup")
-		db.timeoutsCounter.Inc()
-		return 0, ctx.Err()
-	}
-
-	return result, nil
-}
-
-// Return the number of rows per (raw) uuid in the mapped_data table
-func (db *PostgresqlDatabase) SelectCountPerUuid(origin string, start time.Time) (map[uuid.UUID]int, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
-	defer cancel()
-	rows, err := db.GetConnection().Query(ctx, selectMappedCountPerUuid, origin, start)
-	if err != nil {
-		return nil, err
-	} else if ctx.Err() != nil {
-		logger.GetLogger().Error("Timeout during database lookup")
-		db.timeoutsCounter.Inc()
-		return nil, ctx.Err()
-	}
-	defer rows.Close()
-
-	result := make(map[uuid.UUID]int)
-	var uuid uuid.UUID
-	var count int
-	for rows.Next() {
-		err := rows.Scan(&uuid, &count)
-		if err != nil {
-			return nil, err
-		}
-		result[uuid] = count
-	}
-	// check for errors after last call to .Next()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return result, nil
-}
-
-// Creates a period in the database, the default value for the local data points is -1
-func (db *PostgresqlDatabase) CreateRemoteCount(start time.Time, origin string, count int) error {
-	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
-	defer cancel()
-	_, err := db.GetConnection().Exec(ctx, insertOrUpdateRemoteData, start, origin, count)
-	if ctx.Err() != nil {
-		logger.GetLogger().Error("Timeout during database insertion")
-		db.timeoutsCounter.Inc()
-		return ctx.Err()
-	}
-	return err
-}
-
-// Log the transfer request
-func (db *PostgresqlDatabase) LogTransferRequest(origin string, message interface{}) error {
-	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
-	defer cancel()
-	_, err := db.GetConnection().Exec(ctx, logTransferInsertQuery, origin, message)
-	if ctx.Err() != nil {
-		logger.GetLogger().Error("Timeout during database insertion")
-		db.timeoutsCounter.Inc()
-		return ctx.Err()
-	}
-	return err
 }
 
 func (db *PostgresqlDatabase) UpgradeDatabase() error {
@@ -696,6 +512,65 @@ func (db *PostgresqlDatabase) DowngradeDatabase() error {
 // growing without limit until the kernel OOM-kills it.
 const maxBatchBacklogFactor = 4
 
+const (
+	// minRetryBackoff is how long the first flush after a failed one
+	// waits; every further failure doubles it, up to maxRetryBackoff, and a
+	// flush that succeeds resets it. Short, because the queue it holds back
+	// is in memory and bounded only by the backpressure of flushIfNeeded -
+	// the longer the wait, the more of the subscriber's buffer upstream is
+	// dropped on a database that is in fact back.
+	minRetryBackoff = time.Second
+	maxRetryBackoff = 30 * time.Second
+)
+
+// retryBackoff holds back the next flush after one that failed for a reason
+// that lies with the database or the connection rather than with any one
+// query - a timeout, a database that cannot be reached. Such a batch is
+// requeued whole: retrying it query by query, as a batch that has a bad
+// query in it is (see retryIndividually), would have each of its rows take
+// a fresh timeout in turn, with the flush lock held and the writers behind
+// it blocked, for as long as the database stays slow. Retrying it right
+// away would be the next flush failing the same way: every write past the
+// batch length starts a flush, so a vessel's writer would be hammering a
+// database that is not answering, once per delta.
+type retryBackoff struct {
+	mutex sync.Mutex
+	delay time.Duration
+	until time.Time
+}
+
+// wait blocks until the backoff set by the last extend has passed.
+func (b *retryBackoff) wait() {
+	b.mutex.Lock()
+	until := b.until
+	b.mutex.Unlock()
+	if remaining := time.Until(until); remaining > 0 {
+		time.Sleep(remaining)
+	}
+}
+
+// extend holds the next flush back, for twice as long as the last time up
+// to maxRetryBackoff, and returns for how long.
+func (b *retryBackoff) extend() time.Duration {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	if b.delay == 0 {
+		b.delay = minRetryBackoff
+	} else {
+		b.delay = min(2*b.delay, maxRetryBackoff)
+	}
+	b.until = time.Now().Add(b.delay)
+	return b.delay
+}
+
+// reset forgets the backoff after a flush that succeeded.
+func (b *retryBackoff) reset() {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	b.delay = 0
+	b.until = time.Time{}
+}
+
 func (db *PostgresqlDatabase) flushIfNeeded(length int) {
 	switch {
 	case length > db.batchSize*maxBatchBacklogFactor:
@@ -725,10 +600,15 @@ func (db *PostgresqlDatabase) flushBatch() {
 	// exist" errors that then looped forever below (see invalidateConnection).
 	db.flushMutex.Lock()
 	defer db.flushMutex.Unlock()
+	// Holding the lock while waiting is the point: the flush that a writer
+	// past the backlog limit runs in its own goroutine (flushIfNeeded)
+	// waits here with it, which is what keeps the queue bounded while the
+	// database is away.
+	db.backoff.wait()
 
-	batchToFlush := db.copyBatch()
+	queries := db.copyBatch()
 	// prevent flushing when queue is empty
-	if batchToFlush == nil {
+	if queries == nil {
 		return
 	}
 	uuid := uuid.New()
@@ -739,18 +619,9 @@ func (db *PostgresqlDatabase) flushBatch() {
 	)
 	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
 	defer cancel()
-	result := db.GetConnection().SendBatch(ctx, batchToFlush)
+	result := db.GetConnection().SendBatch(ctx, db.pgxBatch(queries))
 
 	if err := result.Close(); err != nil {
-		if ctx.Err() != nil {
-			logger.GetLogger().Error("Timeout during database insertion", zap.Error(ctx.Err()), zap.Error(err))
-			db.timeoutsCounter.Inc()
-			return
-		}
-		logger.GetLogger().Error(
-			"Unable to flush batch as a whole, retrying its queries individually",
-			zap.String("Error", err.Error()),
-		)
 		// The failure could be caused by connection/session state (e.g. a
 		// prepared statement cached against a connection that's since been
 		// replaced or reset server-side). Retrying against that same
@@ -759,9 +630,36 @@ func (db *PostgresqlDatabase) flushBatch() {
 		// retries. Drop it so the retries below (and the next flush) get a
 		// fresh one.
 		db.invalidateConnection()
-		db.retryIndividually(batchToFlush)
+		if ctx.Err() != nil {
+			// The batch timed out as a whole - the database is slow, or
+			// one of its outbox upserts waited on a bucket the sender had
+			// locked. Nothing of it committed (one transaction), and
+			// nothing of it is known to be unwritable, so it goes back
+			// into the queue whole, ahead of what was written since, for
+			// a later flush to try again - rather than discarded, as it
+			// used to be, or retried query by query, which would have
+			// every row wait out its own timeout. Every query is
+			// idempotent (ON CONFLICT, or an upsert), so one that did
+			// commit after all is harmless to repeat.
+			db.timeoutsCounter.Inc()
+			logger.GetLogger().Error(
+				"Timeout during database insertion, requeuing the batch",
+				zap.Int("Queries", len(queries)),
+				zap.Duration("RetryAfter", db.backoff.extend()),
+				zap.Error(ctx.Err()),
+				zap.Error(err),
+			)
+			db.requeue(queries)
+			return
+		}
+		logger.GetLogger().Error(
+			"Unable to flush batch as a whole, retrying its queries individually",
+			zap.String("Error", err.Error()),
+		)
+		db.retryIndividually(queries)
 		return
 	}
+	db.backoff.reset()
 	logger.GetLogger().Info(
 		"Flush completed",
 		zap.String("uuid", uuid.String()),
@@ -779,9 +677,14 @@ func (db *PostgresqlDatabase) flushBatch() {
 // a row could permanently violate the way an upsert or a NOT NULL column
 // elsewhere might, so requeuing the whole batch on failure (the same
 // connection-invalidate-and-retry reasoning as flushBatch's) is enough.
+// That goes for a timeout as much as for any other failure: nothing of a
+// COPY that was cut short committed. (raw_data has no key, so a COPY that
+// did commit just as it was given up on is stored twice. Rare, and raw
+// data is kept for looking into, not for counting.)
 func (db *PostgresqlDatabase) flushRawBatch() {
 	db.rawFlushMutex.Lock()
 	defer db.rawFlushMutex.Unlock()
+	db.backoff.wait()
 
 	rows := db.copyRawBatch()
 	if rows == nil {
@@ -801,25 +704,36 @@ func (db *PostgresqlDatabase) flushRawBatch() {
 		rawDataColumns,
 		pgx.CopyFromSlice(len(rows), func(i int) ([]any, error) {
 			r := rows[i]
-			return []any{r.timestamp, r.connector, r.value, r.uuid, r.type_}, nil
+			return []any{r.timestamp, r.connector, r.value, r.type_}, nil
 		}),
 	)
 	if err != nil {
-		if ctx.Err() != nil {
-			logger.GetLogger().Error("Timeout during database insertion", zap.Error(ctx.Err()), zap.Error(err))
-			db.timeoutsCounter.Inc()
-			return
-		}
-		logger.GetLogger().Error(
-			"Unable to COPY the raw_data batch, requeuing it",
-			zap.String("Error", err.Error()),
-		)
 		db.invalidateConnection()
+		retryAfter := db.backoff.extend()
+		if ctx.Err() != nil {
+			db.timeoutsCounter.Inc()
+			logger.GetLogger().Error(
+				"Timeout during database insertion, requeuing the raw_data batch",
+				zap.Int("Rows", len(rows)),
+				zap.Duration("RetryAfter", retryAfter),
+				zap.Error(ctx.Err()),
+				zap.Error(err),
+			)
+		} else {
+			logger.GetLogger().Error(
+				"Unable to COPY the raw_data batch, requeuing it",
+				zap.Int("Rows", len(rows)),
+				zap.Duration("RetryAfter", retryAfter),
+				zap.String("Error", err.Error()),
+			)
+		}
 		db.rawBatchMutex.Lock()
 		db.rawBatch = append(rows, db.rawBatch...)
 		db.rawBatchMutex.Unlock()
+		db.batchSizeGauge.Add(float64(len(rows)))
 		return
 	}
+	db.backoff.reset()
 	logger.GetLogger().Info(
 		"Flush completed",
 		zap.String("uuid", uuid.String()),
@@ -841,92 +755,170 @@ func (db *PostgresqlDatabase) invalidateConnection() {
 	}
 }
 
+// queuedQuery is one statement waiting for the next flush. For a mapped
+// row it also carries the outbox bucket the row belongs to, so that
+// whichever path writes the row - the batch, or the query-by-query retry
+// of a batch that failed - writes the mark with it, in one transaction. The
+// two must never be separated: a row stored with nothing marking its bucket
+// is never sent, and a mark committed ahead of its row can be read, found
+// empty and acknowledged before the row lands (see outbox.go).
+type queuedQuery struct {
+	sql  string
+	args []any
+	mark *outboxMark
+}
+
 // retryIndividually re-sends each query from a batch that failed as a
-// whole, one at a time. A single permanently failing query (e.g. a NOT
-// NULL or other constraint violation) would otherwise keep the *entire*
-// batch requeued and retried forever, blocking every other query queued
-// alongside it - including brand new, unrelated ones, since they all share
-// the same underlying queue. Queries whose failure is classified as a
+// whole, one at a time, and sorts the failures. A query that fails with a
 // Postgres data or integrity error (SQLSTATE class 22 or 23 - the kind
-// that will never succeed no matter how many times it's retried) are
-// logged and dropped, as are failures to encode a query's arguments, which
-// never reach postgres at all. Anything else (connectivity issues, a
-// still-stale prepared statement, timeouts, ...) is requeued for the next
-// flush, same as the whole-batch retry used to do.
-func (db *PostgresqlDatabase) retryIndividually(batch *pgx.Batch) {
-	conn := db.GetConnection()
-	for _, query := range batch.QueuedQueries {
+// that will never succeed no matter how many times it's retried) is logged
+// and dropped, as is one whose arguments fail to encode, which never
+// reaches postgres at all. Any other failure (connectivity, a still-stale
+// prepared statement, a timeout, ...) stops the retry: that query and
+// every one after it, untried, go back into the queue in their order, and
+// the next flush is held back (see retryBackoff). Carrying on past such a
+// failure would let a later write to the same key commit before the
+// failed one, which is then requeued and overwrites it with the older
+// value on the next flush. (After a timeout the ones after it would only
+// have timed out in turn, too.)
+//
+// A mapped row is written together with its outbox mark, in a transaction
+// of its own (execWithMark), so that this path gives the same guarantee as
+// the batch: the row commits with its bucket marked or not at all.
+func (db *PostgresqlDatabase) retryIndividually(queries []queuedQuery) {
+	for i, query := range queries {
 		ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
-		_, err := conn.Exec(ctx, query.SQL, query.Arguments...)
+		var err error
+		if query.mark != nil {
+			err = db.execWithMark(ctx, query)
+		} else {
+			_, err = db.GetConnection().Exec(ctx, query.sql, query.args...)
+		}
+		timedOut := ctx.Err() != nil
 		cancel()
 		if err == nil {
 			continue
 		}
-
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && (strings.HasPrefix(pgErr.Code, "22") || strings.HasPrefix(pgErr.Code, "23")) {
-			db.dropsCounter.Inc()
-			logger.GetLogger().Error(
-				"Dropping a query that permanently fails with a data/integrity error, it would otherwise block every other queued query forever",
-				zap.String("sql", query.SQL),
-				zap.String("sqlstate", pgErr.Code),
-				zap.Error(err),
-			)
+		if !timedOut && db.dropIfUnwritable(query, err) {
 			continue
 		}
 
-		// An argument that fails to encode never reached the server, so
-		// there's no PgError to classify above - and because encoding is a
-		// pure function of the arguments, it will fail identically on every
-		// future flush. Requeuing such a row makes it immortal, and every
-		// flush that carries it then fails as a batch and comes back here to
-		// retry its queries one at a time; that is what wedged a vessel's
-		// writer for ten hours on a single NaN. WriteSingleValueMapped
-		// marshals a mapped value before queueing it, so this is the
-		// backstop for every other query - static_data's, and anything a
-		// future caller queues without that check.
-		var unsupportedValue *json.UnsupportedValueError
-		var unsupportedType *json.UnsupportedTypeError
-		var marshalerError *json.MarshalerError
-		if errors.As(err, &unsupportedValue) || errors.As(err, &unsupportedType) || errors.As(err, &marshalerError) {
-			db.dropsCounter.Inc()
-			logger.GetLogger().Error(
-				"Dropping a query whose arguments cannot be encoded, it would otherwise block every other queued query forever",
-				zap.String("sql", query.SQL),
-				// Not zap.Any: encoding these is what just failed, so
-				// let fmt render them instead of json.
-				zap.String("arguments", fmt.Sprint(query.Arguments)),
-				zap.Error(err),
-			)
-			continue
+		if timedOut {
+			db.timeoutsCounter.Inc()
 		}
-
 		logger.GetLogger().Error(
-			"Query failed even individually, reinserting it into the queue",
+			"A query failed even individually, reinserting it and the rest of the batch into the queue",
+			zap.Int("Untried", len(queries)-i-1),
+			zap.Duration("RetryAfter", db.backoff.extend()),
 			zap.Error(err),
 		)
-		db.batchMutex.Lock()
-		db.batch.QueuedQueries = append(db.batch.QueuedQueries, query)
-		db.batchMutex.Unlock()
+		db.requeue(queries[i:])
+		return
 	}
+	db.backoff.reset()
 }
 
-func (db *PostgresqlDatabase) copyBatch() *pgx.Batch {
+// dropIfUnwritable reports whether err means query can never be written,
+// and logs and counts the drop when so.
+func (db *PostgresqlDatabase) dropIfUnwritable(query queuedQuery, err error) bool {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && (strings.HasPrefix(pgErr.Code, "22") || strings.HasPrefix(pgErr.Code, "23")) {
+		db.dropsCounter.Inc()
+		logger.GetLogger().Error(
+			"Dropping a query that permanently fails with a data/integrity error, it would otherwise block every other queued query forever",
+			zap.String("sql", query.sql),
+			zap.String("sqlstate", pgErr.Code),
+			zap.Error(err),
+		)
+		return true
+	}
+
+	// An argument that fails to encode never reached the server, so
+	// there's no PgError to classify above - and because encoding is a
+	// pure function of the arguments, it will fail identically on every
+	// future flush. Requeuing such a row makes it immortal, and every
+	// flush that carries it then fails as a batch and comes back here to
+	// retry its queries one at a time; that is what wedged a vessel's
+	// writer for ten hours on a single NaN. WriteSingleValueMapped
+	// marshals a mapped value before queueing it, so this is the
+	// backstop for every other query - static_data's, and anything a
+	// future caller queues without that check.
+	var unsupportedValue *json.UnsupportedValueError
+	var unsupportedType *json.UnsupportedTypeError
+	var marshalerError *json.MarshalerError
+	if errors.As(err, &unsupportedValue) || errors.As(err, &unsupportedType) || errors.As(err, &marshalerError) {
+		db.dropsCounter.Inc()
+		logger.GetLogger().Error(
+			"Dropping a query whose arguments cannot be encoded, it would otherwise block every other queued query forever",
+			zap.String("sql", query.sql),
+			// Not zap.Any: encoding these is what just failed, so
+			// let fmt render them instead of json.
+			zap.String("arguments", fmt.Sprint(query.args)),
+			zap.Error(err),
+		)
+		return true
+	}
+	return false
+}
+
+// requeue puts queries back at the head of the queue, ahead of whatever
+// was written while they were being flushed. At the tail they would be
+// flushed after a newer write to the same key, and a mapped_data upsert
+// takes the value it is handed, not the newest, so the older one would end
+// up stored.
+func (db *PostgresqlDatabase) requeue(queries []queuedQuery) {
+	if len(queries) == 0 {
+		return
+	}
+	db.batchMutex.Lock()
+	merged := make([]queuedQuery, 0, len(queries)+len(db.queue))
+	merged = append(merged, queries...)
+	merged = append(merged, db.queue...)
+	db.queue = merged
+	db.batchMutex.Unlock()
+	db.batchSizeGauge.Add(float64(len(queries)))
+}
+
+// copyBatch takes everything queued, leaving the queue empty; nil when
+// there was nothing.
+func (db *PostgresqlDatabase) copyBatch() []queuedQuery {
 	db.batchMutex.Lock()
 	defer db.batchMutex.Unlock()
 
-	if db.batch.Len() < 1 {
+	if len(db.queue) < 1 {
 		return nil
 	}
 
 	db.flushesCounter.Inc()
-	queuedQueries := make([]*pgx.QueuedQuery, db.batch.Len())
-	copy(queuedQueries, db.batch.QueuedQueries)
-	db.batch.QueuedQueries = db.batch.QueuedQueries[:0]
+	queries := db.queue
+	db.queue = nil
 	db.batchSizeGauge.Set(0)
+	return queries
+}
 
-	batchToFlush := &pgx.Batch{QueuedQueries: queuedQueries}
-	return batchToFlush
+// pgxBatch is what a flush sends: the queries, then one outbox upsert per
+// bucket their rows mark. One pgx batch runs as one implicit transaction,
+// so a row never commits without its mark, nor a mark without its rows.
+func (db *PostgresqlDatabase) pgxBatch(queries []queuedQuery) *pgx.Batch {
+	batch := &pgx.Batch{}
+	queue := func(q queuedQuery) {
+		batch.Queue(q.sql, q.args...).Exec(func(ct pgconn.CommandTag) error {
+			if ct.RowsAffected() == 0 {
+				logger.GetLogger().Warn("0 rows affected",
+					zap.String("query", q.sql),
+					zap.Any("arguments", q.args),
+				)
+			}
+			return nil
+		})
+	}
+	for _, q := range queries {
+		queue(q)
+	}
+	for _, q := range outboxUpserts(queries) {
+		queue(q)
+	}
+	return batch
 }
 
 // copyRawBatch is copyBatch's counterpart for the raw_data COPY batch: nil

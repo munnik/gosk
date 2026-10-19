@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/message"
 )
@@ -32,7 +31,7 @@ func portStarboardMappings() []*config.ExpressionMappingConfig {
 func singleValueUpdate(path string, value float64, t time.Time) *message.Mapped {
 	return message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 		message.NewUpdate().WithSource(
-			*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType).WithUuid(uuid.Nil),
+			*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
 		).WithTimestamp(t).AddValue(
 			message.NewValue().WithPath(path).WithValue(value),
 		),

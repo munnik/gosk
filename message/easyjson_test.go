@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 // These mirror Mapped/Update/Source's own field layout exactly, but
@@ -15,10 +13,8 @@ import (
 // paths for them. Comparing output against these is the strongest
 // evidence the codegen changed nothing observable about the wire format.
 type plainSource struct {
-	Label        string    `json:"label"`
-	Type         string    `json:"type"`
-	Uuid         uuid.UUID `json:"uuid"`
-	TransferUuid uuid.UUID `json:"transferUuid"`
+	Label string `json:"label"`
+	Type  string `json:"type"`
 }
 
 type plainUpdate struct {
@@ -34,7 +30,7 @@ type plainMapped struct {
 }
 
 func toPlainSource(s Source) plainSource {
-	return plainSource{Label: s.Label, Type: s.Type, Uuid: s.Uuid, TransferUuid: s.TransferUuid}
+	return plainSource{Label: s.Label, Type: s.Type}
 }
 
 func toPlainUpdate(u Update) plainUpdate {
@@ -53,7 +49,7 @@ func sampleMapped() Mapped {
 	return *NewMapped().WithContext("vessels.urn:mrn:imo:mmsi:123456789").WithOrigin("vessels.urn:mrn:imo:mmsi:123456789").
 		AddUpdate(
 			NewUpdate().WithSource(
-				*NewSource().WithLabel("GPS").WithType("nmea0183").WithUuid(uuid.MustParse("11111111-2222-3333-4444-555555555555")).WithTransferUuid(uuid.MustParse("66666666-7777-8888-9999-aaaaaaaaaaaa")),
+				*NewSource().WithLabel("GPS").WithType("nmea0183"),
 			).WithTimestamp(time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC)).
 				// plain scalars only: Value.UnmarshalJSON's Decode dispatch
 				// (unrelated to this test) recognizes some map shapes -

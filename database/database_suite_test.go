@@ -1,9 +1,11 @@
 package database_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/munnik/gosk/config"
 	. "github.com/munnik/gosk/database"
 	. "github.com/onsi/ginkgo/v2"
@@ -48,6 +50,20 @@ var _ = BeforeSuite(func() {
 
 	Expect(db.UpgradeDatabase()).To(Succeed())
 })
+
+// lockingTransaction begins a transaction on a connection of its own, for a
+// spec that wants to hold a lock while the database under test flushes: a
+// flush that fails closes the pool, and pgxpool's Close waits until every
+// connection has been returned - which a transaction the spec holds on the
+// pool never would be.
+func lockingTransaction() pgx.Tx {
+	conn, err := pgx.Connect(context.Background(), server.url(testDatabaseName))
+	Expect(err).ShouldNot(HaveOccurred())
+	DeferCleanup(conn.Close, context.Background())
+	tx, err := conn.Begin(context.Background())
+	Expect(err).ShouldNot(HaveOccurred())
+	return tx
+}
 
 var _ = AfterSuite(func() {
 	// Run the down migrations exactly once, at the end, on a schema no spec

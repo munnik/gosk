@@ -6,7 +6,6 @@ import (
 	"math"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/munnik/gosk/message"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -24,14 +23,14 @@ var _ = Describe("Test database", Ordered, func() {
 
 	mappedStringValue := func() message.Mapped {
 		v := message.NewValue().WithPath("testingPath").WithValue("testValue")
-		s := message.NewSource().WithLabel("testingLabel").WithType("testingType").WithUuid(uuid.New())
+		s := message.NewSource().WithLabel("testingLabel").WithType("testingType")
 		u := message.NewUpdate().WithSource(*s).WithTimestamp(now).AddValue(v)
 		u.Timestamp = u.Timestamp.Add(-time.Duration(u.Timestamp.Nanosecond())) // resolution of time in postgresql is lower
 		return *message.NewMapped().WithOrigin("testingOrigin").WithContext("testingContext").AddUpdate(u)
 	}()
 	mappedNotificationValue := func() message.Mapped {
 		v := message.NewValue().WithPath("testingPath").WithValue(message.Notification{State: &f, Message: &m})
-		s := message.NewSource().WithLabel("testingLabel").WithType("testingType").WithUuid(uuid.New())
+		s := message.NewSource().WithLabel("testingLabel").WithType("testingType")
 		u := message.NewUpdate().WithSource(*s).WithTimestamp(now).AddValue(v)
 		u.Timestamp = u.Timestamp.Add(-time.Duration(u.Timestamp.Nanosecond())) // resolution of time in postgresql is lower
 		return *message.NewMapped().WithOrigin("testingOrigin").WithContext("testingContext").AddUpdate(u)
@@ -42,7 +41,7 @@ var _ = Describe("Test database", Ordered, func() {
 	// it's ever bundled with, forever.
 	mappedClearedValue := func() message.Mapped {
 		v := message.NewValue().WithPath("testingPath").WithValue(nil)
-		s := message.NewSource().WithLabel("testingLabel").WithType("testingType").WithUuid(uuid.New())
+		s := message.NewSource().WithLabel("testingLabel").WithType("testingType")
 		u := message.NewUpdate().WithSource(*s).WithTimestamp(now).AddValue(v)
 		u.Timestamp = u.Timestamp.Add(-time.Duration(u.Timestamp.Nanosecond())) // resolution of time in postgresql is lower
 		return *message.NewMapped().WithOrigin("testingOrigin").WithContext("testingContext").AddUpdate(u)
@@ -55,20 +54,20 @@ var _ = Describe("Test database", Ordered, func() {
 	// requeue the row forever - which both never wrote it and forced every
 	// later flush to retry its whole batch one query at a time.
 	mappedUnencodableValue := func(v any) message.Mapped {
-		value := message.NewValue().WithPath("testingPath").WithValue(v)
-		s := message.NewSource().WithLabel("testingLabel").WithType("testingType").WithUuid(uuid.New())
+		value := message.NewValue().WithPath("unencodablePath").WithValue(v)
+		s := message.NewSource().WithLabel("testingLabel").WithType("testingType")
 		u := message.NewUpdate().WithSource(*s).WithTimestamp(now).AddValue(value)
 		u.Timestamp = u.Timestamp.Add(-time.Duration(u.Timestamp.Nanosecond()))
 		return *message.NewMapped().WithOrigin("testingOrigin").WithContext("testingContext").AddUpdate(u)
 	}
 
-	countRows := func(sourceUuid uuid.UUID) func() (int, error) {
+	countRows := func(path string) func() (int, error) {
 		return func() (int, error) {
 			var count int
 			err := db.GetConnection().QueryRow(
 				context.Background(),
-				`SELECT count(*) FROM "mapped_data" WHERE "uuid" = $1`,
-				sourceUuid,
+				`SELECT count(*) FROM "mapped_data" WHERE "path" = $1`,
+				path,
 			).Scan(&count)
 			return count, err
 		}
@@ -121,6 +120,38 @@ var _ = Describe("Test database", Ordered, func() {
 		})
 	})
 
+	Describe("Write raw", func() {
+		countRaw := func() (int, error) {
+			var count int
+			err := db.GetConnection().QueryRow(context.Background(), `SELECT count(*) FROM "raw_data"`).Scan(&count)
+			return count, err
+		}
+
+		It("requeues a COPY that times out", func() {
+			// Lock the table so the COPY waits; the suite's batch length
+			// of 0 runs that flush inside WriteRaw, so the call returns
+			// when the flush has timed out - with the row back in the
+			// queue, where it used to be discarded.
+			tx := lockingTransaction()
+			defer tx.Rollback(context.Background())
+			_, err := tx.Exec(context.Background(), `LOCK TABLE "raw_data" IN ACCESS EXCLUSIVE MODE`)
+			Expect(err).ShouldNot(HaveOccurred())
+
+			db.SetTimeout(300 * time.Millisecond)
+			defer db.SetTimeout(5 * time.Second)
+			db.WriteRaw(message.NewRaw().WithConnector("testConnector").WithType("testType").WithValue([]byte{1, 2, 3}))
+			timedOut := time.Now()
+
+			Expect(tx.Rollback(context.Background())).To(Succeed())
+			Expect(countRaw()).To(BeZero())
+
+			db.SetTimeout(5 * time.Second)
+			db.Flush()
+			Expect(time.Since(timedOut)).To(BeNumerically(">=", 900*time.Millisecond), "the retry should have been held back")
+			Expect(countRaw()).To(Equal(1))
+		})
+	})
+
 	DescribeTable("Write mapped",
 		func(input *message.Mapped, expected message.Mapped) {
 			db.WriteMapped(input)
@@ -129,11 +160,11 @@ var _ = Describe("Test database", Ordered, func() {
 			// postgres asynchronously (on a background goroutine, once the
 			// batch crosses batch_flush_length - see database_suite_test.go).
 			// Poll instead of asserting immediately, or this races the flush.
-			mappedSelectQuery := `SELECT "time", "connector", "type", "context", "path", "value", "uuid", "origin" FROM "mapped_data" WHERE "uuid" = $1`
+			mappedSelectQuery := `SELECT "time", "connector", "type", "context", "path", "value", "origin" FROM "mapped_data" WHERE "context" = $1 AND "path" = $2`
 			var written *message.Mapped
 			var err error
 			Eventually(func() (int, error) {
-				rows, queryErr := db.GetConnection().Query(context.Background(), mappedSelectQuery, input.Updates[0].Source.Uuid)
+				rows, queryErr := db.GetConnection().Query(context.Background(), mappedSelectQuery, input.Context, input.Updates[0].Values[0].Path)
 				if queryErr != nil {
 					return 0, queryErr
 				}
@@ -151,7 +182,6 @@ var _ = Describe("Test database", Ordered, func() {
 						&written.Context,
 						&written.Updates[0].Values[0].Path,
 						&written.Updates[0].Values[0].Value,
-						&written.Updates[0].Source.Uuid,
 						&written.Origin,
 					); scanErr != nil {
 						return 0, scanErr
@@ -199,8 +229,8 @@ var _ = Describe("Test database", Ordered, func() {
 			db.WriteMapped(&dropped)
 			db.WriteMapped(&healthy)
 
-			Eventually(countRows(healthy.Updates[0].Source.Uuid), "3s", "10ms").Should(Equal(1))
-			Expect(countRows(dropped.Updates[0].Source.Uuid)()).To(Equal(0))
+			Eventually(countRows(healthy.Updates[0].Values[0].Path), "3s", "10ms").Should(Equal(1))
+			Expect(countRows(dropped.Updates[0].Values[0].Path)()).To(Equal(0))
 			Expect(dropsTotal()).To(BeNumerically("==", before+1))
 		},
 		Entry("a bare NaN", math.NaN()),

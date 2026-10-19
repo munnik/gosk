@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/mapper"
 	"github.com/munnik/gosk/message"
@@ -52,7 +51,6 @@ func BenchmarkJSONDoMap(b *testing.B) {
 				WithConnector("testingConnector").
 				WithType(config.JSONType).
 				WithValue(payload(c.extraKeys))
-			raw.Uuid = uuid.Nil
 			raw.Timestamp = time.Now()
 
 			b.SetBytes(int64(len(raw.Value)))

@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
@@ -261,7 +260,7 @@ func (m *AggregateMapper) Map(subscriber *nanomsg.Subscriber[message.Mapped], pu
 }
 
 func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) {
-	s := message.NewSource().WithLabel("signalk").WithType(m.protocol).WithUuid(uuid.Nil)
+	s := message.NewSource().WithLabel("signalk").WithType(m.protocol)
 	u := message.NewUpdate().WithSource(*s).WithTimestamp(time.Time{}) // initialize with empty timestamp instead of hidden now
 
 	overwrites := make(map[string]struct{}, 0)
@@ -290,7 +289,6 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 		if svm.Timestamp.After(u.Timestamp) { // take most recent timestamp from relevant data
 			u.WithTimestamp(svm.Timestamp)
 		}
-		u.Source.Uuid = svm.Source.Uuid // take the uuid from the message that updated this value
 		m.remember(historyMap, appended, svm, false)
 		arrived[svm.Path] = svm
 		for _, mapping := range mappings {

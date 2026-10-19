@@ -52,7 +52,7 @@ func (m *ModbusMapper) Map(subscriber *nanomsg.Subscriber[message.Raw], publishe
 
 func (m *ModbusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	result := message.NewMapped().WithContext(m.config.Context).WithOrigin(m.config.Context)
-	s := message.NewSource().WithLabel(r.Connector).WithType(m.protocol).WithUuid(r.Uuid)
+	s := message.NewSource().WithLabel(r.Connector).WithType(m.protocol)
 	u := message.NewUpdate().WithSource(*s).WithTimestamp(r.Timestamp)
 
 	if len(r.Value) <= protocol.MODBUS_HEADER_LENGTH {

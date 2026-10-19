@@ -57,7 +57,20 @@ of a seed.
 ## 1. Build and test gosk
 
 From this branch (`transfer-outbox`, which already contains
-`timescale-columnstore`):
+`timescale-columnstore`).
+
+Note what that inclusion means: a read of `the-production-server` on 2026-10-19
+found every `mapped_data` chunk uncompressed and no columnstore policy - the
+3.6x on the dataset is ZFS's compression, not TimescaleDB's. The columnstore
+migrations (`20260924151000`, `20260924152000`) therefore run for the first
+time on production with the first gosk process of this version, and enable
+the policies that compress chunks older than 60 days in the background from
+then on: a rewrite of some five terabytes, spread over the policy's runs, on
+a pool that was 87% full with 12 TiB held by snapshots. Reclaim snapshot
+space first (the pre-16-October snapshots hold the bulk of it, once the
+`seed-the-office-server` hold can go), and treat the columnstore as its own
+decision, not a side effect of this one: it can be left out by rebasing this
+branch without `timescale-columnstore`.
 
 ```sh
 cd ~/Code/gosk
@@ -338,7 +351,53 @@ ones are:
 `gosk_transfer_*_queued` metrics; `gosk_outbox_depth` is its replacement, and
 the "records transmitted" panel maps to `gosk_outbox_rows_sent_total`.
 
-### 4.4 Deploy and verify
+### 4.4 Two things the trial on the-test-server found (2026-10-19)
+
+Both stopped the migrations half way there, and both apply to production.
+
+**The hand-made views.** `public.mapped_data`, `public.mapped_data_all` and
+`api.mapped_data` were created by hand on the-production-server - no repository
+has them - and they name the `uuid` and `transfer_uuid` columns, so
+`20261017120200` fails with `cannot drop desired object(s) because other
+objects depend on them`. gosk cannot fix that itself: the views belong to
+`postgres` and `api`. The nix repo's container migration
+20261020100000_drop_uuid_from_views (in
+hosts/the-production-server/services/postgresql-17/migrations) recreates them
+without the two columns, keeping `security_barrier`, the
+owner and every customer role's grant. It has to be on the-production-server
+before the gosk deploy; it is harmless to the gosk that runs there now.
+Deploying it is a deploy of the-production-server with just that migration in the
+tree: the container's migrate unit re-runs, postgres itself does not
+restart. Check afterwards that the views have lost the columns and kept
+their grants:
+
+```sql
+SELECT attname FROM pg_attribute WHERE attrelid = 'api.mapped_data'::regclass AND attnum > 0 AND NOT attisdropped;
+SELECT relname, relacl FROM pg_class WHERE oid IN ('public.mapped_data'::regclass, 'public.mapped_data_all'::regclass, 'api.mapped_data'::regclass);
+```
+
+**The refresh jobs.** `20261017120100` failed twice with
+`tuple concurrently deleted`: dropping the old continuous aggregates races
+any refresh of *another* aggregate on the same hypertable - on the clone,
+the five-minute aggregate's historical refresh - over the invalidation log
+they share. golang-migrate marks the schema dirty on that, which stops
+every gosk unit. gosk now puts the migration back and tries again, up to
+ten times half a minute apart (`UpgradeDatabase`), which rides out a
+refresh that takes seconds; one that takes an hour it does not. So pause
+every continuous aggregate refresh job for the deploy, and start them
+again once the schema check below has passed:
+
+```sql
+SELECT alter_job(job_id, scheduled => false) FROM timescaledb_information.jobs
+  WHERE proc_name = 'policy_refresh_continuous_aggregate';
+SELECT pg_cancel_backend(pid) FROM pg_stat_activity
+  WHERE application_name LIKE 'Refresh Continuous Aggregate Policy%';
+-- afterwards (the transfer aggregates' own jobs are gone with them by then):
+SELECT alter_job(job_id, scheduled => true) FROM timescaledb_information.jobs
+  WHERE proc_name = 'policy_refresh_continuous_aggregate' AND NOT scheduled;
+```
+
+Run both as `postgres` (the `systemd-run` pattern below). Then:
 
 ```sh
 cd ~/Code/nix
@@ -633,12 +692,9 @@ September 2026 short).
   the record of why, but none of its code is needed now.
 - Release the ZFS snapshot from step 2 once a week of outbox operation has
   passed: `sudo zfs destroy tank/data/postgresql-17-gosk@before-outbox-<date>`.
-- The space the uuid columns took comes back as the columnstore policy
-  recompresses chunks it touches and as chunks expire. To reclaim it on
-  existing compressed chunks sooner, recompress them:
-  `SELECT decompress_chunk(c); SELECT compress_chunk(c);` per chunk, oldest
-  first, during a quiet hour - each one is a rewrite of that chunk and nothing
-  else.
+- The space the uuid columns took comes back as chunks are compressed by
+  the columnstore policy (see step 1: on production that happens for the
+  first time with this version) and as chunks expire.
 
 ## What to watch in the first week
 

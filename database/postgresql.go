@@ -473,6 +473,27 @@ func (db *PostgresqlDatabase) readSingleValueMapped(ctx context.Context, q query
 	return result, nil
 }
 
+// Migrations that lose a race with a TimescaleDB background job are tried
+// again this many times, this far apart. See UpgradeDatabase.
+const (
+	migrationAttempts   = 10
+	migrationRetryAfter = 30 * time.Second
+)
+
+// UpgradeDatabase runs the migrations that have not run yet.
+//
+// A migration can lose a race with a TimescaleDB background job: dropping
+// a continuous aggregate while a refresh of another aggregate on the same
+// hypertable is processing the invalidation log fails with "tuple
+// concurrently deleted", as 20261017120100 did on the the-test-server
+// trial, twice. Every migration here runs in one transaction, so such a
+// failure leaves the schema as it was - only golang-migrate has marked it
+// dirty, which stops every gosk process on the host until someone resets
+// it by hand. For that one error the migration is instead put back to the
+// version before it and run again after a pause, a bounded number of
+// times; a job's run is seconds to minutes, so the next attempt normally
+// finds the catalog quiet. Nothing else is retried: any other failure is
+// a migration that is wrong, and the dirty flag is right to stop things.
 func (db *PostgresqlDatabase) UpgradeDatabase() error {
 	if db.upgradeDone {
 		return nil
@@ -487,12 +508,49 @@ func (db *PostgresqlDatabase) UpgradeDatabase() error {
 		return err
 	}
 	defer m.Close()
-	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-		return err
+
+	for attempt := 1; ; attempt++ {
+		err := m.Up()
+		if err == nil || err == migrate.ErrNoChange {
+			break
+		}
+		if attempt >= migrationAttempts || !isConcurrentCatalogChange(err) {
+			return err
+		}
+		version, dirty, verr := m.Version()
+		if verr != nil || !dirty {
+			return err
+		}
+		// -1 is golang-migrate's "no version": the failed one was the first.
+		previous := -1
+		if p, perr := d.Prev(version); perr == nil {
+			previous = int(p)
+		}
+		logger.GetLogger().Warn(
+			"A migration lost a race with a TimescaleDB background job, trying it again",
+			zap.Uint("Migration", version),
+			zap.Int("Attempt", attempt),
+			zap.Duration("RetryAfter", migrationRetryAfter),
+			zap.Error(err),
+		)
+		if ferr := m.Force(previous); ferr != nil {
+			return fmt.Errorf("could not reset the migration state after %w: %v", err, ferr)
+		}
+		time.Sleep(migrationRetryAfter)
 	}
 
 	db.upgradeDone = true
 	return nil
+}
+
+// isConcurrentCatalogChange reports whether a migration failed because
+// another session changed the same catalog rows at the same time -
+// postgres's "tuple concurrently deleted" or "... updated", an internal
+// error (SQLSTATE XX000) with no code of its own, hence the text. The
+// driver's error wraps the server's, so the text is somewhere inside.
+func isConcurrentCatalogChange(err error) bool {
+	text := err.Error()
+	return strings.Contains(text, "tuple concurrently deleted") || strings.Contains(text, "tuple concurrently updated")
 }
 
 func (db *PostgresqlDatabase) DowngradeDatabase() error {

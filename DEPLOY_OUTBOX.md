@@ -62,10 +62,11 @@ From this branch (`transfer-outbox`, which already contains
 Note what that inclusion means: a read of `the-production-server` on 2026-10-19
 found every `mapped_data` chunk uncompressed and no columnstore policy - the
 3.6x on the dataset is ZFS's compression, not TimescaleDB's. The columnstore
-migrations (`20261017110100`, `20261017110200` - renumbered from their
+migrations (`20261017130100`, `20261017130200` - renumbered from their
 September dates on 2026-10-19, when the test trial showed that
-golang-migrate skips a version below the one master already recorded, and
-had skipped them) therefore run for the first time on production with the
+golang-migrate skips a version below the one a database already recorded,
+and had skipped them; they now come last) therefore run for the first time
+on production with the
 first gosk process of this version, and enable
 the policies that compress chunks older than 60 days in the background from
 then on: a rewrite of some five terabytes, spread over the policy's runs, on

@@ -46,7 +46,7 @@ var _ = Describe("Outbox", Ordered, func() {
 	BeforeAll(func() { db.SetOutbox(true) })
 	AfterAll(func() { db.SetOutbox(false) })
 	AfterEach(func() {
-		exec(`TRUNCATE "transfer_outbox", "mapped_data_matching_context", "mapped_data_other_context", "static_data"`)
+		exec(`TRUNCATE "transfer_outbox", "transfer_received", "mapped_data_matching_context", "mapped_data_other_context", "static_data"`)
 	})
 
 	It("marks the bucket of every row written, with the newest row time", func() {
@@ -185,6 +185,80 @@ var _ = Describe("Outbox", Ordered, func() {
 		Expect(pending()[0].Latest).To(BeTemporally("==", base.Add(time.Second)))
 	})
 
+	It("stores a delivery unless a newer generation of its bucket was stored already", func() {
+		name := func(n string) *message.Mapped {
+			// VesselInfo under the empty path, which mappedInsert stores
+			// as path "name" and also in static_data.name.
+			s := message.NewSource().WithLabel("ais").WithType("nmea0183")
+			u := message.NewUpdate().WithSource(*s).WithTimestamp(base.Add(time.Second)).AddValue(message.NewValue().WithPath("").WithValue(message.VesselInfo{Name: &n}))
+			return message.NewMapped().WithOrigin(origin).WithContext(origin).AddUpdate(u)
+		}
+		deliver := func(generation int64, value float64, vesselName string) bool {
+			stored, err := db.StoreDelivery(origin, base, generation, []*message.Mapped{mapped(base, "a", value), name(vesselName)})
+			Expect(err).ShouldNot(HaveOccurred())
+			return stored
+		}
+		valueOfA := func() float64 {
+			var v float64
+			Expect(db.GetConnection().QueryRow(context.Background(), `SELECT "value"::float FROM "mapped_data" WHERE "context" = $1 AND "path" = 'a'`, origin).Scan(&v)).To(Succeed())
+			return v
+		}
+		staticName := func() string {
+			var n string
+			Expect(db.GetConnection().QueryRow(context.Background(), `SELECT "name" FROM "static_data" WHERE "context" = $1`, origin).Scan(&n)).To(Succeed())
+			return n
+		}
+
+		Expect(deliver(3, 1, "Old")).To(BeTrue(), "an unseen bucket")
+		Expect(deliver(3, 2, "Old")).To(BeTrue(), "the same generation again: a retry, or the next chunk")
+		Expect(deliver(4, 3, "New")).To(BeTrue(), "a newer generation")
+		Expect(valueOfA()).To(Equal(3.0))
+		Expect(staticName()).To(Equal("New"))
+
+		// The delivery of the generation that was replaced turns up after
+		// all. Nothing of it may land - not the rows, and not the name
+		// that goes to static_data beside them - and there is nothing in
+		// memory about it: a receiver that was restarted in between, or
+		// another one on the same database, decides the same way.
+		Expect(deliver(3, 1, "Old")).To(BeFalse())
+		db.Flush()
+		Expect(valueOfA()).To(Equal(3.0))
+		Expect(staticName()).To(Equal("New"))
+
+		// Other buckets and origins are unaffected.
+		other := "vessels.urn:mrn:imo:mmsi:244000002"
+		stored, err := db.StoreDelivery(origin, base.Add(time.Minute), 1, []*message.Mapped{mapped(base.Add(time.Minute), "a", 9)})
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(stored).To(BeTrue())
+		otherRow := mapped(base, "a", 1)
+		otherRow.Origin, otherRow.Context = other, other
+		stored, err = db.StoreDelivery(other, base, 1, []*message.Mapped{otherRow})
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(stored).To(BeTrue())
+
+		// And none of it marked the outbox: these rows came through it.
+		Expect(pending()).To(BeEmpty())
+	})
+
+	It("stores a delivery whose static data postgres rejects, without the static data", func() {
+		// design.beam is a string here, which the mapped row's jsonb column
+		// takes and static_data's numeric beam column does not. The vessel
+		// stored the row and dropped the static update (see the retry
+		// spec above); the far end has to do the same, or the delivery
+		// would fail on every attempt and hold its bucket back for good.
+		stored, err := db.StoreDelivery(origin, base, 1, []*message.Mapped{mapped(base, "design.beam", 7.0), mapped(base.Add(time.Second), "design.beam", "wide"), mapped(base.Add(2*time.Second), "a", 1.0)})
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(stored).To(BeTrue())
+
+		var rows int
+		Expect(db.GetConnection().QueryRow(context.Background(), `SELECT count(*) FROM "mapped_data" WHERE "context" = $1`, origin).Scan(&rows)).To(Succeed())
+		Expect(rows).To(Equal(3))
+		var beam *float64
+		Expect(db.GetConnection().QueryRow(context.Background(), `SELECT "beam" FROM "static_data" WHERE "context" = $1`, origin).Scan(&beam)).To(Succeed())
+		Expect(beam).ToNot(BeNil(), "the numeric beam before it was accepted")
+		Expect(*beam).To(Equal(7.0))
+	})
+
 	It("ignores an acknowledgement that does not advance the bucket", func() {
 		write(base, "a")
 		write(base.Add(2*time.Second), "b")
@@ -267,15 +341,18 @@ var _ = Describe("Outbox", Ordered, func() {
 	})
 
 	It("summarises history per bucket on both ends alike, and enqueues what a range holds", func() {
-		// Written synchronously, as the far end does, so nothing is marked
+		// Stored as deliveries, as the far end does, so nothing is marked
 		// in the outbox by this.
-		rows := []*message.Mapped{}
 		for minute := 0; minute < 3; minute++ {
+			bucket := base.Add(time.Duration(minute) * time.Minute)
+			rows := []*message.Mapped{}
 			for _, path := range []string{"a", "b"} {
-				rows = append(rows, mapped(base.Add(time.Duration(minute)*time.Minute+time.Second), path, float64(minute)))
+				rows = append(rows, mapped(bucket.Add(time.Second), path, float64(minute)))
 			}
+			stored, err := db.StoreDelivery(origin, bucket, 1, rows)
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(stored).To(BeTrue())
 		}
-		Expect(db.WriteMappedNow(rows)).To(Succeed())
 		Expect(pending()).To(BeEmpty())
 
 		vessel, err := db.SelectDigest(origin, base, base.Add(time.Hour), OutboxBucket)

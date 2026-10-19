@@ -17,6 +17,7 @@ alike):
 | `20261017120000_transfer_outbox` | creates `transfer_outbox` |
 | `20261017120100_drop_transfer_requests` | drops `transfer_data`, `transfer_local_data` and its two continuous aggregates, `transfer_remote_data`, `transfer_log` |
 | `20261017120200_drop_uuid_columns` | drops `uuid` and `transfer_uuid` from both `mapped_data` tables and `uuid` from `raw_data`, recreates the `mapped_data` view |
+| `20261017120300_transfer_received` | creates `transfer_received`, the receiver's record of which generation of each bucket it stored; one row per bucket ever delivered, kept for good (empty on a vessel) |
 
 `DROP COLUMN` is a catalog change: measured on TimescaleDB 2.27.1 it took
 0.7 ms on three compressed chunks holding a million rows, and the rows stayed
@@ -330,7 +331,7 @@ ones are:
 | `gosk_outbox_deliveries_total`, `gosk_outbox_rows_sent_total` | vessel | what was sent |
 | `gosk_outbox_acked_total`, `gosk_outbox_stale_acks_total`, `gosk_outbox_retried_total` | vessel | acknowledgements applied, ignored, and deliveries sent again |
 | `gosk_outbox_received_total`, `gosk_outbox_stored_total`, `gosk_outbox_acks_sent_total`, `gosk_outbox_write_failures_total` | server | deliveries received, rows stored, acknowledgements sent, deliveries that could not be stored |
-| `gosk_outbox_stale_deliveries_total` | server | deliveries not stored because a newer generation of their bucket already was (a late row on the vessel reset the bucket while the old delivery was still on its way) |
+| `gosk_outbox_stale_deliveries_total` | server | deliveries not stored because a newer generation of their bucket already was (a late row on the vessel reset the bucket while the old delivery was still on its way); the record is `transfer_received` |
 | `gosk_outbox_digest_*_total` | server | seeding activity |
 
 `dashboards/vessel-health.py` has a `transfer_backlog` panel on the old
@@ -372,8 +373,9 @@ sudo systemd-run -q -M postgresql-17-gosk --pipe --wait \
   /bin/sh -c "psql -U postgres -d gosk -X -P pager=off -c \"SET search_path TO gosk, public; SELECT version, dirty FROM schema_migrations; SELECT column_name FROM information_schema.columns WHERE table_name = 'mapped_data_matching_context' ORDER BY ordinal_position; SELECT table_name FROM information_schema.tables WHERE table_name LIKE 'transfer%';\""
 ```
 
-Expected: version `20261017120200`, `dirty = f`, no `uuid` or
-`transfer_uuid` column, and `transfer_outbox` as the only `transfer%` table.
+Expected: version `20261017120300`, `dirty = f`, no `uuid` or
+`transfer_uuid` column, and `transfer_outbox` and `transfer_received` as the
+only `transfer%` tables.
 If `dirty` is `t`, a migration failed half way and every gosk unit is now
 refusing to start (`Dirty database version N`). Do not clear the flag first.
 In order:

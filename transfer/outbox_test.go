@@ -103,29 +103,6 @@ func TestGroupRowsKeepsANameAndAnMMSIRowApart(t *testing.T) {
 	}
 }
 
-func TestGenerationFenceRefusesAnOlderGenerationOnly(t *testing.T) {
-	bucket := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
-	var fence generationFence
-
-	if !fence.admits("vessels.1", bucket, 3) {
-		t.Fatal("an unseen bucket must be admitted")
-	}
-	fence.record("vessels.1", bucket, 3)
-	if !fence.admits("vessels.1", bucket, 3) {
-		t.Fatal("the same generation again (a retry, or the next chunk) must be admitted")
-	}
-	if !fence.admits("vessels.1", bucket, 4) {
-		t.Fatal("a newer generation must be admitted")
-	}
-	fence.record("vessels.1", bucket, 4)
-	if fence.admits("vessels.1", bucket, 3) {
-		t.Fatal("a delivery of a generation that was replaced must not be stored over the replacement")
-	}
-	if !fence.admits("vessels.1", bucket.Add(time.Minute), 1) || !fence.admits("vessels.2", bucket, 1) {
-		t.Fatal("the fence is per origin and bucket")
-	}
-}
-
 func TestCompareDigests(t *testing.T) {
 	day := func(d int) time.Time { return time.Date(2026, 9, d, 0, 0, 0, 0, time.UTC) }
 	offered := []database.DigestBucket{

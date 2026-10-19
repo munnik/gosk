@@ -342,6 +342,20 @@ func (db *PostgresqlDatabase) OutboxDepth() (map[string]int, error) {
 	return result, rows.Err()
 }
 
+const (
+	// receivedUpsertQuery records the generation of a bucket a delivery is
+	// being stored from, unless a newer one was recorded already - in
+	// which case it updates nothing, which is how StoreDelivery tells. The
+	// conflicting row is locked either way.
+	receivedUpsertQuery = `
+		INSERT INTO "transfer_received" ("origin", "bucket", "generation", "received")
+		VALUES ($1, $2, $3, now())
+		ON CONFLICT ("origin", "bucket") DO UPDATE SET
+			"generation" = EXCLUDED."generation",
+			"received" = now()
+		WHERE "transfer_received"."generation" <= EXCLUDED."generation"`
+)
+
 // ErrOutboxEntryGone is returned by ReadOutboxDelivery when the bucket is
 // no longer pending under the generation the caller holds: a late row has
 // reset it, or it was acknowledged and pruned. The caller simply picks it
@@ -537,8 +551,18 @@ func (db *PostgresqlDatabase) EarliestMapped(origin string) (time.Time, bool, er
 	return *earliest, true, nil
 }
 
-// WriteMappedNow writes mapped rows in one transaction and returns only
-// once they are committed, or with why they are not.
+// StoreDelivery writes the rows of a delivery of generation of the bucket
+// in one transaction and returns only once they are committed, or with why
+// they are not. It returns false, and stores nothing, when a newer
+// generation of the bucket has been stored already: a late row on the
+// vessel reset the bucket and the whole of it was sent and stored again
+// while this delivery was still on its way, and storing it now would put
+// its contents over the newer ones (see transfer_received's migration).
+// The generation is recorded in the same transaction as the rows, and
+// under the bucket's row lock, so what a restart or a second receiver on
+// the same database sees is exactly what was stored. The same generation
+// again is stored: that is a delivery sent again, or the next chunk of a
+// bucket too large for one.
 //
 // Everything else here queues and returns, which is right for a writer
 // whose job is to keep up with a sensor. It is wrong for anything that has
@@ -546,23 +570,32 @@ func (db *PostgresqlDatabase) EarliestMapped(origin string) (time.Time, bool, er
 // delivery to the vessel that sent it, and must not do so until the rows
 // are committed. It also must not share the queued batch, whose periodic
 // flush could pick these rows up, fail them quietly into the retry path,
-// and leave nothing for a later Flush to report.
+// and leave nothing for a later Flush to report. The static_data updates
+// that go with the rows (a vessel's name, say) are written in the same
+// transaction for the same reason, and so that a delivery that is not
+// stored leaves nothing behind - but one that postgres rejects is dropped
+// on its own, as the vessel's writer dropped it (retryIndividually), and
+// does not keep the rows it came with from being stored: the vessel has
+// those rows, it has already given up on that update, and a delivery it
+// could never get rid of would hold its bucket, and every row in it, back
+// forever.
 //
 // No outbox bookkeeping, whatever the configuration: these rows arrived
 // through the outbox, and marking them would send them back.
-func (db *PostgresqlDatabase) WriteMappedNow(mapped []*message.Mapped) error {
+func (db *PostgresqlDatabase) StoreDelivery(origin string, bucket time.Time, generation int64, mapped []*message.Mapped) (bool, error) {
 	batch := &pgx.Batch{}
+	var statics []queuedQuery
 	for _, m := range mapped {
 		for _, svm := range m.ToSingleValueMapped() {
-			query, arguments, ok := db.mappedInsert(svm)
+			query, arguments, static, ok := db.mappedInsert(svm)
 			if !ok {
 				continue
 			}
+			if static != nil {
+				statics = append(statics, *static)
+			}
 			batch.Queue(query, arguments...)
 		}
-	}
-	if batch.Len() == 0 {
-		return nil
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
@@ -570,12 +603,52 @@ func (db *PostgresqlDatabase) WriteMappedNow(mapped []*message.Mapped) error {
 
 	tx, err := db.GetConnection().Begin(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer tx.Rollback(ctx)
 
-	if err := tx.SendBatch(ctx, batch).Close(); err != nil {
-		return fmt.Errorf("could not write %d rows: %w", batch.Len(), err)
+	// Locks the bucket's row for the rest of the transaction, so that two
+	// receivers storing deliveries of the same bucket into one database
+	// take turns, and the one that goes second sees what the first
+	// recorded.
+	tag, err := tx.Exec(ctx, receivedUpsertQuery, origin, bucket, generation)
+	if err != nil {
+		return false, fmt.Errorf("could not record the delivery's generation: %w", err)
 	}
-	return tx.Commit(ctx)
+	if tag.RowsAffected() == 0 {
+		return false, nil
+	}
+
+	for _, static := range statics {
+		// A savepoint each: an error aborts the transaction otherwise,
+		// and a value postgres will not take (a string where
+		// static_data has a number) is to be dropped, not to fail the
+		// delivery.
+		savepoint, err := tx.Begin(ctx)
+		if err != nil {
+			return false, err
+		}
+		if _, err := savepoint.Exec(ctx, static.sql, static.args...); err != nil {
+			if !db.dropIfUnwritable(static, err) {
+				return false, fmt.Errorf("could not update static data: %w", err)
+			}
+			if err := savepoint.Rollback(ctx); err != nil {
+				return false, fmt.Errorf("could not roll back a dropped static data update: %w", err)
+			}
+			continue
+		}
+		if err := savepoint.Commit(ctx); err != nil {
+			return false, err
+		}
+	}
+
+	if batch.Len() > 0 {
+		if err := tx.SendBatch(ctx, batch).Close(); err != nil {
+			return false, fmt.Errorf("could not write %d rows: %w", batch.Len(), err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
 }

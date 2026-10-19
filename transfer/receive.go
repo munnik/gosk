@@ -3,7 +3,6 @@ package transfer
 import (
 	"fmt"
 	"sync"
-	"time"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/munnik/gosk/config"
@@ -41,15 +40,11 @@ type Receiver struct {
 	// concurrently (SetOrderMatters(false)) and the write has to complete
 	// before the acknowledgement.
 	writeMutex sync.Mutex
-	// fence keeps a delivery of a bucket generation that has since been
-	// superseded from being stored over the newer one.
-	fence generationFence
-
-	received prometheus.Counter
-	stale    prometheus.Counter
-	stored   prometheus.Counter
-	acked    prometheus.Counter
-	failed   prometheus.Counter
+	received   prometheus.Counter
+	stale      prometheus.Counter
+	stored     prometheus.Counter
+	acked      prometheus.Counter
+	failed     prometheus.Counter
 }
 
 func NewReceiver(c *config.TransferConfig) *Receiver {
@@ -100,28 +95,6 @@ func (r *Receiver) deliveryReceived(c paho.Client, m paho.Message) {
 	r.writeMutex.Lock()
 	defer r.writeMutex.Unlock()
 
-	if !r.fence.admits(delivery.Origin, delivery.Bucket, delivery.Generation) {
-		// A delivery of a generation this bucket has moved past: a
-		// late row on the vessel reset the bucket, the whole of it was
-		// sent again under the new generation and stored here, and now
-		// the old delivery turns up after all (paho hands deliveries to
-		// this handler concurrently, and the broker redelivers what was
-		// not acknowledged at the time). Storing it would put whatever
-		// the old delivery had for a row over what the new one had, and
-		// the vessel, which is done with this generation, would never
-		// send the new one again. Not acknowledged either: the vessel
-		// ignores an acknowledgement of a generation it no longer has.
-		r.stale.Inc()
-		logger.GetLogger().Info(
-			"Not storing an outbox delivery of a bucket generation that a newer one has replaced",
-			zap.String("Delivery", delivery.Delivery.String()),
-			zap.String("Origin", delivery.Origin),
-			zap.Time("Bucket", delivery.Bucket),
-			zap.Int64("Generation", delivery.Generation),
-		)
-		return
-	}
-
 	deltas := make([]*message.Mapped, 0, len(delivery.Deltas))
 	rows := 0
 	for i := range delivery.Deltas {
@@ -131,7 +104,8 @@ func (r *Receiver) deliveryReceived(c paho.Client, m paho.Message) {
 		}
 	}
 
-	if err := r.db.WriteMappedNow(deltas); err != nil {
+	stored, err := r.db.StoreDelivery(delivery.Origin, delivery.Bucket, delivery.Generation, deltas)
+	if err != nil {
 		r.failed.Inc()
 		logger.GetLogger().Warn(
 			"Could not store an outbox delivery, not acknowledging it",
@@ -144,8 +118,28 @@ func (r *Receiver) deliveryReceived(c paho.Client, m paho.Message) {
 		// its retry interval, which is exactly what should happen.
 		return
 	}
+	if !stored {
+		// A delivery of a generation this bucket has moved past: a late
+		// row on the vessel reset the bucket, the whole of it was sent
+		// again under the new generation and stored here, and now the
+		// old delivery turns up after all (paho hands deliveries to this
+		// handler concurrently, and the broker redelivers what was not
+		// acknowledged at the time). Storing it would put whatever the
+		// old delivery had for a row over what the new one had, and the
+		// vessel, which is done with this generation, would never send
+		// the new one again. Not acknowledged either: the vessel ignores
+		// an acknowledgement of a generation it no longer has.
+		r.stale.Inc()
+		logger.GetLogger().Info(
+			"Not storing an outbox delivery of a bucket generation that a newer one has replaced",
+			zap.String("Delivery", delivery.Delivery.String()),
+			zap.String("Origin", delivery.Origin),
+			zap.Time("Bucket", delivery.Bucket),
+			zap.Int64("Generation", delivery.Generation),
+		)
+		return
+	}
 	r.stored.Add(float64(rows))
-	r.fence.record(delivery.Origin, delivery.Bucket, delivery.Generation)
 
 	if r.publish != nil {
 		for _, d := range deltas {
@@ -188,70 +182,4 @@ func (r *Receiver) deliveryReceived(c paho.Client, m paho.Message) {
 		zap.Time("Through", delivery.Through),
 		zap.Int("Rows", rows),
 	)
-}
-
-const (
-	// fenceRemember is how long the fence keeps a bucket's generation
-	// after the last delivery of it. A superseded delivery that is still
-	// on its way is minutes behind the one that replaced it, not days: it
-	// was published before the reset, and the sender's retry interval
-	// bounds how long it waits for the acknowledgement that the reset
-	// makes it ignore. What is forgotten is simply unfenced, as every
-	// bucket was before.
-	fenceRemember   = 24 * time.Hour
-	fencePruneEvery = time.Hour
-)
-
-// generationFence remembers, per bucket, the newest generation stored, so
-// that a delivery of an older one is recognised. The sender's
-// acknowledgement check keeps a stale acknowledgement from moving its
-// watermark; this is the same check on the storing side. In memory only:
-// after a restart the fence starts empty, and what the broker held back
-// for this receiver is redelivered in the order it was published, which is
-// old generation before new.
-type generationFence struct {
-	mutex     sync.Mutex
-	seen      map[fenceKey]fenceEntry
-	lastPrune time.Time
-}
-
-type fenceKey struct {
-	origin string
-	bucket int64
-}
-
-type fenceEntry struct {
-	generation int64
-	at         time.Time
-}
-
-// admits reports whether a delivery of generation may be stored: it may
-// unless a newer generation of the bucket already was. The same generation
-// again is fine - that is a delivery sent again, or the next chunk of a
-// bucket too large for one.
-func (f *generationFence) admits(origin string, bucket time.Time, generation int64) bool {
-	f.mutex.Lock()
-	defer f.mutex.Unlock()
-	entry, ok := f.seen[fenceKey{origin: origin, bucket: bucket.UnixNano()}]
-	return !ok || generation >= entry.generation
-}
-
-// record notes that generation of the bucket was stored.
-func (f *generationFence) record(origin string, bucket time.Time, generation int64) {
-	f.mutex.Lock()
-	defer f.mutex.Unlock()
-	if f.seen == nil {
-		f.seen = make(map[fenceKey]fenceEntry)
-		f.lastPrune = time.Now()
-	}
-	now := time.Now()
-	f.seen[fenceKey{origin: origin, bucket: bucket.UnixNano()}] = fenceEntry{generation: generation, at: now}
-	if now.Sub(f.lastPrune) > fencePruneEvery {
-		for k, e := range f.seen {
-			if now.Sub(e.at) > fenceRemember {
-				delete(f.seen, k)
-			}
-		}
-		f.lastPrune = now
-	}
 }

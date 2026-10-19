@@ -192,13 +192,17 @@ func (db *PostgresqlDatabase) WriteMapped(mapped *message.Mapped) {
 
 func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapped) {
 	db.writesCounter.Inc()
-	query, arguments, ok := db.mappedInsert(svm)
+	query, arguments, static, ok := db.mappedInsert(svm)
 	if !ok {
 		return
 	}
 
 	queued := queuedQuery{sql: query, args: arguments}
 	db.batchMutex.Lock()
+	if static != nil {
+		// Ahead of the row, as it always was.
+		db.queue = append(db.queue, *static)
+	}
 	// The row's bucket travels with the row from here on, so that it is
 	// marked in the same transaction as the row whichever way the row ends
 	// up being written (see pgxBatch and retryIndividually): a row can
@@ -211,13 +215,20 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 	db.batchMutex.Unlock()
 
 	db.batchSizeGauge.Inc()
+	if static != nil {
+		db.batchSizeGauge.Inc()
+	}
 	db.flushIfNeeded(length)
 }
 
 // mappedInsert turns one mapped row into the INSERT that stores it, or
-// reports that the row cannot be stored. It also queues the static_data
-// update a vessel's name, mmsi and dimensions are kept in.
-func (db *PostgresqlDatabase) mappedInsert(svm message.SingleValueMapped) (query string, arguments []any, ok bool) {
+// reports that the row cannot be stored. static, when not nil, is the
+// static_data update that goes with it - a vessel's name, mmsi and
+// dimensions are kept there as well. Nothing is queued or written here:
+// the caller decides where both go, which lets StoreDelivery keep them in
+// one transaction with its fence instead of letting a rejected delivery's
+// name slip through the writer's queue.
+func (db *PostgresqlDatabase) mappedInsert(svm message.SingleValueMapped) (query string, arguments []any, static *queuedQuery, ok bool) {
 	path := svm.Path
 	if path == "" {
 		switch v := svm.Value.(type) {
@@ -236,8 +247,10 @@ func (db *PostgresqlDatabase) mappedInsert(svm message.SingleValueMapped) (query
 		}
 	}
 
-	// run this before quoting the string
-	db.updateStaticData(svm.Context, path, svm.Value)
+	// before quoting the string
+	if sql, value, ok := staticDataQuery(path, svm.Value); ok {
+		static = &queuedQuery{sql: sql, args: []any{svm.Context, value}}
+	}
 
 	if svm.Value == nil {
 		// A bare nil is sent to postgres as SQL NULL, which violates the
@@ -278,7 +291,7 @@ func (db *PostgresqlDatabase) mappedInsert(svm message.SingleValueMapped) (query
 			zap.String("source.type", svm.Source.Type),
 			zap.Error(err),
 		)
-		return "", nil, false
+		return "", nil, nil, false
 	}
 
 	table := "mapped_data_matching_context"
@@ -287,10 +300,13 @@ func (db *PostgresqlDatabase) mappedInsert(svm message.SingleValueMapped) (query
 	}
 	query = fmt.Sprintf(mappedInsertQuery, table)
 	arguments = []any{svm.Timestamp, svm.Source.Label, svm.Source.Type, svm.Context, path, svm.Value, svm.Origin}
-	return query, arguments, true
+	return query, arguments, static, true
 }
 
-func (db *PostgresqlDatabase) updateStaticData(context, path string, value any) {
+// staticDataQuery is the static_data upsert for a mapped value whose path
+// is kept there, taking the context and the value as its two arguments,
+// or ok false for any other path.
+func staticDataQuery(path string, value any) (query string, argument any, ok bool) {
 	var v any
 	var column string
 	switch path {
@@ -325,24 +341,18 @@ func (db *PostgresqlDatabase) updateStaticData(context, path string, value any) 
 		}
 	}
 	if column == "" {
-		return // column is not set, so the path is not static data
+		return "", nil, false // the path is not static data
 	}
 	if v == nil {
 		logger.GetLogger().Warn("Could not update static data, check path and value",
 			zap.String("path", path),
 			zap.Any("value", value),
 		)
-		return
+		return "", nil, false
 	}
 
-	query := fmt.Sprintf(`INSERT INTO "static_data" ("context", "%s") VALUES ($1, $2) ON CONFLICT("context") DO UPDATE SET "%s" = EXCLUDED."%s";`, column, column, column)
-	db.batchMutex.Lock()
-	db.queue = append(db.queue, queuedQuery{sql: query, args: []any{context, v}})
-	length := len(db.queue)
-	db.batchMutex.Unlock()
-
-	db.batchSizeGauge.Inc()
-	db.flushIfNeeded(length)
+	query = fmt.Sprintf(`INSERT INTO "static_data" ("context", "%s") VALUES ($1, $2) ON CONFLICT("context") DO UPDATE SET "%s" = EXCLUDED."%s";`, column, column, column)
+	return query, v, true
 }
 
 func (db *PostgresqlDatabase) ReadMostRecentMapped(fromTime time.Time) ([]*message.Mapped, error) {

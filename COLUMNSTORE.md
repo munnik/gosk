@@ -47,7 +47,7 @@ That was wrong for every database that already ran master's
 `20261015120000`: golang-migrate applies only versions above the current
 one, so on the-test-server's clone of production (2026-10-19) the chain went
 from there straight to the outbox migrations and these were skipped without
-a word - while a fresh database ran them. Numbered `20261017130000`-`110200`
+a word - while a fresh database ran them. Numbered `20261017130000`-`130200`
 they sort after everything else on the branch and run everywhere - also on
 a database that took the outbox migrations before they were renumbered. A
 database that ran them under the old numbers runs them again, which they

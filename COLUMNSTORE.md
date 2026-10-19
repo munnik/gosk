@@ -30,15 +30,27 @@ Five commits, four of them migrations:
    `counts_per_uuid` map to `transfer_log`. Application change, no schema
    impact. The MQTT protocol is untouched; only what is written to the log
    table shrinks.
-2. **`20260924150000_transfer_log_retention`** - 1-day chunks and a 30-day
-   retention policy on `transfer_log`.
-3. **`20260924150500_disable_bulk_decompression`** - a database-level setting
+2. `transfer_log` retention: 1-day chunks and a 30-day retention policy.
+   Master got its own version of this as `20261015120000`, and the
+   transfer-outbox branch drops the table altogether, so the one this branch
+   carried is gone.
+3. **`20261017110000_disable_bulk_decompression`** - a database-level setting
    that works around a TimescaleDB crash. Must run before the next two.
-4. **`20260924151000_columnstore_mapped_data`** - columnstore on both
+4. **`20261017110100_columnstore_mapped_data`** - columnstore on both
    `mapped_data` hypertables, after 60 days.
-5. **`20260924152000_columnstore_continuous_aggregates`** - columnstore on the
+5. **`20261017110200_columnstore_continuous_aggregates`** - columnstore on the
    two continuous aggregates, after 200 days. Guarded, so it is a no-op on a
    vessel node where those aggregates do not exist.
+
+The three were first numbered `20260924*`, after the day they were written.
+That was wrong for every database that already ran master's
+`20261015120000`: golang-migrate applies only versions above the current
+one, so on the-test-server's clone of production (2026-10-19) the chain went
+from there straight to the outbox migrations and these were skipped without
+a word - while a fresh database ran them. Numbered `20261017110000`-`110200`
+they sort between master's newest and the outbox's, and run everywhere. A
+database that ran them under the old numbers runs them again, which they
+are written to allow (`if_not_exists`, settings that are the same twice).
 
 ## Database structure changes
 
@@ -182,7 +194,7 @@ Reported upstream as
 Still present in 2.30.1, the current release, so waiting for an upgrade is not
 a plan.
 
-`20260924150500_disable_bulk_decompression` works around it. With
+`20261017110000_disable_bulk_decompression` works around it. With
 `timescaledb.enable_bulk_decompression = off` the same statement completes and
 returns the correct rows. Measured cost of that setting: ~7-8% on the
 reconciliation and aggregate-refresh shapes, against ~23x less data to read.

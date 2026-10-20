@@ -536,6 +536,14 @@ type PostgresqlConfig struct {
 	// on the mapped writer of a vessel and nowhere else; see
 	// database/outbox.go.
 	Outbox bool `mapstructure:"outbox"`
+	// ExternalMigrations says the schema is migrated by something else -
+	// a dedicated unit that runs before any gosk process starts - and this
+	// process must only check that the database is at the newest migration
+	// it embeds, never migrate it itself. A gosk process that migrates
+	// lazily can be stopped by a deploy halfway through, which leaves the
+	// version dirty and every gosk process on the host refusing to start;
+	// see database.UpgradeDatabase.
+	ExternalMigrations bool `mapstructure:"external_migrations"`
 }
 
 func defaultPostgresqlConfig() PostgresqlConfig {

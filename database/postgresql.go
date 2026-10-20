@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	stdfs "io/fs"
 	"strconv"
 	"strings"
 	"sync"
@@ -63,7 +64,9 @@ type PostgresqlDatabase struct {
 	flushMutex      sync.Mutex
 	batchMutex      sync.Mutex
 	upgradeDone     bool
-	databaseTimeout time.Duration
+	// See config.PostgresqlConfig.ExternalMigrations.
+	externalMigrations bool
+	databaseTimeout    time.Duration
 	// backoff paces the flushes after one that failed as a whole, see
 	// retryBackoff. One for both queues: a writer process fills one or
 	// the other, never both (see cmd/write.go).
@@ -81,18 +84,19 @@ type PostgresqlDatabase struct {
 
 func NewPostgresqlDatabase(c *config.PostgresqlConfig) *PostgresqlDatabase {
 	result := &PostgresqlDatabase{
-		url:             c.URLString,
-		batchSize:       c.BatchFlushLength,
-		lastFlush:       time.Now(),
-		upgradeDone:     false,
-		databaseTimeout: c.Timeout,
-		outboxEnabled:   c.Outbox,
-		flushesCounter:  promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_flushes_total", Help: "total number batches flushed"}),
-		lastFlushGauge:  promauto.NewGauge(prometheus.GaugeOpts{Name: "gosk_psql_last_flush_time", Help: "last db flush"}),
-		writesCounter:   promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_writes_total", Help: "total number of deltas added to queue"}),
-		timeoutsCounter: promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_timeouts_total", Help: "total number timeouts"}),
-		dropsCounter:    promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_drops_total", Help: "total number of deltas dropped because they can never be written"}),
-		batchSizeGauge:  promauto.NewGauge(prometheus.GaugeOpts{Name: "gosk_psql_batch_length", Help: "number of deltas in current batch"}),
+		url:                c.URLString,
+		batchSize:          c.BatchFlushLength,
+		lastFlush:          time.Now(),
+		upgradeDone:        false,
+		externalMigrations: c.ExternalMigrations,
+		databaseTimeout:    c.Timeout,
+		outboxEnabled:      c.Outbox,
+		flushesCounter:     promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_flushes_total", Help: "total number batches flushed"}),
+		lastFlushGauge:     promauto.NewGauge(prometheus.GaugeOpts{Name: "gosk_psql_last_flush_time", Help: "last db flush"}),
+		writesCounter:      promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_writes_total", Help: "total number of deltas added to queue"}),
+		timeoutsCounter:    promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_timeouts_total", Help: "total number timeouts"}),
+		dropsCounter:       promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_psql_drops_total", Help: "total number of deltas dropped because they can never be written"}),
+		batchSizeGauge:     promauto.NewGauge(prometheus.GaugeOpts{Name: "gosk_psql_batch_length", Help: "number of deltas in current batch"}),
 	}
 	go func() {
 		ticker := time.NewTicker(c.BatchFlushInterval)
@@ -509,6 +513,22 @@ func (db *PostgresqlDatabase) UpgradeDatabase() error {
 	}
 	defer m.Close()
 
+	if db.externalMigrations {
+		newest, err := newestMigration(d)
+		if err != nil {
+			return err
+		}
+		version, dirty, err := m.Version()
+		if err != nil && !errors.Is(err, migrate.ErrNilVersion) {
+			return err
+		}
+		if err := checkSchemaVersion(version, dirty, errors.Is(err, migrate.ErrNilVersion), newest); err != nil {
+			return err
+		}
+		db.upgradeDone = true
+		return nil
+	}
+
 	for attempt := 1; ; attempt++ {
 		err := m.Up()
 		if err == nil || err == migrate.ErrNoChange {
@@ -540,6 +560,49 @@ func (db *PostgresqlDatabase) UpgradeDatabase() error {
 	}
 
 	db.upgradeDone = true
+	return nil
+}
+
+// newestMigration returns the version of the last migration embedded in
+// this binary.
+func newestMigration(d interface {
+	First() (uint, error)
+	Next(uint) (uint, error)
+}) (uint, error) {
+	version, err := d.First()
+	if err != nil {
+		return 0, err
+	}
+	for {
+		next, err := d.Next(version)
+		if err != nil {
+			// golang-migrate's sources report the end as a not-exist error.
+			if errors.Is(err, stdfs.ErrNotExist) {
+				return version, nil
+			}
+			return 0, err
+		}
+		version = next
+	}
+}
+
+// checkSchemaVersion is what a gosk process with external migrations does
+// instead of migrating: it accepts only a clean database at exactly the
+// newest migration it embeds. Behind means the migration unit has not run
+// (or not finished) yet; ahead means this binary is older than the schema,
+// and writing through it could put rows in a shape the schema no longer
+// has. Either way the process stops, and systemd starts it again later.
+func checkSchemaVersion(version uint, dirty, none bool, newest uint) error {
+	switch {
+	case none:
+		return fmt.Errorf("the database has no schema version yet, expected %d: its migrations are applied externally and have not run", newest)
+	case dirty:
+		return fmt.Errorf("the database schema is dirty at version %d: a migration was interrupted, fix it and force the version", version)
+	case version < newest:
+		return fmt.Errorf("the database schema is at version %d, this gosk needs %d: its migrations are applied externally and have not run yet", version, newest)
+	case version > newest:
+		return fmt.Errorf("the database schema is at version %d, newer than this gosk's %d: deploy a gosk that knows it", version, newest)
+	}
 	return nil
 }
 

@@ -142,10 +142,17 @@ type codec struct {
 // endian 0xFD2FB528. JSON cannot begin with these bytes.
 var zstdMagic = []byte{0x28, 0xb5, 0x2f, 0xfd}
 
+// maxDecodedPayload bounds what one message may decode to. The far end
+// decodes whatever any vessel publishes, the broker sets no size limit of
+// its own, and a zstd frame of a few kilobytes can expand to gigabytes. A
+// delivery of max_rows_per_delivery (20000 by default) rows is a few
+// megabytes of JSON, so this leaves a wide margin.
+const maxDecodedPayload = 64 << 20
+
 func newCodec(compress bool) *codec {
-	// Both errors are for options this passes none of.
+	// The errors are for options that are invalid, which these are not.
 	encoder, _ := zstd.NewWriter(nil)
-	decoder, _ := zstd.NewReader(nil)
+	decoder, _ := zstd.NewReader(nil, zstd.WithDecoderMaxMemory(maxDecodedPayload))
 	return &codec{encoder: encoder, decoder: decoder, compress: compress}
 }
 
@@ -165,6 +172,9 @@ func (c *codec) encode(v any) ([]byte, error) {
 
 // decode unmarshals a payload, decompressing it first if it is compressed.
 func (c *codec) decode(payload []byte, v any) error {
+	if len(payload) > maxDecodedPayload {
+		return fmt.Errorf("payload of %d bytes is larger than %d", len(payload), maxDecodedPayload)
+	}
 	if bytes.HasPrefix(payload, zstdMagic) {
 		plain, err := c.decoder.DecodeAll(payload, nil)
 		if err != nil {

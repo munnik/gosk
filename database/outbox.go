@@ -36,6 +36,11 @@ const (
 	// acknowledged. $3 is the earliest and $4 the latest row time written
 	// into the bucket by one flush.
 	//
+	// A new generation is always above the bucket's previous one and at
+	// least the current time, so it also beats whatever the far end recorded
+	// before this database was restored from a snapshot (see
+	// 20261020120000_outbox_generation_survives_restore).
+	//
 	// The CASE is the late-row rule: a row no newer than something already
 	// sent from this bucket cannot be sent as "what is newer than
 	// acked_through", so the bucket starts over - a fresh generation, and
@@ -52,7 +57,7 @@ const (
 			"latest" = GREATEST("transfer_outbox"."latest", EXCLUDED."latest"),
 			"generation" = CASE
 				WHEN "transfer_outbox"."sent_through" IS NOT NULL AND $3 <= "transfer_outbox"."sent_through"
-				THEN nextval('transfer_outbox_generation_seq')
+				THEN GREATEST("transfer_outbox_next_generation"(), "transfer_outbox"."generation" + 1)
 				ELSE "transfer_outbox"."generation" END,
 			"sent_through" = CASE
 				WHEN "transfer_outbox"."sent_through" IS NOT NULL AND $3 <= "transfer_outbox"."sent_through"
@@ -102,7 +107,7 @@ const (
 		GROUP BY 2
 		ORDER BY 2
 		ON CONFLICT ("origin", "bucket") DO UPDATE SET
-			"generation" = nextval('transfer_outbox_generation_seq'),
+			"generation" = GREATEST("transfer_outbox_next_generation"(), "transfer_outbox"."generation" + 1),
 			"sent_through" = NULL,
 			"acked_through" = NULL,
 			"latest" = GREATEST("transfer_outbox"."latest", EXCLUDED."latest")`
@@ -400,10 +405,12 @@ func (db *PostgresqlDatabase) ReadOutboxDelivery(entry OutboxEntry, limit int) (
 		return nil, time.Time{}, err
 	}
 	if len(rows) == 0 {
-		// Nothing newer than acked_through after all - latest ran ahead
-		// of the rows, which a seeding run's upper bound can do. Record
-		// latest as sent so the acknowledgement of an empty delivery
-		// settles the bucket.
+		// Nothing newer than acked_through after all: latest is ahead of
+		// the rows. Every path that sets latest does so from rows it
+		// commits with it, so the rows were deleted since - the
+		// disk-pressure trim drops whole chunks. Record latest as sent so
+		// the acknowledgement of an empty delivery settles the bucket;
+		// the sender (transfer/send.go) reports it as lost data.
 		through = entry.Latest
 	} else if len(rows) > limit {
 		cut := rows[limit].Timestamp

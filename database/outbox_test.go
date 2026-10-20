@@ -397,4 +397,90 @@ var _ = Describe("Outbox", Ordered, func() {
 		Expect(ok).To(BeTrue())
 		Expect(earliest).To(BeTemporally("==", base.Add(time.Second)))
 	})
+
+	It("settles a bucket whose unacknowledged rows were deleted with an empty delivery, through its latest", func() {
+		// What the disk-pressure trim does to a vessel that was offline:
+		// the chunk goes, the outbox entry stays.
+		write(base.Add(5*time.Second), "a")
+		write(base.Add(20*time.Second), "b")
+		Eventually(pending, "3s", "10ms").Should(HaveLen(1))
+		entry := pending()[0]
+		exec(`DELETE FROM "mapped_data_matching_context"`)
+
+		rows, through, err := db.ReadOutboxDelivery(entry, 100)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(rows).To(BeEmpty())
+		Expect(through).To(BeTemporally("==", entry.Latest))
+
+		// The empty delivery's acknowledgement settles it rather than
+		// leaving it pending forever; the sender is what reports the loss.
+		applied, err := db.AckOutbox(entry.Origin, entry.Bucket, entry.Generation, through)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(applied).To(BeTrue())
+		Expect(pending()).To(BeEmpty())
+	})
+
+	It("gives a bucket reset after a restore a generation the far end accepts, and keeps the old one fenced", func() {
+		write(base, "a")
+		Eventually(pending, "3s", "10ms").Should(HaveLen(1))
+		entry := pending()[0]
+		_, _, err := db.ReadOutboxDelivery(entry, 100)
+		Expect(err).ShouldNot(HaveOccurred())
+
+		// Before the snapshot is taken this is all the source has. The
+		// incarnation that keeps running after it resets the bucket once
+		// more and the far end stores that newer generation.
+		snapshotGeneration := entry.Generation
+		laterGeneration := snapshotGeneration + 1
+		stored, err := db.StoreDelivery(origin, base, laterGeneration, []*message.Mapped{mapped(base, "a", 2.0)})
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(stored).To(BeTrue())
+
+		// The source is restored from the snapshot: its sequence and its
+		// outbox row go back to what they were.
+		exec(`SELECT setval('transfer_outbox_generation_seq', 1)`)
+		exec(`UPDATE "transfer_outbox" SET "generation" = $1`, snapshotGeneration)
+		time.Sleep(5 * time.Millisecond)
+
+		// A late row resets the bucket on the restored source.
+		write(base, "late")
+		Eventually(func() int64 {
+			entries := pending()
+			if len(entries) != 1 {
+				return 0
+			}
+			return entries[0].Generation
+		}, "3s", "10ms").Should(BeNumerically(">", laterGeneration))
+		reset := pending()[0]
+
+		stored, err = db.StoreDelivery(origin, base, reset.Generation, []*message.Mapped{mapped(base, "late", 3.0)})
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(stored).To(BeTrue(), "the restored source's delivery was fenced as stale")
+
+		// A delivery the old incarnation still had in flight stays out.
+		stored, err = db.StoreDelivery(origin, base, laterGeneration, []*message.Mapped{mapped(base, "a", 4.0)})
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(stored).To(BeFalse())
+	})
+
+	It("never hands one bucket a generation at or below its previous one, even with the clock behind", func() {
+		write(base, "a")
+		Eventually(pending, "3s", "10ms").Should(HaveLen(1))
+		entry := pending()[0]
+		_, _, err := db.ReadOutboxDelivery(entry, 100)
+		Expect(err).ShouldNot(HaveOccurred())
+
+		// A generation far in the future stands in for a clock that has
+		// since gone backwards.
+		future := entry.Generation + int64(24*time.Hour/time.Microsecond)
+		exec(`UPDATE "transfer_outbox" SET "generation" = $1`, future)
+		write(base, "late")
+		Eventually(func() int64 {
+			entries := pending()
+			if len(entries) != 1 {
+				return 0
+			}
+			return entries[0].Generation
+		}, "3s", "10ms").Should(BeNumerically(">", future))
+	})
 })

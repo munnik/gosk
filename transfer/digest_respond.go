@@ -75,6 +75,14 @@ func (r *DigestResponder) offerReceived(c paho.Client, m paho.Message) {
 		return
 	}
 	r.offersReceived.Inc()
+	if err := validateOffer(m.Topic(), &offer); err != nil {
+		logger.GetLogger().Warn(
+			"Ignoring a digest offer that does not match its topic",
+			zap.Error(err),
+			zap.String("Topic", m.Topic()),
+		)
+		return
+	}
 
 	r.answerMutex.Lock()
 	defer r.answerMutex.Unlock()

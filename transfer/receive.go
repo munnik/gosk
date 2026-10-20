@@ -42,6 +42,7 @@ type Receiver struct {
 	writeMutex sync.Mutex
 	received   prometheus.Counter
 	stale      prometheus.Counter
+	rejected   prometheus.Counter
 	stored     prometheus.Counter
 	acked      prometheus.Counter
 	failed     prometheus.Counter
@@ -54,6 +55,7 @@ func NewReceiver(c *config.TransferConfig) *Receiver {
 		codec:    newCodec(c.MQTTConfig.Compress),
 		received: promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_outbox_received_total", Help: "total number of outbox deliveries received"}),
 		stale:    promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_outbox_stale_deliveries_total", Help: "total number of outbox deliveries not stored because a newer generation of their bucket already was"}),
+		rejected: promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_outbox_rejected_deliveries_total", Help: "total number of outbox deliveries not stored because they did not match their topic or bucket"}),
 		stored:   promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_outbox_stored_total", Help: "total number of mapped rows stored from outbox deliveries"}),
 		acked:    promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_outbox_acks_sent_total", Help: "total number of outbox acknowledgements sent"}),
 		failed:   promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_outbox_write_failures_total", Help: "total number of outbox deliveries that could not be stored"}),
@@ -91,6 +93,19 @@ func (r *Receiver) deliveryReceived(c paho.Client, m paho.Message) {
 		return
 	}
 	r.received.Inc()
+	if err := validateDelivery(m.Topic(), &delivery); err != nil {
+		// Not stored and not acknowledged. A genuine sender never produces
+		// one of these, so there is nothing to retry towards; the counter
+		// is what makes a vessel sending them visible.
+		r.rejected.Inc()
+		logger.GetLogger().Warn(
+			"Rejecting an outbox delivery that does not match its topic or bucket",
+			zap.Error(err),
+			zap.String("Topic", m.Topic()),
+			zap.String("Delivery", delivery.Delivery.String()),
+		)
+		return
+	}
 
 	r.writeMutex.Lock()
 	defer r.writeMutex.Unlock()

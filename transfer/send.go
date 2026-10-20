@@ -48,10 +48,12 @@ type Sender struct {
 
 	sent     prometheus.Counter
 	rowsSent prometheus.Counter
-	acked    prometheus.Counter
-	stale    prometheus.Counter
-	retried  prometheus.Counter
-	depth    *prometheus.GaugeVec
+	// settledEmpty counts buckets settled with an empty delivery, see send.
+	settledEmpty prometheus.Counter
+	acked        prometheus.Counter
+	stale        prometheus.Counter
+	retried      prometheus.Counter
+	depth        *prometheus.GaugeVec
 }
 
 type inFlightKey struct {
@@ -72,13 +74,14 @@ func NewSender(c *config.TransferConfig) *Sender {
 		inFlight: make(map[inFlightKey]inFlightEntry),
 		// Assumed up until seen down, so the first cycle of a process
 		// that starts without its broker logs the outage once.
-		connected: true,
-		sent:      promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_outbox_deliveries_total", Help: "total number of outbox deliveries sent"}),
-		rowsSent:  promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_outbox_rows_sent_total", Help: "total number of mapped rows sent through the outbox"}),
-		acked:     promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_outbox_acked_total", Help: "total number of outbox acknowledgements that applied"}),
-		stale:     promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_outbox_stale_acks_total", Help: "total number of outbox acknowledgements for a bucket generation that no longer existed"}),
-		retried:   promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_outbox_retried_total", Help: "total number of buckets sent again because no acknowledgement arrived in time"}),
-		depth:     promauto.NewGaugeVec(prometheus.GaugeOpts{Name: "gosk_outbox_depth", Help: "buckets waiting to be acknowledged, partitioned by origin"}, []string{"origin"}),
+		connected:    true,
+		sent:         promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_outbox_deliveries_total", Help: "total number of outbox deliveries sent"}),
+		rowsSent:     promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_outbox_rows_sent_total", Help: "total number of mapped rows sent through the outbox"}),
+		settledEmpty: promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_outbox_buckets_settled_empty_total", Help: "total number of pending outbox buckets settled with an empty delivery because their rows were no longer there"}),
+		acked:        promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_outbox_acked_total", Help: "total number of outbox acknowledgements that applied"}),
+		stale:        promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_outbox_stale_acks_total", Help: "total number of outbox acknowledgements for a bucket generation that no longer existed"}),
+		retried:      promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_outbox_retried_total", Help: "total number of buckets sent again because no acknowledgement arrived in time"}),
+		depth:        promauto.NewGaugeVec(prometheus.GaugeOpts{Name: "gosk_outbox_depth", Help: "buckets waiting to be acknowledged, partitioned by origin"}, []string{"origin"}),
 	}
 }
 
@@ -161,6 +164,26 @@ func (s *Sender) send(entry database.OutboxEntry) {
 			zap.Time("Bucket", entry.Bucket),
 		)
 		return
+	}
+
+	if len(rows) == 0 {
+		// The bucket is pending, but none of the rows it was marked for
+		// are in mapped_data any more: every path that sets a bucket's
+		// latest does so from rows committed alongside it, so they were
+		// deleted afterwards - the disk-pressure trim drops whole chunks
+		// - before the far end had them. There is nothing left to send,
+		// and the empty delivery settles the bucket rather than leave it
+		// pending forever; what it must not do is look like an ordinary
+		// delivery. Hence the warning and the counter: the far end never
+		// received what was written into this bucket after AckedThrough.
+		s.settledEmpty.Inc()
+		logger.GetLogger().Warn(
+			"Settling an outbox bucket whose unacknowledged rows are gone; they never reached the far end",
+			zap.String("Origin", entry.Origin),
+			zap.Time("Bucket", entry.Bucket),
+			zap.Time("AckedThrough", entry.AckedThrough),
+			zap.Time("Latest", entry.Latest),
+		)
 	}
 
 	delivery := Delivery{

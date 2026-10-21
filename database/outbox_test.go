@@ -2,6 +2,7 @@ package database_test
 
 import (
 	"context"
+	"os"
 	"time"
 
 	. "github.com/munnik/gosk/database"
@@ -46,7 +47,7 @@ var _ = Describe("Outbox", Ordered, func() {
 	BeforeAll(func() { db.SetOutbox(true) })
 	AfterAll(func() { db.SetOutbox(false) })
 	AfterEach(func() {
-		exec(`TRUNCATE "transfer_outbox", "transfer_received", "mapped_data_matching_context", "mapped_data_other_context", "static_data"`)
+		exec(`TRUNCATE "transfer_outbox", "transfer_received", "transfer_origin_epoch", "transfer_source_epoch", "mapped_data_matching_context", "mapped_data_other_context", "static_data"`)
 	})
 
 	It("marks the bucket of every row written, with the newest row time", func() {
@@ -68,12 +69,12 @@ var _ = Describe("Outbox", Ordered, func() {
 		Eventually(pending, "3s", "10ms").Should(HaveLen(1))
 		entry := pending()[0]
 
-		rows, through, err := db.ReadOutboxDelivery(entry, 100)
+		rows, through, err := db.ReadOutboxDelivery(entry, 100, 1)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(rows).To(HaveLen(3))
 		Expect(through).To(BeTemporally("==", base.Add(2*time.Second)))
 
-		applied, err := db.AckOutbox(entry.Origin, entry.Bucket, entry.Generation, through)
+		applied, err := db.AckOutbox(entry.Origin, entry.Bucket, 1, entry.Generation, through)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(applied).To(BeTrue())
 		Expect(pending()).To(BeEmpty())
@@ -85,7 +86,7 @@ var _ = Describe("Outbox", Ordered, func() {
 		entry = pending()[0]
 		Expect(entry.AckedThrough).To(BeTemporally("==", base.Add(2*time.Second)))
 
-		rows, through, err = db.ReadOutboxDelivery(entry, 100)
+		rows, through, err = db.ReadOutboxDelivery(entry, 100, 1)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(rows).To(HaveLen(1))
 		Expect(rows[0].Path).To(Equal("d"))
@@ -98,7 +99,7 @@ var _ = Describe("Outbox", Ordered, func() {
 		Eventually(pending, "3s", "10ms").Should(HaveLen(1))
 		before := pending()[0]
 
-		_, through, err := db.ReadOutboxDelivery(before, 100)
+		_, through, err := db.ReadOutboxDelivery(before, 100, 1)
 		Expect(err).ShouldNot(HaveOccurred())
 
 		// Older than what was just read: cannot be expressed as "newer
@@ -110,12 +111,12 @@ var _ = Describe("Outbox", Ordered, func() {
 
 		// The acknowledgement of the delivery that missed the late row
 		// arrives now, and must not apply.
-		applied, err := db.AckOutbox(before.Origin, before.Bucket, before.Generation, through)
+		applied, err := db.AckOutbox(before.Origin, before.Bucket, 1, before.Generation, through)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(applied).To(BeFalse())
 		Expect(pending()).To(HaveLen(1))
 
-		rows, _, err := db.ReadOutboxDelivery(after, 100)
+		rows, _, err := db.ReadOutboxDelivery(after, 100, 1)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(rows).To(HaveLen(3))
 	})
@@ -141,7 +142,7 @@ var _ = Describe("Outbox", Ordered, func() {
 		entry := pending()[0]
 		Expect(entry.Latest).To(BeTemporally("==", base.Add(2*time.Second)))
 
-		rows, _, err := db.ReadOutboxDelivery(entry, 100)
+		rows, _, err := db.ReadOutboxDelivery(entry, 100, 1)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(rows).To(HaveLen(2))
 		Expect(rows[0].Path).To(Equal("design.beam"))
@@ -194,7 +195,7 @@ var _ = Describe("Outbox", Ordered, func() {
 			return message.NewMapped().WithOrigin(origin).WithContext(origin).AddUpdate(u)
 		}
 		deliver := func(generation int64, value float64, vesselName string) bool {
-			stored, err := db.StoreDelivery(origin, base, generation, []*message.Mapped{mapped(base, "a", value), name(vesselName)})
+			stored, err := db.StoreDelivery(origin, base, 1, generation, []*message.Mapped{mapped(base, "a", value), name(vesselName)})
 			Expect(err).ShouldNot(HaveOccurred())
 			return stored
 		}
@@ -227,12 +228,12 @@ var _ = Describe("Outbox", Ordered, func() {
 
 		// Other buckets and origins are unaffected.
 		other := "vessels.urn:mrn:imo:mmsi:244000002"
-		stored, err := db.StoreDelivery(origin, base.Add(time.Minute), 1, []*message.Mapped{mapped(base.Add(time.Minute), "a", 9)})
+		stored, err := db.StoreDelivery(origin, base.Add(time.Minute), 1, 1, []*message.Mapped{mapped(base.Add(time.Minute), "a", 9)})
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(stored).To(BeTrue())
 		otherRow := mapped(base, "a", 1)
 		otherRow.Origin, otherRow.Context = other, other
-		stored, err = db.StoreDelivery(other, base, 1, []*message.Mapped{otherRow})
+		stored, err = db.StoreDelivery(other, base, 1, 1, []*message.Mapped{otherRow})
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(stored).To(BeTrue())
 
@@ -246,7 +247,7 @@ var _ = Describe("Outbox", Ordered, func() {
 		// stored the row and dropped the static update (see the retry
 		// spec above); the far end has to do the same, or the delivery
 		// would fail on every attempt and hold its bucket back for good.
-		stored, err := db.StoreDelivery(origin, base, 1, []*message.Mapped{mapped(base, "design.beam", 7.0), mapped(base.Add(time.Second), "design.beam", "wide"), mapped(base.Add(2*time.Second), "a", 1.0)})
+		stored, err := db.StoreDelivery(origin, base, 1, 1, []*message.Mapped{mapped(base, "design.beam", 7.0), mapped(base.Add(time.Second), "design.beam", "wide"), mapped(base.Add(2*time.Second), "a", 1.0)})
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(stored).To(BeTrue())
 
@@ -265,11 +266,11 @@ var _ = Describe("Outbox", Ordered, func() {
 		Eventually(pending, "3s", "10ms").Should(HaveLen(1))
 		entry := pending()[0]
 
-		rows, through, err := db.ReadOutboxDelivery(entry, 100)
+		rows, through, err := db.ReadOutboxDelivery(entry, 100, 1)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(rows).To(HaveLen(2))
 
-		applied, err := db.AckOutbox(entry.Origin, entry.Bucket, entry.Generation, through)
+		applied, err := db.AckOutbox(entry.Origin, entry.Bucket, 1, entry.Generation, through)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(applied).To(BeTrue())
 		Expect(pending()).To(BeEmpty())
@@ -277,13 +278,13 @@ var _ = Describe("Outbox", Ordered, func() {
 		// The acknowledgement of an earlier, shorter delivery of the same
 		// generation delivered again (QoS 1 does that) must not pull the
 		// watermark back and make the bucket pending again.
-		applied, err = db.AckOutbox(entry.Origin, entry.Bucket, entry.Generation, base)
+		applied, err = db.AckOutbox(entry.Origin, entry.Bucket, 1, entry.Generation, base)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(applied).To(BeFalse())
 		Expect(pending()).To(BeEmpty())
 
 		// Nor does the same one twice.
-		applied, err = db.AckOutbox(entry.Origin, entry.Bucket, entry.Generation, through)
+		applied, err = db.AckOutbox(entry.Origin, entry.Bucket, 1, entry.Generation, through)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(applied).To(BeFalse())
 	})
@@ -300,17 +301,17 @@ var _ = Describe("Outbox", Ordered, func() {
 
 		// Four would cut through the rows at base+1s, so the delivery
 		// stops after the three at base.
-		rows, through, err := db.ReadOutboxDelivery(entry, 4)
+		rows, through, err := db.ReadOutboxDelivery(entry, 4, 1)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(rows).To(HaveLen(3))
 		Expect(through).To(BeTemporally("==", base))
 
-		applied, err := db.AckOutbox(entry.Origin, entry.Bucket, entry.Generation, through)
+		applied, err := db.AckOutbox(entry.Origin, entry.Bucket, 1, entry.Generation, through)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(applied).To(BeTrue())
 
 		entry = pending()[0]
-		rows, through, err = db.ReadOutboxDelivery(entry, 4)
+		rows, through, err = db.ReadOutboxDelivery(entry, 4, 1)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(rows).To(HaveLen(2))
 		Expect(through).To(BeTemporally("==", base.Add(time.Second)))
@@ -322,7 +323,7 @@ var _ = Describe("Outbox", Ordered, func() {
 		entry := pending()[0]
 		entry.Generation++
 
-		_, _, err := db.ReadOutboxDelivery(entry, 100)
+		_, _, err := db.ReadOutboxDelivery(entry, 100, 1)
 		Expect(err).To(MatchError(ErrOutboxEntryGone))
 	})
 
@@ -330,9 +331,9 @@ var _ = Describe("Outbox", Ordered, func() {
 		write(base, "a")
 		Eventually(pending, "3s", "10ms").Should(HaveLen(1))
 		entry := pending()[0]
-		_, through, err := db.ReadOutboxDelivery(entry, 100)
+		_, through, err := db.ReadOutboxDelivery(entry, 100, 1)
 		Expect(err).ShouldNot(HaveOccurred())
-		_, err = db.AckOutbox(entry.Origin, entry.Bucket, entry.Generation, through)
+		_, err = db.AckOutbox(entry.Origin, entry.Bucket, 1, entry.Generation, through)
 		Expect(err).ShouldNot(HaveOccurred())
 
 		pruned, err := db.PruneOutbox(time.Hour)
@@ -349,7 +350,7 @@ var _ = Describe("Outbox", Ordered, func() {
 			for _, path := range []string{"a", "b"} {
 				rows = append(rows, mapped(bucket.Add(time.Second), path, float64(minute)))
 			}
-			stored, err := db.StoreDelivery(origin, bucket, 1, rows)
+			stored, err := db.StoreDelivery(origin, bucket, 1, 1, rows)
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(stored).To(BeTrue())
 		}
@@ -407,80 +408,213 @@ var _ = Describe("Outbox", Ordered, func() {
 		entry := pending()[0]
 		exec(`DELETE FROM "mapped_data_matching_context"`)
 
-		rows, through, err := db.ReadOutboxDelivery(entry, 100)
+		rows, through, err := db.ReadOutboxDelivery(entry, 100, 1)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(rows).To(BeEmpty())
 		Expect(through).To(BeTemporally("==", entry.Latest))
 
 		// The empty delivery's acknowledgement settles it rather than
 		// leaving it pending forever; the sender is what reports the loss.
-		applied, err := db.AckOutbox(entry.Origin, entry.Bucket, entry.Generation, through)
+		applied, err := db.AckOutbox(entry.Origin, entry.Bucket, 1, entry.Generation, through)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(applied).To(BeTrue())
 		Expect(pending()).To(BeEmpty())
 	})
 
-	It("gives a bucket reset after a restore a generation the far end accepts, and keeps the old one fenced", func() {
-		write(base, "a")
+	It("does not read a bucket an acknowledgement settled after it was picked", func() {
+		write(base.Add(5*time.Second), "a")
 		Eventually(pending, "3s", "10ms").Should(HaveLen(1))
 		entry := pending()[0]
-		_, _, err := db.ReadOutboxDelivery(entry, 100)
+		_, through, err := db.ReadOutboxDelivery(entry, 100, 1)
 		Expect(err).ShouldNot(HaveOccurred())
 
-		// Before the snapshot is taken this is all the source has. The
-		// incarnation that keeps running after it resets the bucket once
-		// more and the far end stores that newer generation.
-		snapshotGeneration := entry.Generation
-		laterGeneration := snapshotGeneration + 1
-		stored, err := db.StoreDelivery(origin, base, laterGeneration, []*message.Mapped{mapped(base, "a", 2.0)})
+		// The sender picked entry, and the far end's acknowledgement is
+		// applied before it gets to read it.
+		applied, err := db.AckOutbox(entry.Origin, entry.Bucket, 1, entry.Generation, through)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(applied).To(BeTrue())
+
+		_, _, err = db.ReadOutboxDelivery(entry, 100, 1)
+		Expect(err).To(MatchError(ErrOutboxEntryGone))
+	})
+
+	It("hands each run of a sender an epoch above every earlier one, and above what was stored", func() {
+		first, err := db.ReserveOutboxEpoch(origin, 0)
+		Expect(err).ShouldNot(HaveOccurred())
+		second, err := db.ReserveOutboxEpoch(origin, 0)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(second).To(BeNumerically(">", first))
+
+		// A far end whose reservations were lost - test's clone is remade
+		// every night - but which holds buckets stored under a higher one.
+		exec(`TRUNCATE "transfer_origin_epoch"`)
+		stored, err := db.StoreDelivery(origin, base, second+10, 1, []*message.Mapped{mapped(base, "a", 1.0)})
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(stored).To(BeTrue())
+		third, err := db.ReserveOutboxEpoch(origin, 0)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(third).To(BeNumerically(">", second+10))
+
+		// Another origin's runs are counted on their own.
+		other, err := db.ReserveOutboxEpoch("vessels.urn:mrn:imo:mmsi:244000999", 0)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(other).To(Equal(int64(1)))
+	})
+
+	It("orders a restored source's run after everything its earlier run sent, seen or not", func() {
+		earlier, err := db.ReserveOutboxEpoch(origin, 0)
+		Expect(err).ShouldNot(HaveOccurred())
+
+		// The earlier run - its clock a day fast - delivered this bucket
+		// under a far higher generation, and published another, higher
+		// still, that the broker is holding.
+		const restoredGeneration int64 = 5
+		held := restoredGeneration + int64(24*time.Hour/time.Microsecond)
+		stored, err := db.StoreDelivery(origin, base, earlier, held, []*message.Mapped{mapped(base, "a", 2.0)})
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(stored).To(BeTrue())
 
-		// The source is restored from the snapshot: its sequence and its
-		// outbox row go back to what they were.
-		exec(`SELECT setval('transfer_outbox_generation_seq', 1)`)
-		exec(`UPDATE "transfer_outbox" SET "generation" = $1`, snapshotGeneration)
-		time.Sleep(5 * time.Millisecond)
-
-		// A late row resets the bucket on the restored source.
-		write(base, "late")
-		Eventually(func() int64 {
-			entries := pending()
-			if len(entries) != 1 {
-				return 0
-			}
-			return entries[0].Generation
-		}, "3s", "10ms").Should(BeNumerically(">", laterGeneration))
-		reset := pending()[0]
-
-		stored, err = db.StoreDelivery(origin, base, reset.Generation, []*message.Mapped{mapped(base, "late", 3.0)})
+		// The database is restored, the sender starts again and reserves.
+		restored, err := db.ReserveOutboxEpoch(origin, 0)
 		Expect(err).ShouldNot(HaveOccurred())
-		Expect(stored).To(BeTrue(), "the restored source's delivery was fenced as stale")
+		Expect(restored).To(BeNumerically(">", earlier))
 
-		// A delivery the old incarnation still had in flight stays out.
-		stored, err = db.StoreDelivery(origin, base, laterGeneration, []*message.Mapped{mapped(base, "a", 4.0)})
+		// The snapshot's generation, far below what is held, goes in.
+		stored, err = db.StoreDelivery(origin, base, restored, restoredGeneration, []*message.Mapped{mapped(base, "a", 3.0)})
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(stored).To(BeTrue())
+		// So do further chunks of the same delivery.
+		stored, err = db.StoreDelivery(origin, base, restored, restoredGeneration, []*message.Mapped{mapped(base, "b", 3.0)})
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(stored).To(BeTrue())
+
+		// The earlier run's delayed delivery turns up and stays out.
+		stored, err = db.StoreDelivery(origin, base, earlier, held+100, []*message.Mapped{mapped(base, "a", 4.0)})
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(stored).To(BeFalse())
 	})
 
-	It("never hands one bucket a generation at or below its previous one, even with the clock behind", func() {
-		write(base, "a")
+	It("compares a delivery without an epoch by generation alone, until the bucket has one with", func() {
+		// A sender older than epochs, in a bucket only such senders wrote:
+		// generation alone, as before.
+		stored, err := db.StoreDelivery(origin, base, 0, 50, []*message.Mapped{mapped(base, "a", 1.0)})
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(stored).To(BeTrue())
+		stored, err = db.StoreDelivery(origin, base, 0, 40, []*message.Mapped{mapped(base, "a", 2.0)})
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(stored).To(BeFalse())
+
+		// The upgraded sender's first delivery goes in over any of them,
+		// even with a lower generation - a restored database's.
+		stored, err = db.StoreDelivery(origin, base, 1, 5, []*message.Mapped{mapped(base, "a", 3.0)})
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(stored).To(BeTrue())
+
+		// From then on an epoch-less delivery is an earlier run's, delayed,
+		// whatever its generation.
+		stored, err = db.StoreDelivery(origin, base, 0, 100, []*message.Mapped{mapped(base, "a", 4.0)})
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(stored).To(BeFalse())
+	})
+
+	It("refuses to drop epochs while buckets are stored under them, unless told to", func() {
+		down, err := os.ReadFile("migrations/20261020120000_outbox_epochs.down.sql")
+		Expect(err).ShouldNot(HaveOccurred())
+		stored, err := db.StoreDelivery(origin, base, 1, 1, []*message.Mapped{mapped(base, "a", 1.0)})
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(stored).To(BeTrue())
+
+		run := func(accept bool) error {
+			ctx := context.Background()
+			tx, err := db.GetConnection().Begin(ctx)
+			Expect(err).ShouldNot(HaveOccurred())
+			defer tx.Rollback(ctx)
+			if accept {
+				_, err := tx.Exec(ctx, `SET LOCAL gosk.accept_epoch_loss = 'on'`)
+				Expect(err).ShouldNot(HaveOccurred())
+			}
+			_, err = tx.Exec(ctx, string(down))
+			return err
+		}
+		Expect(run(false)).To(MatchError(ContainSubstring("gosk.accept_epoch_loss")))
+		Expect(run(true)).To(Succeed())
+
+		// A delivery under an epoch still being stored when the downgrade
+		// starts: the downgrade waits for it and then sees it.
+		exec(`TRUNCATE "transfer_received"`)
+		ctx := context.Background()
+		storing, err := db.GetConnection().Begin(ctx)
+		Expect(err).ShouldNot(HaveOccurred())
+		_, err = storing.Exec(ctx, `INSERT INTO "transfer_received" ("origin", "bucket", "epoch", "generation") VALUES ($1, $2, 1, 1)`, origin, base)
+		Expect(err).ShouldNot(HaveOccurred())
+		result := make(chan error, 1)
+		go func() { result <- run(false) }()
+		Consistently(result, "300ms").ShouldNot(Receive())
+		Expect(storing.Commit(ctx)).To(Succeed())
+		Eventually(result, "5s").Should(Receive(MatchError(ContainSubstring("gosk.accept_epoch_loss"))))
+	})
+
+	It("starts a bucket over for a new run, and applies only that run's acknowledgements", func() {
+		for i, path := range []string{"a", "b", "c"} {
+			write(base.Add(time.Duration(i)*time.Second), path)
+		}
 		Eventually(pending, "3s", "10ms").Should(HaveLen(1))
 		entry := pending()[0]
-		_, _, err := db.ReadOutboxDelivery(entry, 100)
-		Expect(err).ShouldNot(HaveOccurred())
 
-		// A generation far in the future stands in for a clock that has
-		// since gone backwards.
-		future := entry.Generation + int64(24*time.Hour/time.Microsecond)
-		exec(`UPDATE "transfer_outbox" SET "generation" = $1`, future)
-		write(base, "late")
-		Eventually(func() int64 {
-			entries := pending()
-			if len(entries) != 1 {
-				return 0
-			}
-			return entries[0].Generation
-		}, "3s", "10ms").Should(BeNumerically(">", future))
+		// Run 1 sends the first two rows and is acknowledged for them.
+		rows, through, err := db.ReadOutboxDelivery(entry, 2, 1)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(rows).To(HaveLen(2))
+		applied, err := db.AckOutbox(entry.Origin, entry.Bucket, 1, entry.Generation, through)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(applied).To(BeTrue())
+		// It also had a delivery of all three out whose acknowledgement is
+		// still on its way.
+		lateThrough := base.Add(2 * time.Second)
+
+		// Run 2 reads the bucket from its beginning, not after run 1's
+		// acknowledgement: a copy that has not stored run 1's deliveries
+		// gets the whole bucket under the new epoch.
+		entry = pending()[0]
+		rows, through, err = db.ReadOutboxDelivery(entry, 100, 2)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(rows).To(HaveLen(3))
+		Expect(pending()[0].AckedThrough.IsZero()).To(BeTrue())
+
+		// Run 1's delayed acknowledgement changes nothing.
+		applied, err = db.AckOutbox(entry.Origin, entry.Bucket, 1, entry.Generation, lateThrough)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(applied).To(BeFalse())
+		Expect(pending()).To(HaveLen(1))
+
+		// Run 2's settles it.
+		applied, err = db.AckOutbox(entry.Origin, entry.Bucket, 2, entry.Generation, through)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(applied).To(BeTrue())
+		Expect(pending()).To(BeEmpty())
+
+		// And run 2 reading it again does not start it over a second time.
+		write(base.Add(10*time.Second), "d")
+		Eventually(pending, "3s", "10ms").Should(HaveLen(1))
+		rows, _, err = db.ReadOutboxDelivery(pending()[0], 100, 2)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(rows).To(HaveLen(1))
+		Expect(rows[0].Path).To(Equal("d"))
+	})
+
+	It("reserves above the epoch the sender last had, even when the far end has forgotten it", func() {
+		last, err := db.LastOutboxEpoch()
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(last).To(Equal(int64(0)))
+		Expect(db.RecordOutboxEpoch(7)).To(Succeed())
+		Expect(db.RecordOutboxEpoch(3)).To(Succeed())
+		last, err = db.LastOutboxEpoch()
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(last).To(Equal(int64(7)))
+
+		// A far end with no record of this origin at all.
+		epoch, err := db.ReserveOutboxEpoch(origin, last)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(epoch).To(Equal(int64(8)))
 	})
 })

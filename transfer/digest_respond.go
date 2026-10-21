@@ -24,7 +24,8 @@ import (
 // would mean either a stalled seeding run or deliveries not being stored
 // while a summary is computed.
 //
-// It never writes. A vessel decides what to enqueue; this only reports.
+// It writes one thing: the epoch a vessel's starting sender reserves
+// (reserveEpoch). A vessel decides what to enqueue; this only reports.
 type DigestResponder struct {
 	db         *database.PostgresqlDatabase
 	config     *config.TransferConfig
@@ -87,6 +88,11 @@ func (r *DigestResponder) offerReceived(c paho.Client, m paho.Message) {
 	r.answerMutex.Lock()
 	defer r.answerMutex.Unlock()
 
+	if offer.ReserveEpoch {
+		r.reserveEpoch(offer)
+		return
+	}
+
 	reply, err := r.answer(offer)
 	if err != nil {
 		// No reply at all. The vessel retries and then skips the range,
@@ -141,4 +147,28 @@ func (r *DigestResponder) answer(offer DigestOffer) (DigestReply, error) {
 	)
 
 	return DigestReply{Exchange: offer.Exchange, Origin: offer.Origin, Missing: missing, Differ: differ}, nil
+}
+
+// reserveEpoch answers a starting sender's request for its epoch (see
+// 20261020120000_outbox_epochs). Only the end that keeps the data hands them
+// out - the one configured to acknowledge, like the receiver beside it - since
+// an epoch orders the sender's runs against what that database has stored. A
+// responder for a copy stays silent, and the sender keeps asking until the
+// keeper answers.
+func (r *DigestResponder) reserveEpoch(offer DigestOffer) {
+	if !r.config.Acknowledge {
+		return
+	}
+	epoch, err := r.db.ReserveOutboxEpoch(offer.Origin, offer.Epoch)
+	if err != nil {
+		logger.GetLogger().Warn("Could not reserve a sender epoch", zap.Error(err), zap.String("Origin", offer.Origin))
+		return
+	}
+	payload, err := r.codec.encode(DigestReply{Exchange: offer.Exchange, Origin: offer.Origin, Epoch: epoch})
+	if err != nil {
+		logger.GetLogger().Warn("Could not encode a sender epoch reply", zap.Error(err))
+		return
+	}
+	r.mqttClient.Publish(fmt.Sprintf(digestReplyTopic, offer.Origin), outboxQoS, outboxRetained, payload)
+	logger.GetLogger().Info("Reserved a sender epoch", zap.String("Origin", offer.Origin), zap.Int64("Epoch", epoch))
 }

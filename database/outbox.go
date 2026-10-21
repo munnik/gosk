@@ -36,11 +36,6 @@ const (
 	// acknowledged. $3 is the earliest and $4 the latest row time written
 	// into the bucket by one flush.
 	//
-	// A new generation is always above the bucket's previous one and at
-	// least the current time, so it also beats whatever the far end recorded
-	// before this database was restored from a snapshot (see
-	// 20261020120000_outbox_generation_survives_restore).
-	//
 	// The CASE is the late-row rule: a row no newer than something already
 	// sent from this bucket cannot be sent as "what is newer than
 	// acked_through", so the bucket starts over - a fresh generation, and
@@ -57,7 +52,7 @@ const (
 			"latest" = GREATEST("transfer_outbox"."latest", EXCLUDED."latest"),
 			"generation" = CASE
 				WHEN "transfer_outbox"."sent_through" IS NOT NULL AND $3 <= "transfer_outbox"."sent_through"
-				THEN GREATEST("transfer_outbox_next_generation"(), "transfer_outbox"."generation" + 1)
+				THEN nextval('transfer_outbox_generation_seq')
 				ELSE "transfer_outbox"."generation" END,
 			"sent_through" = CASE
 				WHEN "transfer_outbox"."sent_through" IS NOT NULL AND $3 <= "transfer_outbox"."sent_through"
@@ -79,7 +74,18 @@ const (
 	// on it until the sender has recorded what it read, so the writer's
 	// late-row check (outboxUpsertQuery) runs against the sent_through
 	// that covers this read, never against the one before it.
-	outboxLockQuery = `SELECT "acked_through" FROM "transfer_outbox" WHERE "origin" = $1 AND "bucket" = $2 AND "generation" = $3 FOR UPDATE`
+	//
+	// It matches only a bucket that is still pending. The sender picks its
+	// entries before it reads them, and an acknowledgement can settle one in
+	// between; reading that bucket again would find nothing newer than the
+	// acknowledgement and look exactly like rows that were deleted.
+	outboxLockQuery = `SELECT "acked_through", "epoch" FROM "transfer_outbox" WHERE "origin" = $1 AND "bucket" = $2 AND "generation" = $3 AND ("acked_through" IS NULL OR "latest" > "acked_through") FOR UPDATE`
+
+	// outboxNewRunQuery starts a bucket over for a run of the sender other
+	// than the one its watermarks were made under (see
+	// 20261020120000_outbox_epochs): nothing sent or acknowledged, under
+	// the new epoch.
+	outboxNewRunQuery = `UPDATE "transfer_outbox" SET "epoch" = $4, "sent_through" = NULL, "acked_through" = NULL WHERE "origin" = $1 AND "bucket" = $2 AND "generation" = $3`
 	//
 	// Both watermarks only ever move forward within a generation (GREATEST
 	// ignores a NULL): a generation spans several deliveries and their
@@ -88,7 +94,7 @@ const (
 	// nothing when it would not advance, so its row count tells the sender
 	// whether anything happened.
 	outboxMarkSentQuery = `UPDATE "transfer_outbox" SET "sent_through" = GREATEST("sent_through", $4) WHERE "origin" = $1 AND "bucket" = $2 AND "generation" = $3`
-	outboxAckQuery      = `UPDATE "transfer_outbox" SET "acked_through" = GREATEST("acked_through", $4) WHERE "origin" = $1 AND "bucket" = $2 AND "generation" = $3 AND ("acked_through" IS NULL OR "acked_through" < $4)`
+	outboxAckQuery      = `UPDATE "transfer_outbox" SET "acked_through" = GREATEST("acked_through", $4) WHERE "origin" = $1 AND "bucket" = $2 AND "generation" = $3 AND "epoch" = $5 AND ("acked_through" IS NULL OR "acked_through" < $4)`
 
 	// outboxPruneQuery drops buckets that are acknowledged in full and
 	// closed long enough ago that nothing is expected to land in them. A
@@ -107,7 +113,7 @@ const (
 		GROUP BY 2
 		ORDER BY 2
 		ON CONFLICT ("origin", "bucket") DO UPDATE SET
-			"generation" = GREATEST("transfer_outbox_next_generation"(), "transfer_outbox"."generation" + 1),
+			"generation" = nextval('transfer_outbox_generation_seq'),
 			"sent_through" = NULL,
 			"acked_through" = NULL,
 			"latest" = GREATEST("transfer_outbox"."latest", EXCLUDED."latest")`
@@ -353,12 +359,27 @@ const (
 	// which case it updates nothing, which is how StoreDelivery tells. The
 	// conflicting row is locked either way.
 	receivedUpsertQuery = `
-		INSERT INTO "transfer_received" ("origin", "bucket", "generation", "received")
-		VALUES ($1, $2, $3, now())
+		INSERT INTO "transfer_received" ("origin", "bucket", "epoch", "generation", "received")
+		VALUES ($1, $2, $3, $4, now())
 		ON CONFLICT ("origin", "bucket") DO UPDATE SET
+			"epoch" = GREATEST("transfer_received"."epoch", EXCLUDED."epoch"),
 			"generation" = EXCLUDED."generation",
 			"received" = now()
-		WHERE "transfer_received"."generation" <= EXCLUDED."generation"`
+		WHERE CASE
+			WHEN EXCLUDED."epoch" = 0 THEN "transfer_received"."epoch" = 0 AND "transfer_received"."generation" <= EXCLUDED."generation"
+			ELSE ("transfer_received"."epoch", "transfer_received"."generation") <= (EXCLUDED."epoch", EXCLUDED."generation")
+		END`
+
+	// reserveEpochQuery hands an origin's starting sender an epoch above any
+	// reserved for it or stored under before, and above $2, the last one the
+	// sender itself reserved. Under the origin's row lock, so two
+	// reservations never get the same number.
+	reserveEpochQuery = `
+		INSERT INTO "transfer_origin_epoch" ("origin", "epoch")
+		VALUES ($1, GREATEST(COALESCE((SELECT MAX("epoch") FROM "transfer_received" WHERE "origin" = $1), 0), $2::bigint) + 1)
+		ON CONFLICT ("origin") DO UPDATE SET
+			"epoch" = GREATEST("transfer_origin_epoch"."epoch" + 1, EXCLUDED."epoch")
+		RETURNING "epoch"`
 )
 
 // ErrOutboxEntryGone is returned by ReadOutboxDelivery when the bucket is
@@ -369,14 +390,16 @@ var ErrOutboxEntryGone = errors.New("the outbox entry is no longer pending under
 
 // ReadOutboxDelivery reads what the far end does not have of one bucket -
 // the rows newer than AckedThrough, at most limit of them - and records how
-// far that read reached as sent_through, in one transaction.
+// far that read reached as sent_through, in one transaction. epoch is the
+// reading run's; a bucket whose watermarks another run made is started over
+// first, and read from its beginning.
 //
 // The returned through is the newest row time in the delivery, which is
 // what the far end echoes in its acknowledgement. When the bucket holds
 // more than limit rows the delivery stops at a whole timestamp: rows that
 // share the last time read are left for the next delivery rather than
 // split across two, because the next read starts strictly after through.
-func (db *PostgresqlDatabase) ReadOutboxDelivery(entry OutboxEntry, limit int) (rows []message.SingleValueMapped, through time.Time, err error) {
+func (db *PostgresqlDatabase) ReadOutboxDelivery(entry OutboxEntry, limit int, epoch int64) (rows []message.SingleValueMapped, through time.Time, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
 	defer cancel()
 
@@ -387,11 +410,20 @@ func (db *PostgresqlDatabase) ReadOutboxDelivery(entry OutboxEntry, limit int) (
 	defer tx.Rollback(ctx)
 
 	var acked *time.Time
-	if err := tx.QueryRow(ctx, outboxLockQuery, entry.Origin, entry.Bucket, entry.Generation).Scan(&acked); err != nil {
+	var progressed int64
+	if err := tx.QueryRow(ctx, outboxLockQuery, entry.Origin, entry.Bucket, entry.Generation).Scan(&acked, &progressed); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, time.Time{}, ErrOutboxEntryGone
 		}
 		return nil, time.Time{}, err
+	}
+	if progressed != epoch {
+		// Last sent or acknowledged by another run of the sender: this run
+		// starts the bucket over (see 20261020120000_outbox_epochs).
+		if _, err := tx.Exec(ctx, outboxNewRunQuery, entry.Origin, entry.Bucket, entry.Generation, epoch); err != nil {
+			return nil, time.Time{}, err
+		}
+		acked = nil
 	}
 
 	// Strictly newer than what is acknowledged; for a bucket nothing has
@@ -405,12 +437,13 @@ func (db *PostgresqlDatabase) ReadOutboxDelivery(entry OutboxEntry, limit int) (
 		return nil, time.Time{}, err
 	}
 	if len(rows) == 0 {
-		// Nothing newer than acked_through after all: latest is ahead of
+		// The bucket is pending - the lock query checked, under the lock -
+		// and yet nothing is newer than acked_through: latest is ahead of
 		// the rows. Every path that sets latest does so from rows it
 		// commits with it, so the rows were deleted since - the
 		// disk-pressure trim drops whole chunks. Record latest as sent so
 		// the acknowledgement of an empty delivery settles the bucket;
-		// the sender (transfer/send.go) reports it as lost data.
+		// the sender (transfer/send.go) reports it.
 		through = entry.Latest
 	} else if len(rows) > limit {
 		cut := rows[limit].Timestamp
@@ -447,20 +480,56 @@ func (db *PostgresqlDatabase) ReadOutboxDelivery(entry OutboxEntry, limit int) (
 }
 
 // AckOutbox records that the far end has stored a bucket's rows up to and
-// including through. It applies only to the generation the delivery was
-// read under - a bucket reset by a late row in the meantime keeps its fresh
+// including through. It applies only to the epoch and generation the
+// delivery was read under - a bucket reset by a late row in the meantime keeps its fresh
 // generation and nothing acknowledged, and is sent again from the start -
 // and only when it advances acked_through, so an old acknowledgement
 // delivered again behind a newer one changes nothing. Returns whether it
 // applied.
-func (db *PostgresqlDatabase) AckOutbox(origin string, bucket time.Time, generation int64, through time.Time) (bool, error) {
+func (db *PostgresqlDatabase) AckOutbox(origin string, bucket time.Time, epoch, generation int64, through time.Time) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
 	defer cancel()
-	tag, err := db.GetConnection().Exec(ctx, outboxAckQuery, origin, bucket, generation, through)
+	tag, err := db.GetConnection().Exec(ctx, outboxAckQuery, origin, bucket, generation, through, epoch)
 	if err != nil {
 		return false, err
 	}
 	return tag.RowsAffected() > 0, nil
+}
+
+// ReserveOutboxEpoch hands a starting sender for origin its epoch: a number
+// above any reserved for origin before, and above any epoch a bucket of
+// origin was stored under. See 20261020120000_outbox_epochs.
+//
+// last is the epoch the sender reserved before, from its own database
+// (LastOutboxEpoch): a far end remade from an older copy does not remember
+// it, and must not hand out a number at or below it again.
+func (db *PostgresqlDatabase) ReserveOutboxEpoch(origin string, last int64) (int64, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout*10)
+	defer cancel()
+	var epoch int64
+	err := db.GetConnection().QueryRow(ctx, reserveEpochQuery, origin, last).Scan(&epoch)
+	return epoch, err
+}
+
+// LastOutboxEpoch is the epoch this database's sender last reserved, zero
+// if it never has.
+func (db *PostgresqlDatabase) LastOutboxEpoch() (int64, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
+	defer cancel()
+	var epoch int64
+	err := db.GetConnection().QueryRow(ctx, `SELECT COALESCE(MAX("epoch"), 0) FROM "transfer_source_epoch"`).Scan(&epoch)
+	return epoch, err
+}
+
+// RecordOutboxEpoch remembers an epoch this database's sender reserved, so
+// the next reservation asks for more. It never goes down.
+func (db *PostgresqlDatabase) RecordOutboxEpoch(epoch int64) error {
+	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
+	defer cancel()
+	_, err := db.GetConnection().Exec(ctx, `
+		INSERT INTO "transfer_source_epoch" ("epoch") VALUES ($1)
+		ON CONFLICT ("one") DO UPDATE SET "epoch" = GREATEST("transfer_source_epoch"."epoch", EXCLUDED."epoch")`, epoch)
+	return err
 }
 
 // PruneOutbox removes buckets acknowledged in full that closed more than
@@ -571,6 +640,11 @@ func (db *PostgresqlDatabase) EarliestMapped(origin string) (time.Time, bool, er
 // again is stored: that is a delivery sent again, or the next chunk of a
 // bucket too large for one.
 //
+// Ordering is by (epoch, generation): a later run of the vessel's sender
+// beats anything an earlier one sent, and within a run generations rise. A
+// delivery without an epoch, from a sender older than epochs, is compared by
+// generation alone (see 20261020120000_outbox_epochs).
+//
 // Everything else here queues and returns, which is right for a writer
 // whose job is to keep up with a sensor. It is wrong for anything that has
 // to tell someone else the data is safe: the outbox receiver acknowledges a
@@ -589,7 +663,7 @@ func (db *PostgresqlDatabase) EarliestMapped(origin string) (time.Time, bool, er
 //
 // No outbox bookkeeping, whatever the configuration: these rows arrived
 // through the outbox, and marking them would send them back.
-func (db *PostgresqlDatabase) StoreDelivery(origin string, bucket time.Time, generation int64, mapped []*message.Mapped) (bool, error) {
+func (db *PostgresqlDatabase) StoreDelivery(origin string, bucket time.Time, epoch, generation int64, mapped []*message.Mapped) (bool, error) {
 	batch := &pgx.Batch{}
 	var statics []queuedQuery
 	for _, m := range mapped {
@@ -618,7 +692,7 @@ func (db *PostgresqlDatabase) StoreDelivery(origin string, bucket time.Time, gen
 	// receivers storing deliveries of the same bucket into one database
 	// take turns, and the one that goes second sees what the first
 	// recorded.
-	tag, err := tx.Exec(ctx, receivedUpsertQuery, origin, bucket, generation)
+	tag, err := tx.Exec(ctx, receivedUpsertQuery, origin, bucket, epoch, generation)
 	if err != nil {
 		return false, fmt.Errorf("could not record the delivery's generation: %w", err)
 	}

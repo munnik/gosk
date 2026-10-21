@@ -119,7 +119,7 @@ func (r *Receiver) deliveryReceived(c paho.Client, m paho.Message) {
 		}
 	}
 
-	stored, err := r.db.StoreDelivery(delivery.Origin, delivery.Bucket, delivery.Generation, deltas)
+	stored, err := r.db.StoreDelivery(delivery.Origin, delivery.Bucket, delivery.Epoch, delivery.Generation, deltas)
 	if err != nil {
 		r.failed.Inc()
 		logger.GetLogger().Warn(
@@ -142,14 +142,18 @@ func (r *Receiver) deliveryReceived(c paho.Client, m paho.Message) {
 		// acknowledged at the time). Storing it would put whatever the
 		// old delivery had for a row over what the new one had, and the
 		// vessel, which is done with this generation, would never send
-		// the new one again. Not acknowledged either: the vessel ignores
-		// an acknowledgement of a generation it no longer has.
+		// the new one again. Or a delivery from an earlier run of the
+		// vessel's sender, which a later run's has replaced (see
+		// 20261020120000_outbox_epochs). Not acknowledged either: the
+		// vessel ignores an acknowledgement of a generation, or a run, it
+		// no longer has.
 		r.stale.Inc()
 		logger.GetLogger().Info(
-			"Not storing an outbox delivery of a bucket generation that a newer one has replaced",
+			"Not storing an outbox delivery that something newer has replaced",
 			zap.String("Delivery", delivery.Delivery.String()),
 			zap.String("Origin", delivery.Origin),
 			zap.Time("Bucket", delivery.Bucket),
+			zap.Int64("Epoch", delivery.Epoch),
 			zap.Int64("Generation", delivery.Generation),
 		)
 		return
@@ -181,13 +185,11 @@ func (r *Receiver) deliveryReceived(c paho.Client, m paho.Message) {
 		Generation: delivery.Generation,
 		Through:    delivery.Through,
 		Stored:     rows,
+		Epoch:      delivery.Epoch,
 	}
-	payload, err := r.codec.encode(ack)
-	if err != nil {
-		logger.GetLogger().Warn("Could not encode an outbox acknowledgement", zap.Error(err))
+	if !r.publishAck(ack) {
 		return
 	}
-	r.mqttClient.Publish(fmt.Sprintf(ackTopic, delivery.Origin), outboxQoS, outboxRetained, payload)
 	r.acked.Inc()
 	logger.GetLogger().Info(
 		"Stored and acknowledged an outbox delivery",
@@ -197,4 +199,16 @@ func (r *Receiver) deliveryReceived(c paho.Client, m paho.Message) {
 		zap.Time("Through", delivery.Through),
 		zap.Int("Rows", rows),
 	)
+}
+
+// publishAck sends an acknowledgement, or a refusal, to the vessel it is
+// for, and reports whether it could be encoded.
+func (r *Receiver) publishAck(ack Ack) bool {
+	payload, err := r.codec.encode(ack)
+	if err != nil {
+		logger.GetLogger().Warn("Could not encode an outbox acknowledgement", zap.Error(err))
+		return false
+	}
+	r.mqttClient.Publish(fmt.Sprintf(ackTopic, ack.Origin), outboxQoS, outboxRetained, payload)
+	return true
 }

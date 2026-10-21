@@ -444,6 +444,14 @@ func (m *AggregateMapper) runTransform(mapping *config.ExpressionMappingConfig, 
 // the retention eviction above may already have removed some or all of
 // them (retentionTime 0 evicts a path's previous entry as soon as real
 // time moves past its timestamp), hence the min.
+//
+// A rejected reading - no value, and diagnostics saying why (see
+// message.DiagnosticRejected) - becomes the path's current value in env,
+// so an expression reading the path sees that there is no value and can
+// read why, but it never enters history. History is a series of samples
+// for the numeric functions over it, movingAverage first, and a reading
+// with no value is not one: one rejected reading in the window would fail
+// them until it aged out, long after the sensor recovered.
 func (m *AggregateMapper) remember(historyMap map[string][]message.SingleValueMapped, appended map[string]int, svm message.SingleValueMapped, computed bool) {
 	path := strings.ReplaceAll(svm.Path, ".", "_")
 	cutoff := time.Now().Add(-m.pathRetentionTime[svm.Path])
@@ -456,9 +464,12 @@ func (m *AggregateMapper) remember(historyMap map[string][]message.SingleValueMa
 		}
 		appended[svm.Path] = 0
 	}
+	m.env[path] = svm
+	if svm.Value == nil && message.IsRejected(svm.Diagnostics) {
+		return
+	}
 	historyMap[path] = append(historyMap[path], svm)
 	appended[svm.Path]++
-	m.env[path] = svm
 }
 
 func (*AggregateMapper) removeOverWrites(input *message.Mapped, overwrites map[string]struct{}) *message.Mapped {

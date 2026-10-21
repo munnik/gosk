@@ -93,3 +93,47 @@ func TestAggregateTransformKeepsTheReadingsDiagnostics(t *testing.T) {
 		t.Fatalf("a transform stripped the rejection: %+v", v)
 	}
 }
+
+// A rejected reading is not a sample: in history it would fail the numeric
+// functions over it until it aged out, long after the sensor recovered.
+func TestAggregateKeepsRejectedReadingsOutOfHistory(t *testing.T) {
+	average := &config.ExpressionMappingConfig{
+		MappingConfig: config.MappingConfig{Path: "a.level.average", Expression: "movingAverage(history['a_level'])"},
+		SourcePaths:   []string{"a.level"},
+		RetentionTime: time.Minute,
+	}
+	why := &config.ExpressionMappingConfig{
+		MappingConfig: config.MappingConfig{Path: "a.level.why", Expression: "a_level.Diagnostics.rejected"},
+		SourcePaths:   []string{"a.level"},
+	}
+	m, err := NewAggregateMapper(config.MapperConfig{Context: "testingContext"}, []*config.ExpressionMappingConfig{average, why})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reading := func(v any, d map[string]any) map[string]message.Value {
+		t.Helper()
+		out, err := m.DoMap(mappedOf(message.NewValue().WithPath("a.level").WithValue(v).WithDiagnostics(d)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return diagnosticValuesByPath(out)
+	}
+	rejected := map[string]any{message.DiagnosticRejected: "all zeros"}
+
+	// all rejected: nothing to average, and the expressions reading the
+	// path still see why
+	if got := reading(nil, rejected); got["a.level.why"].Value != "all zeros" || got["a.level.average"].Value != nil {
+		t.Fatalf("all rejected: %+v", got)
+	}
+
+	if got := reading(2.0, nil); got["a.level.average"].Value != 2.0 {
+		t.Fatalf("first reading: %+v", got)
+	}
+	reading(nil, rejected)
+	if got := reading(4.0, nil); got["a.level.average"].Value != 3.0 {
+		t.Fatalf("valid, rejected, valid within one window averaged %+v, want 3", got["a.level.average"])
+	}
+	if h := m.env["history"].(map[string][]message.SingleValueMapped)["a_level"]; len(h) != 2 {
+		t.Fatalf("history holds %d entries, want the two readings", len(h))
+	}
+}

@@ -445,13 +445,15 @@ func (m *AggregateMapper) runTransform(mapping *config.ExpressionMappingConfig, 
 // them (retentionTime 0 evicts a path's previous entry as soon as real
 // time moves past its timestamp), hence the min.
 //
-// A rejected reading - no value, and diagnostics saying why (see
-// message.DiagnosticRejected) - becomes the path's current value in env,
-// so an expression reading the path sees that there is no value and can
-// read why, but it never enters history. History is a series of samples
-// for the numeric functions over it, movingAverage first, and a reading
-// with no value is not one: one rejected reading in the window would fail
-// them until it aged out, long after the sensor recovered.
+// A value with no value - a rejected reading (see
+// message.DiagnosticRejected), or a mapping's nil result, such as one
+// derived from a rejected reading - becomes the path's current value in
+// env, so an expression reading the path sees that there is none (and,
+// for a rejected reading, can read why), but it never enters history.
+// History is a series of samples for the numeric functions over it,
+// movingAverage first, and a reading with no value is not one: one in the
+// window would fail them until it aged out, long after the sensor
+// recovered.
 func (m *AggregateMapper) remember(historyMap map[string][]message.SingleValueMapped, appended map[string]int, svm message.SingleValueMapped, computed bool) {
 	path := strings.ReplaceAll(svm.Path, ".", "_")
 	cutoff := time.Now().Add(-m.pathRetentionTime[svm.Path])
@@ -465,7 +467,7 @@ func (m *AggregateMapper) remember(historyMap map[string][]message.SingleValueMa
 		appended[svm.Path] = 0
 	}
 	m.env[path] = svm
-	if svm.Value == nil && message.IsRejected(svm.Diagnostics) {
+	if svm.Value == nil {
 		return
 	}
 	historyMap[path] = append(historyMap[path], svm)

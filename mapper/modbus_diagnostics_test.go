@@ -176,13 +176,14 @@ func TestModbusDiagnosticsLeaveOutWhatDoesNotEvaluate(t *testing.T) {
 	if v.Value != uint16(7) {
 		t.Fatalf("a failing diagnostic cost the value: %+v", v)
 	}
-	if len(v.Diagnostics) != 2 || v.Diagnostics["connected"] != true || v.Diagnostics["rejected"] != "configured" {
-		t.Fatalf("diagnostics %+v, want only connected and rejected", v.Diagnostics)
+	// "rejected" is reserved: configured, it is left out, so an accepted
+	// reading never carries it
+	if len(v.Diagnostics) != 1 || v.Diagnostics["connected"] != true {
+		t.Fatalf("diagnostics %+v, want only connected", v.Diagnostics)
 	}
 
-	// on a rejected reply the mapper's own reason wins over a diagnostic of that name
 	r := mapOne(t, m, rawReply(time.Now(), 1, 52, 0))
-	if r.Diagnostics[message.DiagnosticRejected] != "all zeros" {
+	if r.Diagnostics[message.DiagnosticRejected] != "all zeros" || len(r.Diagnostics) != 2 {
 		t.Fatalf("diagnostics %+v", r.Diagnostics)
 	}
 }

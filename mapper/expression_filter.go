@@ -52,7 +52,7 @@ func (f *ExpressionFilter) DoMap(delta *message.Mapped) (*message.Mapped, error)
 		// in it included. It passes unfiltered, and stays out of env, so a
 		// filter reading this path as another's source keeps seeing the
 		// last value that was a value.
-		if message.IsRejected(svm.Diagnostics) {
+		if message.IsRejected(svm.Value, svm.Diagnostics) {
 			for _, u := range svm.ToMapped().Updates {
 				result.AddUpdate(&u)
 			}

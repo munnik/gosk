@@ -9,6 +9,13 @@ import (
 	"go.uber.org/zap"
 )
 
+// configurable reports whether a mapping may name a diagnostic name: one
+// that can be stored, and not message.DiagnosticRejected, which only a
+// mapper sets, on a reading it rejected.
+func configurable(name string) bool {
+	return message.ValidDiagnosticName(name) && name != message.DiagnosticRejected
+}
+
 // precompileDiagnostics compiles a mapping's diagnostic expressions once,
 // at construction, next to its value expression (see precompileMapping).
 // A diagnostic that does not compile is logged and left out; it never stops
@@ -19,9 +26,9 @@ func precompileDiagnostics(mc *config.MappingConfig) {
 	}
 	mc.CompiledDiagnostics = make(map[string]*vm.Program, len(mc.Diagnostics))
 	for name, source := range mc.Diagnostics {
-		if !message.ValidDiagnosticName(name) {
+		if !configurable(name) {
 			logger.GetLogger().Error(
-				"Ignoring a diagnostic whose name cannot be stored",
+				"Ignoring a diagnostic whose name is reserved or cannot be stored",
 				zap.String("Diagnostic", name),
 				zap.String("Path", mc.Path),
 			)
@@ -64,7 +71,7 @@ func runDiagnostics(env ExpressionEnvironment, mc *config.MappingConfig) map[str
 
 	result := make(map[string]any, len(mc.Diagnostics))
 	for name, source := range mc.Diagnostics {
-		if !message.ValidDiagnosticName(name) {
+		if !configurable(name) {
 			continue
 		}
 		program := mc.CompiledDiagnostics[name]

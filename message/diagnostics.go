@@ -30,7 +30,9 @@ import (
 
 // DiagnosticRejected is the diagnostic a mapper sets, on a value with no
 // value, when it received a reading and rejected it as a suspected device
-// fault. It holds the reason, e.g. "all zeros".
+// fault. It holds the reason, e.g. "all zeros". The name is reserved: a
+// mapping cannot configure a diagnostic of that name (see the mapper's
+// precompileDiagnostics), so it only ever means what the mapper says.
 const DiagnosticRejected = "rejected"
 
 // NormalizeDiagnostic returns v as one of the types a diagnostic may hold -
@@ -92,10 +94,14 @@ func ValidDiagnosticName(name string) bool {
 	return name != "" && !strings.ContainsRune(name, 0)
 }
 
-// IsRejected reports whether a set of diagnostics says its reading was
-// rejected (see DiagnosticRejected), in which case the value has no value
-// to judge.
-func IsRejected(d map[string]any) bool {
+// IsRejected reports whether a reading was rejected: it has no value, and
+// its diagnostics say why (see DiagnosticRejected). Both are required - a
+// value that has a value is a reading to judge like any other, whatever
+// diagnostics it carries along.
+func IsRejected(value any, d map[string]any) bool {
+	if value != nil {
+		return false
+	}
 	_, ok := d[DiagnosticRejected]
 	return ok
 }

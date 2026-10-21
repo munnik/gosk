@@ -205,8 +205,6 @@ func (m *ModbusMapper) mapRejected(r *message.Raw, slave uint8, functionCode, ad
 		if diagnostics == nil {
 			diagnostics = make(map[string]any, 1)
 		}
-		// Set last, so a configured diagnostic of the same name cannot
-		// hide why the reading was rejected.
 		diagnostics[message.DiagnosticRejected] = reason
 		u.AddValue(message.NewValue().WithPath(mmc.Path).WithValue(nil).WithDiagnostics(diagnostics))
 	}

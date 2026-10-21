@@ -44,14 +44,18 @@ func TestExpressionFilterPassesARejectedReading(t *testing.T) {
 		t.Fatalf("a rejected reading failed the filter: %v", err)
 	}
 	got := diagnosticValuesByPath(out)
-	if len(got) != 2 || !message.IsRejected(got["tanks.fuel.aft.currentLevel"].Diagnostics) || got["navigation.speedOverGround"].Value != 3.0 {
+	if len(got) != 2 || !message.IsRejected(nil, got["tanks.fuel.aft.currentLevel"].Diagnostics) || got["navigation.speedOverGround"].Value != 3.0 {
 		t.Fatalf("got %+v", got)
 	}
 
-	// and the filter still filters a reading that has a value
-	out, err = f.DoMap(mappedOf(message.NewValue().WithPath("tanks.fuel.aft.currentLevel").WithValue(-1.0)))
-	if err != nil || len(diagnosticValuesByPath(out)) != 0 {
-		t.Fatalf("a negative level passed the filter: %+v, %v", out, err)
+	// and the filter still filters a reading that has a value - also one
+	// that kept a rejection's diagnostics after a transform substituted a
+	// value for it
+	for _, d := range []map[string]any{nil, {message.DiagnosticRejected: "all zeros"}} {
+		out, err = f.DoMap(mappedOf(message.NewValue().WithPath("tanks.fuel.aft.currentLevel").WithValue(-1.0).WithDiagnostics(d)))
+		if err != nil || len(diagnosticValuesByPath(out)) != 0 {
+			t.Fatalf("a negative level with diagnostics %+v passed the filter: %+v, %v", d, out, err)
+		}
 	}
 }
 
@@ -89,7 +93,7 @@ func TestAggregateTransformKeepsTheReadingsDiagnostics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v := diagnosticValuesByPath(out)["a.level"]; v.Value != nil || !message.IsRejected(v.Diagnostics) {
+	if v := diagnosticValuesByPath(out)["a.level"]; !message.IsRejected(v.Value, v.Diagnostics) {
 		t.Fatalf("a transform stripped the rejection: %+v", v)
 	}
 }
@@ -106,7 +110,18 @@ func TestAggregateKeepsRejectedReadingsOutOfHistory(t *testing.T) {
 		MappingConfig: config.MappingConfig{Path: "a.level.why", Expression: "a_level.Diagnostics.rejected"},
 		SourcePaths:   []string{"a.level"},
 	}
-	m, err := NewAggregateMapper(config.MapperConfig{Context: "testingContext"}, []*config.ExpressionMappingConfig{average, why})
+	// a path derived from it, and an average over that: the derived value
+	// of a rejected reading is nil too, and has no diagnostics of its own
+	derived := &config.ExpressionMappingConfig{
+		MappingConfig: config.MappingConfig{Path: "b.level", Expression: "a_level.Value"},
+		SourcePaths:   []string{"a.level"},
+	}
+	derivedAverage := &config.ExpressionMappingConfig{
+		MappingConfig: config.MappingConfig{Path: "b.level.average", Expression: "movingAverage(history['b_level'])"},
+		SourcePaths:   []string{"b.level"},
+		RetentionTime: time.Minute,
+	}
+	m, err := NewAggregateMapper(config.MapperConfig{Context: "testingContext"}, []*config.ExpressionMappingConfig{average, why, derived, derivedAverage})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,10 +145,15 @@ func TestAggregateKeepsRejectedReadingsOutOfHistory(t *testing.T) {
 		t.Fatalf("first reading: %+v", got)
 	}
 	reading(nil, rejected)
-	if got := reading(4.0, nil); got["a.level.average"].Value != 3.0 {
+	got := reading(4.0, nil)
+	if got["a.level.average"].Value != 3.0 {
 		t.Fatalf("valid, rejected, valid within one window averaged %+v, want 3", got["a.level.average"])
 	}
-	if h := m.env["history"].(map[string][]message.SingleValueMapped)["a_level"]; len(h) != 2 {
-		t.Fatalf("history holds %d entries, want the two readings", len(h))
+	if got["b.level.average"].Value != 3.0 {
+		t.Fatalf("the derived path averaged %+v, want 3", got["b.level.average"])
+	}
+	history := m.env["history"].(map[string][]message.SingleValueMapped)
+	if len(history["a_level"]) != 2 || len(history["b_level"]) != 2 {
+		t.Fatalf("history holds %d and %d entries, want the two readings each", len(history["a_level"]), len(history["b_level"]))
 	}
 }

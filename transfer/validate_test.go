@@ -2,6 +2,7 @@ package transfer
 
 import (
 	"bytes"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -135,5 +136,43 @@ func TestCodecRefusesAPayloadThatDecompressesPastTheLimit(t *testing.T) {
 	small := append(append([]byte(`{"origin":"`), bytes.Repeat([]byte{'a'}, 1<<20)...), `"}`...)
 	if err := newCodec(false).decode(encoder.EncodeAll(small, nil), &d); err != nil {
 		t.Fatalf("a payload under the limit was refused: %v", err)
+	}
+}
+
+func TestEncodeSizedReportsTheDecodedSize(t *testing.T) {
+	d := genuineDelivery()
+	for _, compress := range []bool{true, false} {
+		payload, plain, err := newCodec(compress).encodeSized(d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var decoded Delivery
+		if err := newCodec(false).decode(payload, &decoded); err != nil {
+			t.Fatal(err)
+		}
+		reencoded, _ := json.Marshal(decoded)
+		if plain != len(reencoded) {
+			t.Errorf("compress=%v: encodeSized said %d bytes decoded, the payload decodes to %d", compress, plain, len(reencoded))
+		}
+	}
+}
+
+func TestAcknowledgementsOfAnEarlierRunAreNotApplied(t *testing.T) {
+	for _, c := range []struct {
+		ack, run int64
+		want     bool
+	}{
+		{ack: 7, run: 7, want: true},
+		{ack: 6, run: 7, want: false},
+		{ack: 8, run: 7, want: false},
+		// From before this sender knew epochs, queued for its session.
+		{ack: 0, run: 7, want: false},
+		// Anything before the reservation is done.
+		{ack: 0, run: 0, want: false},
+		{ack: 3, run: 0, want: false},
+	} {
+		if got := ackOfRun(Ack{Epoch: c.ack}, c.run); got != c.want {
+			t.Errorf("ackOfRun(epoch %d, run %d) = %v, want %v", c.ack, c.run, got, c.want)
+		}
 	}
 }

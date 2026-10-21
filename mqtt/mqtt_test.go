@@ -47,3 +47,24 @@ func TestConnectSurvivesABrokerThatIsNotThere(t *testing.T) {
 		t.Fatal("Connect never returned for a broker that is not there")
 	}
 }
+
+// TestWaitSubscribedTimesOutWithoutABroker: a caller that publishes a
+// request whose answer comes back on a subscription (the outbox sender's
+// epoch reservation) must be told when that subscription is not in place,
+// rather than publish into a session that would drop the answer.
+func TestWaitSubscribedTimesOutWithoutABroker(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("net.Listen: %v", err)
+	}
+	address := listener.Addr().String()
+	listener.Close()
+
+	client := New(&config.MQTTConfig{URLString: "tcp://" + address, Username: "test", Password: "test"}, "test", nil, "a/topic", "another/topic")
+	if len(client.topics) != 2 {
+		t.Fatalf("expected both topics, got %v", client.topics)
+	}
+	if client.WaitSubscribed(200 * time.Millisecond) {
+		t.Fatal("WaitSubscribed reported subscribed with no broker and no connection")
+	}
+}

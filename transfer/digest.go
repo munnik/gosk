@@ -74,6 +74,14 @@ type DigestOffer struct {
 	Width    time.Duration           `json:"width"`
 	Ranges   []TimeRange             `json:"ranges"`
 	Buckets  []database.DigestBucket `json:"buckets"`
+	// ReserveEpoch makes this a request for a new sender epoch instead of a
+	// comparison: the far end reserves one for Origin and answers with it
+	// in the reply's Epoch (see 20261020120000_outbox_epochs). The other
+	// fields are then unused.
+	ReserveEpoch bool `json:"reserve_epoch,omitempty"`
+	// Epoch, with ReserveEpoch, is the last epoch this sender reserved,
+	// from its own database; the reservation is above it.
+	Epoch int64 `json:"epoch,omitempty"`
 }
 
 // DigestReply is the far end's answer.
@@ -89,6 +97,8 @@ type DigestReply struct {
 	// to be opened up at the next level - or, at the last level,
 	// enqueued.
 	Differ []time.Time `json:"differ,omitempty"`
+	// Epoch is the epoch reserved, in answer to a ReserveEpoch offer.
+	Epoch int64 `json:"epoch,omitempty"`
 }
 
 // compareDigests is the far end's side of an offer: which of the offered

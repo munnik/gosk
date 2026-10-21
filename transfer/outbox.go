@@ -69,6 +69,11 @@ type Delivery struct {
 	Generation int64            `json:"generation"`
 	Through    time.Time        `json:"through"`
 	Deltas     []message.Mapped `json:"deltas"`
+	// Epoch is the run of the sender this comes from, reserved from the
+	// far end when it started (see 20261020120000_outbox_epochs). The far
+	// end orders a bucket's deliveries by epoch first and generation
+	// second. A sender older than this field sends none, which reads as 0.
+	Epoch int64 `json:"epoch,omitempty"`
 }
 
 // Ack is the far end saying it has committed a delivery. It echoes what
@@ -84,6 +89,11 @@ type Ack struct {
 	// acknowledgement with Stored zero is still an acknowledgement: the
 	// delivery had nothing left to send.
 	Stored int `json:"stored"`
+	// Epoch echoes the delivery's. A sender applies only acknowledgements
+	// of its own run: one from an earlier run, delayed, can name the same
+	// generation and a later through than anything this run has sent. Zero
+	// from a far end older than epochs, which a sender takes as before.
+	Epoch int64 `json:"epoch,omitempty"`
 }
 
 // groupRows folds rows read from mapped_data back into messages: rows
@@ -168,6 +178,19 @@ func (c *codec) encode(v any) ([]byte, error) {
 		return plain, nil
 	}
 	return c.encoder.EncodeAll(plain, make([]byte, 0, len(plain))), nil
+}
+
+// encodeSized is encode, and also returns how large the payload is once
+// decoded: what the far end holds against maxDecodedPayload.
+func (c *codec) encodeSized(v any) ([]byte, int, error) {
+	plain, err := json.Marshal(v)
+	if err != nil {
+		return nil, 0, err
+	}
+	if !c.compress {
+		return plain, len(plain), nil
+	}
+	return c.encoder.EncodeAll(plain, make([]byte, 0, len(plain))), len(plain), nil
 }
 
 // decode unmarshals a payload, decompressing it first if it is compressed.

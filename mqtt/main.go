@@ -1,15 +1,27 @@
 package mqtt
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"go.uber.org/zap"
+)
+
+const (
+	// subackRefused is the SUBACK return code for a refused subscription.
+	subackRefused byte = 0x80
+	// How long retrySubscribe waits before trying a failed subscription
+	// again, doubling up to the maximum.
+	subscribeRetryMin = time.Second
+	subscribeRetryMax = time.Minute
 )
 
 const (
@@ -47,10 +59,18 @@ const (
 type Client struct {
 	config         *config.MQTTConfig
 	publishHandler paho.MessageHandler
-	topic          string
+	topics         []string
 	pahoClient     *paho.Client
 	clientID       string
 	publishTokens  chan paho.Token
+	// subscribed is closed the first time every topic has been subscribed
+	// to, for a caller that publishes a request whose answer comes back on
+	// one of them (WaitSubscribed).
+	subscribed     chan struct{}
+	subscribedOnce sync.Once
+	// connection counts connections; a retry worker belongs to the one it
+	// was started on, and stops once another has replaced it.
+	connection atomic.Uint64
 }
 
 // New builds a client for the broker without connecting it; call Connect
@@ -60,11 +80,24 @@ type Client struct {
 // set one, and so has to be unique among the gosk processes on one host
 // that connect to the same broker with the same username. See
 // MQTTConfig.ClientID.
-func New(config *config.MQTTConfig, role string, publishHandler paho.MessageHandler, topic string) *Client {
+//
+// more subscribes the client to further topics, all through the same
+// handler, which tells them apart by the message's topic. One client rather
+// than one per topic because sessions are persistent (createClientOptions):
+// a second client the process only needs for a moment would leave the broker
+// queueing for it after it is gone.
+func New(config *config.MQTTConfig, role string, publishHandler paho.MessageHandler, topic string, more ...string) *Client {
+	topics := []string{}
+	for _, t := range append([]string{topic}, more...) {
+		if t != "" {
+			topics = append(topics, t)
+		}
+	}
 	result := &Client{
 		config:         config,
 		publishHandler: publishHandler,
-		topic:          topic,
+		topics:         topics,
+		subscribed:     make(chan struct{}),
 		clientID:       clientID(config, role),
 		publishTokens:  make(chan paho.Token, maxTrackedPublishes),
 	}
@@ -165,6 +198,19 @@ func (c *Client) watchPublishTokens() {
 // while it reconnects. A publisher with a backlog of its own (the outbox
 // sender) checks this before handing paho more, since what paho takes
 // while the link is down it keeps in memory.
+// WaitSubscribed blocks until the client has been subscribed to all its
+// topics at least once, or timeout passes, and reports which. A request
+// published before then can have its answer delivered to a session not yet
+// subscribed to it, and an answer that is not retained is then gone.
+func (c *Client) WaitSubscribed(timeout time.Duration) bool {
+	select {
+	case <-c.subscribed:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
+}
+
 func (c *Client) Connected() bool {
 	return (*c.pahoClient).IsConnectionOpen()
 }
@@ -270,7 +316,7 @@ func (c *Client) onConnectHandler(pahoClient paho.Client) {
 		zap.String("ClientID", c.clientID),
 	)
 
-	if c.topic == "" {
+	if len(c.topics) == 0 {
 		logger.GetLogger().Info(
 			"Topic is empty so not subscribing",
 			zap.String("URL", c.config.URLString),
@@ -278,24 +324,107 @@ func (c *Client) onConnectHandler(pahoClient paho.Client) {
 		return
 	}
 
-	if token := pahoClient.Subscribe(c.topic, 1, nil); token.Wait() && token.Error() != nil {
-		// Not Fatal: this runs on every connection, so a subscribe that fails
-		// is retried the next time the client reconnects rather than killing
-		// a process that is otherwise working.
-		logger.GetLogger().Warn(
-			"Could not subscribe to the MQTT topic, it will be retried on the next connection",
-			zap.String("Error", token.Error().Error()),
-			zap.String("URL", c.config.URLString),
-			zap.String("Topic", c.topic),
-		)
+	connection := c.connection.Add(1)
+	if failed := c.subscribe(pahoClient, c.topics); len(failed) > 0 {
+		// Not Fatal, and not left to the next reconnect: a subscription
+		// the broker refused, or one that errored, on a connection that
+		// stays up would otherwise never be retried, and a caller waiting
+		// on WaitSubscribed would wait for good.
+		go c.retrySubscribe(pahoClient, failed, connection)
 		return
 	}
+	c.markSubscribed(connection)
+}
 
-	logger.GetLogger().Info(
-		"Subscribed to the MQTT topic",
-		zap.String("URL", c.config.URLString),
-		zap.String("Topic", c.topic),
-	)
+// subscribe subscribes to each of topics and returns those it could not.
+// The broker's grant is checked as well as the error: paho reports a
+// SUBACK refusal (0x80) only in the token's result, with no error.
+func (c *Client) subscribe(pahoClient paho.Client, topics []string) []string {
+	failed := []string{}
+	for _, topic := range topics {
+		token := pahoClient.Subscribe(topic, 1, nil)
+		token.Wait()
+		err := token.Error()
+		if err == nil {
+			err = granted(token, topic)
+		}
+		if err != nil {
+			failed = append(failed, topic)
+			logger.GetLogger().Warn(
+				"Could not subscribe to the MQTT topic, retrying",
+				zap.String("Error", err.Error()),
+				zap.String("URL", c.config.URLString),
+				zap.String("Topic", topic),
+			)
+			continue
+		}
+		logger.GetLogger().Info(
+			"Subscribed to the MQTT topic",
+			zap.String("URL", c.config.URLString),
+			zap.String("Topic", topic),
+		)
+	}
+	return failed
+}
+
+// granted reports whether the broker granted the one topic in a subscribe token
+// that completed without an error. Only an explicit grant counts: paho also
+// completes a token with no error and no result at all when the connection
+// dropped before the broker answered and the subscription is resumed on the
+// next one - which says nothing about whether it will be granted there.
+func granted(token paho.Token, topic string) error {
+	st, ok := token.(*paho.SubscribeToken)
+	if !ok {
+		return errors.New("not a subscribe token")
+	}
+	// One topic per Subscribe call (see subscribe), so one result - under
+	// whatever key paho filed it: it strips $share/<group>/ and $queue/
+	// from shared subscriptions, so looking the topic up as subscribed
+	// would find nothing.
+	var code byte
+	results := st.Result()
+	ok = len(results) == 1
+	for _, c := range results {
+		code = c
+	}
+	switch {
+	case !ok:
+		return errors.New("the broker did not answer the subscription")
+	case code == subackRefused:
+		return errors.New("the broker refused the subscription")
+	case code > 2:
+		return fmt.Errorf("the broker answered the subscription with %#x", code)
+	}
+	return nil
+}
+
+// retrySubscribe keeps subscribing to topics, backing off, until all of them
+// are granted, or until connection is no longer the current one - in which
+// case that connection's onConnectHandler has started over, and this worker
+// would only add a second one.
+func (c *Client) retrySubscribe(pahoClient paho.Client, topics []string, connection uint64) {
+	wait := subscribeRetryMin
+	for {
+		time.Sleep(wait)
+		if c.connection.Load() != connection || !pahoClient.IsConnectionOpen() {
+			return
+		}
+		if topics = c.subscribe(pahoClient, topics); len(topics) == 0 {
+			c.markSubscribed(connection)
+			return
+		}
+		wait = min(2*wait, subscribeRetryMax)
+	}
+}
+
+// markSubscribed records that every topic was granted on connection, unless
+// another connection has replaced it in the meantime: its handler then
+// decides.
+func (c *Client) markSubscribed(connection uint64) {
+	if c.connection.Load() != connection {
+		return
+	}
+	c.subscribedOnce.Do(func() { close(c.subscribed) })
 }
 
 func connectionLostHandler(c paho.Client, e error) {

@@ -33,9 +33,9 @@ import (
 var rawDataColumns = []string{"time", "connector", "value", "uuid", "type"}
 
 const (
-	mappedInsertQuery              = `INSERT INTO "%s" ("time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT ("time", "origin", "context", "connector", "path") DO UPDATE SET value = EXCLUDED.value`
-	selectMappedQuery              = `SELECT "time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid" FROM "mapped_data"`
-	selectMostRecentMappedQuery    = `SELECT DISTINCT ON ("context", "path") "time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid" FROM "mapped_data" WHERE "time" > $1 ORDER BY "context", "path", "time" DESC`
+	mappedInsertQuery              = `INSERT INTO "%s" ("time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid", "diagnostics") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT ("time", "origin", "context", "connector", "path") DO UPDATE SET value = EXCLUDED.value, diagnostics = EXCLUDED.diagnostics`
+	selectMappedQuery              = `SELECT "time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid", "diagnostics" FROM "mapped_data"`
+	selectMostRecentMappedQuery    = `SELECT DISTINCT ON ("context", "path") "time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid", "diagnostics" FROM "mapped_data" WHERE "time" > $1 ORDER BY "context", "path", "time" DESC`
 	selectLocalCountQuery          = `SELECT "count" FROM "transfer_local_data" WHERE "origin" = $1 AND "start" = $2`
 	selectExistingRemoteCounts     = `SELECT "origin", "start" FROM "transfer_remote_data" WHERE "start" >= $1`
 	selectIncompletePeriodsQuery   = `SELECT "origin", "start", "local_count", "remote_count" FROM "transfer_data" WHERE "local_count" < "remote_count" * $1::double precision ORDER BY "start" DESC`
@@ -264,13 +264,34 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 		return
 	}
 
+	// SQL NULL when there are none, never the jsonb null literal: a NULL
+	// is what every row written before the column existed holds, so "has
+	// diagnostics" stays one test. NormalizeDiagnostic keeps every entry
+	// encodable, but should one not be, it is the diagnostics that are
+	// dropped and not the value they describe.
+	var diagnostics any
+	if len(svm.Diagnostics) > 0 {
+		if _, err := json.Marshal(svm.Diagnostics); err != nil {
+			logger.GetLogger().Error(
+				"Dropping diagnostics that cannot be encoded as jsonb",
+				zap.Any("diagnostics", svm.Diagnostics),
+				zap.Time("time", svm.Timestamp),
+				zap.String("path", path),
+				zap.String("context", svm.Context),
+				zap.Error(err),
+			)
+		} else {
+			diagnostics = svm.Diagnostics
+		}
+	}
+
 	table := "mapped_data_matching_context"
 	if svm.Context != svm.Origin {
 		table = "mapped_data_other_context"
 	}
 	query := fmt.Sprintf(mappedInsertQuery, table)
 	db.batchMutex.Lock()
-	db.batch.Queue(query, svm.Timestamp, svm.Source.Label, svm.Source.Type, svm.Context, path, svm.Value, svm.Source.Uuid, svm.Origin, svm.Source.TransferUuid).Exec(func(ct pgconn.CommandTag) error {
+	db.batch.Queue(query, svm.Timestamp, svm.Source.Label, svm.Source.Type, svm.Context, path, svm.Value, svm.Source.Uuid, svm.Origin, svm.Source.TransferUuid, diagnostics).Exec(func(ct pgconn.CommandTag) error {
 		if ct.RowsAffected() == 0 {
 			logger.GetLogger().Warn("0 rows affected",
 				zap.String("query", query),
@@ -387,6 +408,7 @@ func (db *PostgresqlDatabase) ReadMostRecentMapped(fromTime time.Time) ([]*messa
 			&m.Source.Uuid,
 			&m.Origin,
 			&m.Source.TransferUuid,
+			&m.Diagnostics,
 		)
 		if err != nil {
 			return nil, err
@@ -437,6 +459,7 @@ func (db *PostgresqlDatabase) ReadMapped(appendToQuery string, arguments ...inte
 			&m.Source.Uuid,
 			&m.Origin,
 			&m.Source.TransferUuid,
+			&m.Diagnostics,
 		)
 		if err != nil {
 			return nil, err

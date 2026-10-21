@@ -12,6 +12,9 @@ import (
 type Value struct {
 	Path  string      `json:"path"`
 	Value interface{} `json:"value"`
+	// Diagnostics describe the reading Value was mapped from - see
+	// diagnostics.go. Nil when there are none, which is never written.
+	Diagnostics map[string]any `json:"diagnostics,omitempty"`
 }
 
 func NewValue() *Value {
@@ -25,6 +28,11 @@ func (v *Value) WithPath(p string) *Value {
 
 func (v *Value) WithValue(val interface{}) *Value {
 	v.Value = val
+	return v
+}
+
+func (v *Value) WithDiagnostics(d map[string]any) *Value {
+	v.Diagnostics = d
 	return v
 }
 
@@ -69,9 +77,25 @@ func (v *Value) UnmarshalJSON(data []byte) error {
 	}
 	v.Value = decoded
 
+	// Optional, and only ever kept, never a reason to fail: a message
+	// from a gosk that predates diagnostics has none, and one this
+	// version cannot read is dropped for the same reason an unknown
+	// value is kept above - the batch it travels in matters more.
+	if raw, ok := j["diagnostics"]; ok && raw != nil {
+		if d, ok := raw.(map[string]interface{}); ok {
+			v.Diagnostics = normalizeDiagnostics(d)
+		} else {
+			logger.GetLogger().Warn(
+				"Ignoring diagnostics that are not a JSON object",
+				zap.String("Path", v.Path),
+				zap.Any("Diagnostics", raw),
+			)
+		}
+	}
+
 	return nil
 }
 
 func (v Value) Equals(other Value) bool {
-	return v.Path == other.Path && reflect.DeepEqual(v.Value, other.Value)
+	return v.Path == other.Path && reflect.DeepEqual(v.Value, other.Value) && diagnosticsEqual(v.Diagnostics, other.Diagnostics)
 }

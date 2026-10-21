@@ -70,12 +70,13 @@ func (m Mapped) ToSingleValueMapped() []SingleValueMapped {
 	for _, u := range m.Updates {
 		for _, v := range u.Values {
 			s := SingleValueMapped{
-				Context:   m.Context,
-				Origin:    m.Origin,
-				Source:    u.Source,
-				Timestamp: u.Timestamp,
-				Path:      v.Path,
-				Value:     v.Value,
+				Context:     m.Context,
+				Origin:      m.Origin,
+				Source:      u.Source,
+				Timestamp:   u.Timestamp,
+				Path:        v.Path,
+				Value:       v.Value,
+				Diagnostics: v.Diagnostics,
 			}
 
 			result = append(result, s)
@@ -91,6 +92,10 @@ type SingleValueMapped struct {
 	Timestamp time.Time   `json:"timestamp"`
 	Path      string      `json:"path"`
 	Value     interface{} `json:"value"`
+	// Diagnostics are the value's own, see Value.Diagnostics. An
+	// expression reads them the way it reads the value, as
+	// <path>.Diagnostics.<name>.
+	Diagnostics map[string]any `json:"diagnostics,omitempty"`
 }
 
 func NewSingleValueMapped() *SingleValueMapped {
@@ -98,14 +103,14 @@ func NewSingleValueMapped() *SingleValueMapped {
 }
 
 func (s SingleValueMapped) ToMapped() *Mapped {
-	v := NewValue().WithPath(s.Path).WithValue(s.Value)
+	v := NewValue().WithPath(s.Path).WithValue(s.Value).WithDiagnostics(s.Diagnostics)
 	u := NewUpdate().WithSource(s.Source).WithTimestamp(s.Timestamp).AddValue(v)
 	m := NewMapped().WithContext(s.Context).WithOrigin(s.Origin).AddUpdate(u)
 	return m
 }
 
 func (s SingleValueMapped) Equals(other SingleValueMapped) bool {
-	return s.Context == other.Context && s.Path == other.Path && reflect.DeepEqual(s.Value, other.Value)
+	return s.Context == other.Context && s.Path == other.Path && reflect.DeepEqual(s.Value, other.Value) && diagnosticsEqual(s.Diagnostics, other.Diagnostics)
 }
 
 // Merges left with right, if both left and right have the same property the value of the right property will be returned
@@ -124,13 +129,16 @@ func (left SingleValueMapped) Merge(right SingleValueMapped) SingleValueMapped {
 		return right
 	}
 
+	// Diagnostics describe one reading, so they are the newer one's,
+	// never a merge of two.
 	return SingleValueMapped{
-		Context:   right.Context,
-		Origin:    right.Origin,
-		Source:    right.Source,
-		Timestamp: right.Timestamp,
-		Path:      right.Path,
-		Value:     result,
+		Context:     right.Context,
+		Origin:      right.Origin,
+		Source:      right.Source,
+		Timestamp:   right.Timestamp,
+		Path:        right.Path,
+		Value:       result,
+		Diagnostics: right.Diagnostics,
 	}
 }
 
@@ -181,6 +189,10 @@ func (s *SingleValueMapped) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("can't convert %v to a string", j["path"])
 	}
 	s.Path = str
+
+	if raw, ok := j["diagnostics"].(map[string]interface{}); ok {
+		s.Diagnostics = normalizeDiagnostics(raw)
+	}
 
 	if decoded, err := Decode(j["value"]); err == nil {
 		s.Value = decoded

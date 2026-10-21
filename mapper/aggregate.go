@@ -343,6 +343,19 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 		if mapping.Overwrite {
 			overwrites[mapping.Path] = struct{}{}
 		}
+		// An in-place transform corrects a reading rather than deriving a
+		// new one, so the reading's diagnostics - the raw loop current,
+		// or why it was rejected - stay with the corrected value. Taken
+		// from env, which holds the reading as it arrived or as corrected
+		// before (and runTransform has restored by now), so they are
+		// there whichever of a transform's source paths triggered it. A
+		// derived value has none of its own.
+		var diagnostics map[string]any
+		if isTransform(mapping) {
+			if current, ok := m.env[strings.ReplaceAll(mapping.Path, ".", "_")].(message.SingleValueMapped); ok {
+				diagnostics = current.Diagnostics
+			}
+		}
 		switch mapping.Path {
 		case "name":
 			name := output.(string)
@@ -351,19 +364,20 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 			mmsi := output.(string)
 			u.AddValue(message.NewValue().WithPath("").WithValue(message.VesselInfo{MMSI: &mmsi}))
 		default:
-			u.AddValue(message.NewValue().WithPath(mapping.Path).WithValue(output))
+			u.AddValue(message.NewValue().WithPath(mapping.Path).WithValue(output).WithDiagnostics(diagnostics))
 		}
 
 		if mapping.Path == "" {
 			continue
 		}
 		m.remember(historyMap, appended, message.SingleValueMapped{
-			Context:   input.Context,
-			Origin:    input.Origin,
-			Source:    u.Source,
-			Timestamp: u.Timestamp,
-			Path:      mapping.Path,
-			Value:     output,
+			Context:     input.Context,
+			Origin:      input.Origin,
+			Source:      u.Source,
+			Timestamp:   u.Timestamp,
+			Path:        mapping.Path,
+			Value:       output,
+			Diagnostics: diagnostics,
 		}, true)
 		for _, consumer := range m.aggregateMappings[mapping.Path] {
 			triggered[consumer] = struct{}{}

@@ -144,9 +144,21 @@ func (left SingleValueMapped) Merge(right SingleValueMapped) SingleValueMapped {
 
 func (s *SingleValueMapped) UnmarshalJSON(data []byte) error {
 	var err error
-	var j map[string]interface{}
-	if err = json.Unmarshal(data, &j); err != nil {
+	// Diagnostics decoded apart from the rest, for the reason given in
+	// Value.UnmarshalJSON.
+	var fields map[string]json.RawMessage
+	if err = json.Unmarshal(data, &fields); err != nil {
 		return err
+	}
+	diagnostics, hasDiagnostics := fields["diagnostics"]
+	delete(fields, "diagnostics")
+	j := make(map[string]interface{}, len(fields))
+	for key, raw := range fields {
+		var decoded interface{}
+		if err = json.Unmarshal(raw, &decoded); err != nil {
+			return err
+		}
+		j[key] = decoded
 	}
 	for _, key := range []string{"context", "origin", "source", "timestamp", "path", "value"} {
 		if _, ok := j[key]; !ok {
@@ -190,8 +202,8 @@ func (s *SingleValueMapped) UnmarshalJSON(data []byte) error {
 	}
 	s.Path = str
 
-	if raw, ok := j["diagnostics"].(map[string]interface{}); ok {
-		s.Diagnostics = normalizeDiagnostics(raw)
+	if hasDiagnostics {
+		s.Diagnostics = decodeDiagnosticsJSON(diagnostics, s.Path)
 	}
 
 	if decoded, err := Decode(j["value"]); err == nil {

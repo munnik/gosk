@@ -19,6 +19,14 @@ func precompileDiagnostics(mc *config.MappingConfig) {
 	}
 	mc.CompiledDiagnostics = make(map[string]*vm.Program, len(mc.Diagnostics))
 	for name, source := range mc.Diagnostics {
+		if !message.ValidDiagnosticName(name) {
+			logger.GetLogger().Error(
+				"Ignoring a diagnostic whose name cannot be stored",
+				zap.String("Diagnostic", name),
+				zap.String("Path", mc.Path),
+			)
+			continue
+		}
 		program, err := expr.Compile(source)
 		if err != nil {
 			logger.GetLogger().Error(
@@ -56,6 +64,9 @@ func runDiagnostics(env ExpressionEnvironment, mc *config.MappingConfig) map[str
 
 	result := make(map[string]any, len(mc.Diagnostics))
 	for name, source := range mc.Diagnostics {
+		if !message.ValidDiagnosticName(name) {
+			continue
+		}
 		program := mc.CompiledDiagnostics[name]
 		if program == nil {
 			var err error

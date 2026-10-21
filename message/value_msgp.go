@@ -140,7 +140,7 @@ func unmarshalValueMsg(bts []byte) (Value, []byte, error) {
 	if err != nil {
 		return v, bts, err
 	}
-	v.Diagnostics = normalizeDiagnostics(d)
+	v.Diagnostics = NormalizeDiagnostics(d)
 	return v, bts, nil
 }
 

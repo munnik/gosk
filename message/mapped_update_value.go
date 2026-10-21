@@ -38,9 +38,24 @@ func (v *Value) WithDiagnostics(d map[string]any) *Value {
 
 func (v *Value) UnmarshalJSON(data []byte) error {
 	var err error
-	var j map[string]interface{}
-	if err = json.Unmarshal(data, &j); err != nil {
+	// Each field is decoded on its own, so that the optional diagnostics
+	// - which an older gosk never sends and this one never needs - cannot
+	// fail the value: a number in them out of float64's range would
+	// otherwise fail the decode of the whole object, and with it the
+	// batch it arrived in (see the comment on unknown values below).
+	var fields map[string]json.RawMessage
+	if err = json.Unmarshal(data, &fields); err != nil {
 		return err
+	}
+	diagnostics, hasDiagnostics := fields["diagnostics"]
+	delete(fields, "diagnostics")
+	j := make(map[string]interface{}, len(fields))
+	for key, raw := range fields {
+		var decoded interface{}
+		if err = json.Unmarshal(raw, &decoded); err != nil {
+			return err
+		}
+		j[key] = decoded
 	}
 	for _, key := range []string{"path", "value"} {
 		if _, ok := j[key]; !ok {
@@ -81,16 +96,8 @@ func (v *Value) UnmarshalJSON(data []byte) error {
 	// from a gosk that predates diagnostics has none, and one this
 	// version cannot read is dropped for the same reason an unknown
 	// value is kept above - the batch it travels in matters more.
-	if raw, ok := j["diagnostics"]; ok && raw != nil {
-		if d, ok := raw.(map[string]interface{}); ok {
-			v.Diagnostics = normalizeDiagnostics(d)
-		} else {
-			logger.GetLogger().Warn(
-				"Ignoring diagnostics that are not a JSON object",
-				zap.String("Path", v.Path),
-				zap.Any("Diagnostics", raw),
-			)
-		}
+	if hasDiagnostics {
+		v.Diagnostics = decodeDiagnosticsJSON(diagnostics, v.Path)
 	}
 
 	return nil

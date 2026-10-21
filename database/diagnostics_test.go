@@ -86,6 +86,15 @@ var _ = Describe("Mapped diagnostics", func() {
 		}, "3s", "10ms").Should(Equal(0.02))
 	})
 
+	It("drops an entry jsonb would refuse, and keeps the value and the rest", func() {
+		id := write("vessels.urn:mrn:imo:mmsi:244000001",
+			message.NewValue().WithPath("a.nul").WithValue(1.5).WithDiagnostics(map[string]any{"ok": 1.0, "bad": "x\x00", "nul\x00key": true}),
+		)
+		got := readBack(id, 1)["a.nul"]
+		Expect(got.Value).To(Equal(1.5))
+		Expect(got.Diagnostics).To(Equal(map[string]any{"ok": 1.0}))
+	})
+
 	It("reads them back as the most recent value", func() {
 		id := write("vessels.urn:mrn:imo:mmsi:244000001",
 			message.NewValue().WithPath("tanks.fuel.port.currentLevel").WithValue(nil).WithDiagnostics(map[string]any{message.DiagnosticRejected: "error marker 0x8000 in register 52"}),

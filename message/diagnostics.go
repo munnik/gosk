@@ -1,9 +1,14 @@
 package message
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"reflect"
+	"strings"
+
+	"github.com/munnik/gosk/logger"
+	"go.uber.org/zap"
 )
 
 // Diagnostics describe the reading a value was mapped from, rather than the
@@ -37,7 +42,15 @@ const DiagnosticRejected = "rejected"
 // otherwise drop the whole row the diagnostic rides on.
 func NormalizeDiagnostic(v any) (any, error) {
 	switch val := v.(type) {
-	case bool, string:
+	case bool:
+		return val, nil
+	case string:
+		// jsonb refuses a NUL even though encoding/json writes one
+		// happily as \u0000, so the writer's own encoding check would
+		// pass it and postgres would then drop the whole row.
+		if strings.ContainsRune(val, 0) {
+			return nil, fmt.Errorf("a diagnostic string cannot contain a NUL character")
+		}
 		return val, nil
 	case float64:
 		if math.IsNaN(val) || math.IsInf(val, 0) {
@@ -73,17 +86,34 @@ func NormalizeDiagnostic(v any) (any, error) {
 	}
 }
 
-// normalizeDiagnostics applies NormalizeDiagnostic to every entry of d that
+// ValidDiagnosticName reports whether name can be a diagnostic's key: not
+// empty, and without a NUL, which jsonb refuses in a key as in a string.
+func ValidDiagnosticName(name string) bool {
+	return name != "" && !strings.ContainsRune(name, 0)
+}
+
+// IsRejected reports whether a set of diagnostics says its reading was
+// rejected (see DiagnosticRejected), in which case the value has no value
+// to judge.
+func IsRejected(d map[string]any) bool {
+	_, ok := d[DiagnosticRejected]
+	return ok
+}
+
+// NormalizeDiagnostics applies NormalizeDiagnostic to every entry of d that
 // arrived from outside - a JSON message, a database row - dropping the ones
 // that do not normalise, and returns nil for an empty result. It never
 // fails: like Value.UnmarshalJSON, it keeps what it can rather than reject a
 // message for a field this version cannot interpret.
-func normalizeDiagnostics(d map[string]any) map[string]any {
+func NormalizeDiagnostics(d map[string]any) map[string]any {
 	if len(d) == 0 {
 		return nil
 	}
 	result := make(map[string]any, len(d))
 	for k, v := range d {
+		if !ValidDiagnosticName(k) {
+			continue
+		}
 		if n, err := NormalizeDiagnostic(v); err == nil {
 			result[k] = n
 		}
@@ -92,6 +122,23 @@ func normalizeDiagnostics(d map[string]any) map[string]any {
 		return nil
 	}
 	return result
+}
+
+// decodeDiagnosticsJSON decodes a JSON diagnostics field, keeping what it
+// can and never failing: anything that is not an object, or does not
+// decode, is logged and dropped, and the value it came with is kept.
+func decodeDiagnosticsJSON(raw json.RawMessage, path string) map[string]any {
+	var d map[string]interface{}
+	if err := json.Unmarshal(raw, &d); err != nil {
+		logger.GetLogger().Warn(
+			"Ignoring diagnostics that do not decode as a JSON object",
+			zap.String("Path", path),
+			zap.ByteString("Diagnostics", raw),
+			zap.String("Error", err.Error()),
+		)
+		return nil
+	}
+	return NormalizeDiagnostics(d)
 }
 
 // diagnosticsEqual treats a nil and an empty set of diagnostics as the same:

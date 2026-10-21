@@ -259,7 +259,7 @@ func easyjson827bc575DecodeGithubComMunnikGoskMessage3(in *jlexer.Lexer, out *Va
 			if in.IsNull() {
 				in.Skip()
 			} else if d, ok := in.Interface().(map[string]interface{}); ok {
-				out.Diagnostics = normalizeDiagnostics(d)
+				out.Diagnostics = NormalizeDiagnostics(d)
 			}
 		default:
 			in.SkipRecursive()

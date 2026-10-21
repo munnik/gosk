@@ -269,9 +269,14 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 	// diagnostics" stays one test. NormalizeDiagnostic keeps every entry
 	// encodable, but should one not be, it is the diagnostics that are
 	// dropped and not the value they describe.
+	//
+	// They are normalised once more here, whatever produced them: an entry
+	// a mapper's expression could never yield - a NUL in a string, which
+	// encoding/json writes but jsonb refuses - would otherwise make
+	// postgres refuse the row, value and all.
 	var diagnostics any
-	if len(svm.Diagnostics) > 0 {
-		if _, err := json.Marshal(svm.Diagnostics); err != nil {
+	if normalized := message.NormalizeDiagnostics(svm.Diagnostics); len(normalized) > 0 {
+		if _, err := json.Marshal(normalized); err != nil {
 			logger.GetLogger().Error(
 				"Dropping diagnostics that cannot be encoded as jsonb",
 				zap.Any("diagnostics", svm.Diagnostics),
@@ -281,7 +286,7 @@ func (db *PostgresqlDatabase) WriteSingleValueMapped(svm message.SingleValueMapp
 				zap.Error(err),
 			)
 		} else {
-			diagnostics = svm.Diagnostics
+			diagnostics = normalized
 		}
 	}
 

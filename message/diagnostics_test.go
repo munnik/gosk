@@ -190,3 +190,54 @@ func TestEqualsComparesDiagnostics(t *testing.T) {
 		t.Fatal("values with different diagnostics compared equal")
 	}
 }
+
+func TestNULIsNotADiagnostic(t *testing.T) {
+	if _, err := NormalizeDiagnostic("open\x00loop"); err == nil {
+		t.Fatal("a string with a NUL normalised; jsonb would refuse it")
+	}
+	got := NormalizeDiagnostics(map[string]any{"ok": 1.0, "bad": "x\x00", "nul\x00key": true, "": 2.0})
+	if len(got) != 1 || got["ok"] != 1.0 {
+		t.Fatalf("got %+v, want only ok", got)
+	}
+
+	var v Value
+	if err := json.Unmarshal([]byte(`{"path":"a.b","value":1,"diagnostics":{"s":"x\u0000","k\u0000":1,"ok":true}}`), &v); err != nil {
+		t.Fatal(err)
+	}
+	if len(v.Diagnostics) != 1 || v.Diagnostics["ok"] != true {
+		t.Fatalf("got %+v", v.Diagnostics)
+	}
+}
+
+// A diagnostics field that does not decode - here a number beyond float64 -
+// must cost the diagnostics, not the value and not the batch it travels in.
+func TestUndecodableDiagnosticsKeepTheValue(t *testing.T) {
+	var v Value
+	if err := json.Unmarshal([]byte(`{"path":"a.b","value":2,"diagnostics":{"raw":1e400}}`), &v); err != nil {
+		t.Fatalf("the value failed over its diagnostics: %v", err)
+	}
+	if v.Path != "a.b" || v.Value != 2.0 || v.Diagnostics != nil {
+		t.Fatalf("got %+v", v)
+	}
+
+	batch := []byte(`{"context":"c","origin":"c","updates":[{"source":{"label":"l","type":"modbus","uuid":"00000000-0000-0000-0000-000000000000","transferUuid":"00000000-0000-0000-0000-000000000000"},"timestamp":"2026-10-17T06:00:00Z","values":[{"path":"a.b","value":1,"diagnostics":{"raw":1e400}},{"path":"c.d","value":2,"diagnostics":{"current":0.01}}]}]}`)
+	var m Mapped
+	if err := json.Unmarshal(batch, &m); err != nil {
+		t.Fatalf("the batch failed over one value's diagnostics: %v", err)
+	}
+	if d := diagnosticsOf(&m); d["a.b"] != nil || d["c.d"]["current"] != 0.01 {
+		t.Fatalf("got %+v", d)
+	}
+
+	var s SingleValueMapped
+	if err := json.Unmarshal([]byte(`{"context":"c","origin":"c","source":{"label":"l","type":"t","uuid":"00000000-0000-0000-0000-000000000000","transferUuid":"00000000-0000-0000-0000-000000000000"},"timestamp":"2026-10-17T06:00:00Z","path":"a.b","value":3,"diagnostics":{"raw":1e400}}`), &s); err != nil || s.Value != 3.0 || s.Diagnostics != nil {
+		t.Fatalf("SingleValueMapped: %+v, %v", s, err)
+	}
+	// and a value itself that does not decode still fails, as before
+	if err := json.Unmarshal([]byte(`{"path":"a.b","value":1e400}`), &v); err == nil {
+		t.Fatal("a value beyond float64 decoded")
+	}
+	if err := json.Unmarshal([]byte(`{"path":null,"value":1}`), &v); err == nil {
+		t.Fatal("a null path decoded")
+	}
+}

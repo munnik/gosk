@@ -510,7 +510,9 @@ type MQTTConfig struct {
 	// broker: two clients sharing an id disconnect each other in a loop.
 	// Leave it empty to have mqtt.New derive one from the process's role,
 	// the hostname and the username, which is unique as long as a given
-	// role connects to a given broker once per host.
+	// role connects to a given broker once per host. Only the outbox
+	// processes (mqtt.sessionRoles) use it at all; every other process
+	// connects with a clean session under an id the broker assigns.
 	ClientID string `mapstructure:"client_id"`
 }
 

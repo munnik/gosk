@@ -64,8 +64,9 @@ const (
 // but because a derived one would collide: a vessel runs its live writer
 // and the writer behind its responder as two "write" processes against the
 // same broker with the same username, and two clients sharing an id take
-// turns disconnecting each other. A configured client_id is used whatever
-// the role; the session still only comes with these roles.
+// turns disconnecting each other. A configured client_id, too, is only
+// used by these roles: the same two writers given one configuration with
+// a client_id in it would collide just the same.
 var sessionRoles = map[string]bool{
 	"transferSend":    true,
 	"transferReceive": true,
@@ -241,8 +242,8 @@ func (c *Client) Disconnect() {
 	(*c.pahoClient).Disconnect(uint(disconnectWait.Milliseconds()))
 }
 
-// clientID returns the configured client id, or for a role in sessionRoles
-// derives one from the role, the hostname and the username; for any other
+// clientID returns, for a role in sessionRoles, the configured client id or
+// one derived from the role, the hostname and the username; for any other
 // role it is empty and the broker assigns one. All three matter: the
 // hostname keeps two vessels (or a vessel and the cloud) apart, the role
 // keeps the several gosk processes on one host apart, and the username
@@ -251,11 +252,11 @@ func (c *Client) Disconnect() {
 // the same across restarts, which is what lets the broker hold a session
 // for it.
 func clientID(c *config.MQTTConfig, role string) string {
-	if c.ClientID != "" {
-		return c.ClientID
-	}
 	if !sessionRoles[role] {
 		return ""
+	}
+	if c.ClientID != "" {
+		return c.ClientID
 	}
 
 	host, err := os.Hostname()

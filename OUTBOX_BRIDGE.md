@@ -58,9 +58,15 @@ every gosk process refusing the database. With the tables on both sides,
 the two builds replace each other freely, and going back is deploying
 `master` again: `transfer_outbox` simply stops being written.
 
-A database that ran this branch before `master` had the tables needs its
-version set back first, in the gosk user's schema:
+Only a `master` build from before PR #30 does not know the version, and
+only for one of those does the database need its version set back first,
+in the gosk user's schema:
 
 ```sql
 UPDATE schema_migrations SET version = 20261015120000, dirty = false;
 ```
+
+Set it forward again (`version = 20261020120000`) before deploying any
+build that has the three migrations - this branch or a `master` from PR
+#30 on - or that build runs them a second time, fails on the sequence that
+already exists, and leaves the schema marked dirty.

@@ -64,8 +64,8 @@ const (
 // but because a derived one would collide: a vessel runs its live writer
 // and the writer behind its responder as two "write" processes against the
 // same broker with the same username, and two clients sharing an id take
-// turns disconnecting each other. A configured client_id applies to any
-// role, and brings the session with it.
+// turns disconnecting each other. A configured client_id is used whatever
+// the role; the session still only comes with these roles.
 var sessionRoles = map[string]bool{
 	"transferSend":    true,
 	"transferReceive": true,
@@ -120,7 +120,7 @@ func New(config *config.MQTTConfig, role string, publishHandler paho.MessageHand
 		topics:         topics,
 		subscribed:     make(chan struct{}),
 		clientID:       clientID(config, role),
-		session:        config.ClientID != "" || sessionRoles[role],
+		session:        sessionRoles[role],
 		publishTokens:  make(chan paho.Token, maxTrackedPublishes),
 	}
 	pahoClient := paho.NewClient(result.createClientOptions())
@@ -313,9 +313,12 @@ func (c *Client) createClientOptions() *paho.ClientOptions {
 	//
 	// Only for the roles that need it (sessionRoles): the others publish
 	// at QoS 0 or ask for nothing a session would keep, and connect as they
-	// always did.
-	if c.session {
+	// always did - under a configured client id if there is one, else one
+	// the broker assigns.
+	if c.clientID != "" {
 		result.SetClientID(c.clientID)
+	}
+	if c.session {
 		result.SetCleanSession(false)
 		// Resume the session's subscriptions on reconnect. What this does
 		// not do is carry unacknowledged publishes across a restart of the

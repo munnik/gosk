@@ -101,17 +101,32 @@ type Ack struct {
 // that share a context, a timestamp and a source become one update with
 // several values, which is the shape they were written in and a good deal
 // smaller on the wire than one message per row.
+//
+// The source's uuids are part of what makes rows one update: an update
+// carries them once, for all its values, so two rows that differ only in
+// the raw message they came from (or in the transfer that brought them)
+// have to stay apart, or the second would be stored on the far end under
+// the first one's uuid.
 func groupRows(rows []message.SingleValueMapped) []message.Mapped {
 	type key struct {
-		context string
-		at      int64
-		label   string
-		type_   string
+		context      string
+		at           int64
+		label        string
+		type_        string
+		uuid         uuid.UUID
+		transferUuid uuid.UUID
 	}
 	index := make(map[key]int, len(rows))
 	result := make([]message.Mapped, 0, len(rows))
 	for _, row := range rows {
-		k := key{context: row.Context, at: row.Timestamp.UnixNano(), label: row.Source.Label, type_: row.Source.Type}
+		k := key{
+			context:      row.Context,
+			at:           row.Timestamp.UnixNano(),
+			label:        row.Source.Label,
+			type_:        row.Source.Type,
+			uuid:         row.Source.Uuid,
+			transferUuid: row.Source.TransferUuid,
+		}
 		m := row.ToMapped()
 		if i, ok := index[k]; ok {
 			// Appended, not AddValue'd: that replaces a value whose path

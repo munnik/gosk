@@ -1,5 +1,10 @@
 # Deploying the outbox and dropping the UUIDs
 
+> This is the plan for the full `transfer-outbox` branch, which replaces the
+> count protocol. The `transfer-outbox-bridge` branch, which runs the two
+> side by side, is described in `OUTBOX_BRIDGE.md`; its migrations are a
+> subset of the ones below and nothing here about dropping applies to it.
+
 This version of gosk replaces the count-based transfer protocol
 (`gosk transfer request` / `respond`) with an outbox (`gosk transfer send` /
 `receive`, see `transfer/outbox.go`), and drops every uuid column together with
@@ -59,22 +64,20 @@ of a seed.
 From this branch (`transfer-outbox`, which already contains
 `timescale-columnstore`).
 
-Note what that inclusion means: a read of `the-production-server` on 2026-10-19
-found every `mapped_data` chunk uncompressed and no columnstore policy - the
-3.6x on the dataset is ZFS's compression, not TimescaleDB's. The columnstore
-migration (`20261017130100` - renumbered from its
-September dates on 2026-10-19, when the test trial showed that
-golang-migrate skips a version below the one a database already recorded,
-and had skipped it; it now comes last) therefore runs for the first time
-on production with the
-first gosk process of this version, and enable
-the policies that compress chunks older than 60 days in the background from
-then on: a rewrite of some five terabytes, spread over the policy's runs, on
-a pool that was 87% full with 12 TiB held by snapshots. Reclaim snapshot
-space first (the pre-16-October snapshots hold the bulk of it, once the
-`seed-the-office-server` hold can go), and treat the columnstore as its own
-decision, not a side effect of this one: it can be left out by rebasing this
-branch without `timescale-columnstore`.
+Note what that inclusion means: a production database that has never had a
+columnstore policy has every `mapped_data` chunk uncompressed, and whatever
+compression the dataset shows is the filesystem's, not TimescaleDB's. The
+columnstore migration (`20261017130100` - renumbered on 2026-10-19, when
+the test trial showed that golang-migrate skips a version below the one a
+database already recorded, and had skipped it; it now comes last)
+therefore runs for the first time on production with the first gosk
+process of this version, and enables the policies that compress chunks
+older than 60 days in the background from then on: a rewrite of the whole
+historical dataset, spread over the policy's runs, on a pool that has to
+have the room for it. Reclaim snapshot space first if the pool is tight,
+and treat the columnstore as its own decision, not a side effect of this
+one: it can be left out by rebasing this branch without
+`timescale-columnstore`.
 
 ```sh
 cd ~/Code/gosk

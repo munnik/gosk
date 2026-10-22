@@ -1,6 +1,7 @@
 package transfer
 
 import (
+	"github.com/google/uuid"
 	"testing"
 	"time"
 
@@ -63,6 +64,41 @@ func TestGroupRowsFoldsOneUpdatePerContextTimeAndSource(t *testing.T) {
 	}
 	if total != len(rows) {
 		t.Fatalf("grouping lost rows: %d of %d", total, len(rows))
+	}
+}
+
+// TestGroupRowsKeepsRowsWithDifferentSourceUuidsApart: an update carries
+// its source's uuids once, for every value in it, so rows from two raw
+// messages that happen to share a context, a timestamp and a source must
+// not be folded into one - the second would arrive on the far end under
+// the first one's uuid.
+func TestGroupRowsKeepsRowsWithDifferentSourceUuidsApart(t *testing.T) {
+	at := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	first, second := uuid.New(), uuid.New()
+	row := func(path string, u uuid.UUID) message.SingleValueMapped {
+		return message.SingleValueMapped{
+			Context:   "vessels.urn:mrn:imo:mmsi:111111111",
+			Origin:    "vessels.urn:mrn:imo:mmsi:111111111",
+			Timestamp: at,
+			Source:    *message.NewSource().WithLabel("engine").WithType("modbus").WithUuid(u),
+			Path:      path,
+			Value:     1.0,
+		}
+	}
+	grouped := groupRows([]message.SingleValueMapped{row("a", first), row("b", second), row("c", first)})
+	if len(grouped) != 2 {
+		t.Fatalf("expected one message per source uuid, got %d: %+v", len(grouped), grouped)
+	}
+	for _, m := range grouped {
+		for _, v := range m.Updates[0].Values {
+			want := first
+			if v.Path == "b" {
+				want = second
+			}
+			if m.Updates[0].Source.Uuid != want {
+				t.Fatalf("row %s arrived under uuid %s, want %s", v.Path, m.Updates[0].Source.Uuid, want)
+			}
+		}
 	}
 }
 

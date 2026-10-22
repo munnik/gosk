@@ -1,0 +1,51 @@
+-- mapped_data_matching_context and mapped_data_other_context still partition
+-- by 7 days: 20220214102640 created the first (as key_value_data) without a
+-- chunk_time_interval and 20231024113638 the second the same way, so both
+-- fell back to TimescaleDB's default. The default was never a decision, and
+-- at today's volume it is the wrong width on both kinds of host.
+--
+-- On a vessel node, chunks are the unit of data loss. The nix module's
+-- zfs-ensure-free-space drops the oldest mapped_data or raw_data chunk every
+-- six hours while the pool is over 75% (modules/nixos/containers/
+-- postgresql-gosk.nix). With 7-day chunks each run throws away a week of the
+-- vessel's own history at once, and on a-vessel one such drop
+-- moved 95G into a snapshot in one go. raw_data has been on 1-day chunks for
+-- the same reason since 20260915180000; mapped_data, the copy that is
+-- actually read, is the one still losing a week at a time.
+--
+-- On the server, chunks are the unit of the active working set. Measured on
+-- the-test-server's copy of production on 2026-10-17, one 7-day chunk is:
+--
+--   mapped_data_other_context      36-N GB heap + 33-N GB index  (~200M rows)
+--   mapped_data_matching_context   17-N GB heap + 26-N GB index  (~100M rows)
+--
+-- so the pair being written to is ~N GB against N GB of shared_buffers on
+-- the-production-server (a quarter of its N GB), where TimescaleDB's guidance is
+-- for all actively written chunks, indexes included, to fit in that quarter.
+-- One day is ~N GB for the pair.
+--
+-- Two things on neighbouring branches also get simpler with a day:
+--
+-- - the columnstore policy (20260924151000) converts a chunk only once its
+--   whole range is past the threshold, and needs room for the compressed
+--   copy next to the uncompressed one until the conversion commits: a week
+--   of slack and ~N GB of headroom per chunk become a day and ~N GB;
+-- - the outbox's digests (transfer-outbox) summarise mapped_data per day,
+--   hour and minute on the time column, so a day-level digest reads exactly
+--   one chunk instead of a seventh of one through the index.
+--
+-- The cost is chunk count. The server holds 345 chunks today (1596 relations
+-- under _timescaledb_internal); at a day each, 2.6 years of history is about
+-- 1900 mapped_data chunks. That is within what TimescaleDB plans comfortably
+-- when queries carry a time predicate, which every gosk query does, and the
+-- lock table has room: max_locks_per_transaction is 1024 on a server (x500
+-- connections) and 256 on a node (x100), and a statement over the whole
+-- mapped_data view takes about four locks per rowstore chunk and two or
+-- three per columnstore chunk. Nodes trim their history, so they never
+-- reach the server's count.
+--
+-- Like the raw_data and transfer_log changes before it, this affects only
+-- chunks created from now on. Existing 7-day chunks keep their width until
+-- they are trimmed (nodes) or converted to the columnstore (servers).
+SELECT public.set_chunk_time_interval('mapped_data_matching_context', INTERVAL '1 day');
+SELECT public.set_chunk_time_interval('mapped_data_other_context', INTERVAL '1 day');

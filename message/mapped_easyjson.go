@@ -4,7 +4,6 @@ package message
 
 import (
 	json "encoding/json"
-
 	easyjson "github.com/mailru/easyjson"
 	jlexer "github.com/mailru/easyjson/jlexer"
 	jwriter "github.com/mailru/easyjson/jwriter"
@@ -61,11 +60,7 @@ func easyjson827bc575DecodeGithubComMunnikGoskMessage(in *jlexer.Lexer, out *Map
 				}
 				for !in.IsDelim(']') {
 					var v1 Update
-					if in.IsNull() {
-						in.Skip()
-					} else {
-						(v1).UnmarshalEasyJSON(in)
-					}
+					easyjson827bc575DecodeGithubComMunnikGoskMessage1(in, &v1)
 					out.Updates = append(out.Updates, v1)
 					in.WantComma()
 				}
@@ -106,7 +101,7 @@ func easyjson827bc575EncodeGithubComMunnikGoskMessage(out *jwriter.Writer, in Ma
 				if v2 > 0 {
 					out.RawByte(',')
 				}
-				(v3).MarshalEasyJSON(out)
+				easyjson827bc575EncodeGithubComMunnikGoskMessage1(out, v3)
 			}
 			out.RawByte(']')
 		}
@@ -136,4 +131,237 @@ func (v *Mapped) UnmarshalJSON(data []byte) error {
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *Mapped) UnmarshalEasyJSON(l *jlexer.Lexer) {
 	easyjson827bc575DecodeGithubComMunnikGoskMessage(l, v)
+}
+func easyjson827bc575DecodeGithubComMunnikGoskMessage1(in *jlexer.Lexer, out *Update) {
+	isTopLevel := in.IsStart()
+	if in.IsNull() {
+		if isTopLevel {
+			in.Consumed()
+		}
+		in.Skip()
+		return
+	}
+	in.Delim('{')
+	for !in.IsDelim('}') {
+		key := in.UnsafeFieldName(false)
+		in.WantColon()
+		switch key {
+		case "source":
+			easyjson827bc575DecodeGithubComMunnikGoskMessage2(in, &out.Source)
+		case "timestamp":
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				if data := in.Raw(); in.Ok() {
+					in.AddError((out.Timestamp).UnmarshalJSON(data))
+				}
+			}
+		case "values":
+			if in.IsNull() {
+				in.Skip()
+				out.Values = nil
+			} else {
+				in.Delim('[')
+				if out.Values == nil {
+					if !in.IsDelim(']') {
+						out.Values = make([]Value, 0, 2)
+					} else {
+						out.Values = []Value{}
+					}
+				} else {
+					out.Values = (out.Values)[:0]
+				}
+				for !in.IsDelim(']') {
+					var v4 Value
+					if in.IsNull() {
+						in.Skip()
+					} else {
+						if data := in.Raw(); in.Ok() {
+							in.AddError((v4).UnmarshalJSON(data))
+						}
+					}
+					out.Values = append(out.Values, v4)
+					in.WantComma()
+				}
+				in.Delim(']')
+			}
+		default:
+			in.SkipRecursive()
+		}
+		in.WantComma()
+	}
+	in.Delim('}')
+	if isTopLevel {
+		in.Consumed()
+	}
+}
+func easyjson827bc575EncodeGithubComMunnikGoskMessage1(out *jwriter.Writer, in Update) {
+	out.RawByte('{')
+	first := true
+	_ = first
+	{
+		const prefix string = ",\"source\":"
+		out.RawString(prefix[1:])
+		easyjson827bc575EncodeGithubComMunnikGoskMessage2(out, in.Source)
+	}
+	{
+		const prefix string = ",\"timestamp\":"
+		out.RawString(prefix)
+		out.Raw((in.Timestamp).MarshalJSON())
+	}
+	{
+		const prefix string = ",\"values\":"
+		out.RawString(prefix)
+		if in.Values == nil && (out.Flags&jwriter.NilSliceAsEmpty) == 0 {
+			out.RawString("null")
+		} else {
+			out.RawByte('[')
+			for v5, v6 := range in.Values {
+				if v5 > 0 {
+					out.RawByte(',')
+				}
+				easyjson827bc575EncodeGithubComMunnikGoskMessage3(out, v6)
+			}
+			out.RawByte(']')
+		}
+	}
+	out.RawByte('}')
+}
+func easyjson827bc575DecodeGithubComMunnikGoskMessage3(in *jlexer.Lexer, out *Value) {
+	isTopLevel := in.IsStart()
+	if in.IsNull() {
+		if isTopLevel {
+			in.Consumed()
+		}
+		in.Skip()
+		return
+	}
+	in.Delim('{')
+	for !in.IsDelim('}') {
+		key := in.UnsafeFieldName(false)
+		in.WantColon()
+		switch key {
+		case "path":
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Path = string(in.String())
+			}
+		case "value":
+			if m, ok := out.Value.(easyjson.Unmarshaler); ok {
+				m.UnmarshalEasyJSON(in)
+			} else if m, ok := out.Value.(json.Unmarshaler); ok {
+				_ = m.UnmarshalJSON(in.Raw())
+			} else {
+				out.Value = in.Interface()
+			}
+		default:
+			in.SkipRecursive()
+		}
+		in.WantComma()
+	}
+	in.Delim('}')
+	if isTopLevel {
+		in.Consumed()
+	}
+}
+func easyjson827bc575EncodeGithubComMunnikGoskMessage3(out *jwriter.Writer, in Value) {
+	out.RawByte('{')
+	first := true
+	_ = first
+	{
+		const prefix string = ",\"path\":"
+		out.RawString(prefix[1:])
+		out.String(string(in.Path))
+	}
+	{
+		const prefix string = ",\"value\":"
+		out.RawString(prefix)
+		if m, ok := in.Value.(easyjson.Marshaler); ok {
+			m.MarshalEasyJSON(out)
+		} else if m, ok := in.Value.(json.Marshaler); ok {
+			out.Raw(m.MarshalJSON())
+		} else {
+			out.Raw(json.Marshal(in.Value))
+		}
+	}
+	out.RawByte('}')
+}
+func easyjson827bc575DecodeGithubComMunnikGoskMessage2(in *jlexer.Lexer, out *Source) {
+	isTopLevel := in.IsStart()
+	if in.IsNull() {
+		if isTopLevel {
+			in.Consumed()
+		}
+		in.Skip()
+		return
+	}
+	in.Delim('{')
+	for !in.IsDelim('}') {
+		key := in.UnsafeFieldName(false)
+		in.WantColon()
+		switch key {
+		case "label":
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Label = string(in.String())
+			}
+		case "type":
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Type = string(in.String())
+			}
+		case "uuid":
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				if data := in.UnsafeBytes(); in.Ok() {
+					in.AddError((out.Uuid).UnmarshalText(data))
+				}
+			}
+		case "transferUuid":
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				if data := in.UnsafeBytes(); in.Ok() {
+					in.AddError((out.TransferUuid).UnmarshalText(data))
+				}
+			}
+		default:
+			in.SkipRecursive()
+		}
+		in.WantComma()
+	}
+	in.Delim('}')
+	if isTopLevel {
+		in.Consumed()
+	}
+}
+func easyjson827bc575EncodeGithubComMunnikGoskMessage2(out *jwriter.Writer, in Source) {
+	out.RawByte('{')
+	first := true
+	_ = first
+	{
+		const prefix string = ",\"label\":"
+		out.RawString(prefix[1:])
+		out.String(string(in.Label))
+	}
+	{
+		const prefix string = ",\"type\":"
+		out.RawString(prefix)
+		out.String(string(in.Type))
+	}
+	{
+		const prefix string = ",\"uuid\":"
+		out.RawString(prefix)
+		out.RawText((in.Uuid).MarshalText())
+	}
+	{
+		const prefix string = ",\"transferUuid\":"
+		out.RawString(prefix)
+		out.RawText((in.TransferUuid).MarshalText())
+	}
+	out.RawByte('}')
 }

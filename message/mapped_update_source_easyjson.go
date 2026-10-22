@@ -4,7 +4,6 @@ package message
 
 import (
 	json "encoding/json"
-
 	easyjson "github.com/mailru/easyjson"
 	jlexer "github.com/mailru/easyjson/jlexer"
 	jwriter "github.com/mailru/easyjson/jwriter"
@@ -44,6 +43,22 @@ func easyjsonA94fb311DecodeGithubComMunnikGoskMessage(in *jlexer.Lexer, out *Sou
 			} else {
 				out.Type = string(in.String())
 			}
+		case "uuid":
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				if data := in.UnsafeBytes(); in.Ok() {
+					in.AddError((out.Uuid).UnmarshalText(data))
+				}
+			}
+		case "transferUuid":
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				if data := in.UnsafeBytes(); in.Ok() {
+					in.AddError((out.TransferUuid).UnmarshalText(data))
+				}
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -67,6 +82,16 @@ func easyjsonA94fb311EncodeGithubComMunnikGoskMessage(out *jwriter.Writer, in So
 		const prefix string = ",\"type\":"
 		out.RawString(prefix)
 		out.String(string(in.Type))
+	}
+	{
+		const prefix string = ",\"uuid\":"
+		out.RawString(prefix)
+		out.RawText((in.Uuid).MarshalText())
+	}
+	{
+		const prefix string = ",\"transferUuid\":"
+		out.RawString(prefix)
+		out.RawText((in.TransferUuid).MarshalText())
 	}
 	out.RawByte('}')
 }

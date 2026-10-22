@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // oldMarshalJSON is the map[string]string-based implementation this test
@@ -19,6 +21,7 @@ func oldMarshalJSON(r Raw) ([]byte, error) {
 		"connector": r.Connector,
 		"timestamp": r.Timestamp.UTC().Format(time.RFC3339Nano),
 		"type":      r.Type,
+		"uuid":      r.Uuid.String(),
 		"value":     base64.StdEncoding.EncodeToString(r.Value),
 	}
 	return json.Marshal(&result)
@@ -35,19 +38,22 @@ func TestRawMarshalJSONMatchesOldMapBasedImplementation(t *testing.T) {
 			Connector: "testConnector",
 			Timestamp: time.Date(2026, 9, 17, 14, 30, 0, 123456789, loc),
 			Type:      "modbus",
+			Uuid:      uuid.MustParse("11111111-2222-3333-4444-555555555555"),
 			Value:     []byte{0xde, 0xad, 0xbe, 0xef, 0x00, 0x01},
 		},
 		{
-			// zero value: empty connector/type, nil Value, zero time
+			// zero value: empty connector/type, nil Value, zero Uuid, zero time
 			Connector: "",
 			Timestamp: time.Time{},
 			Type:      "",
+			Uuid:      uuid.Nil,
 			Value:     nil,
 		},
 		{
 			Connector: "unicode-Ø-connector",
 			Timestamp: time.Now(),
 			Type:      "nmea0183",
+			Uuid:      uuid.New(),
 			Value:     []byte("hello \"world\"\n"),
 		},
 	}
@@ -72,6 +78,7 @@ func TestRawMarshalUnmarshalRoundTrip(t *testing.T) {
 		Connector: "testConnector",
 		Timestamp: time.Now(),
 		Type:      "modbus",
+		Uuid:      uuid.New(),
 		Value:     []byte{1, 2, 3, 4, 5},
 	}
 
@@ -91,6 +98,9 @@ func TestRawMarshalUnmarshalRoundTrip(t *testing.T) {
 	if !decoded.Timestamp.Equal(original.Timestamp) {
 		t.Fatalf("round-tripped timestamp differs: got %v, want %v", decoded.Timestamp, original.Timestamp)
 	}
+	if decoded.Uuid != original.Uuid {
+		t.Fatalf("round-tripped uuid differs: got %v, want %v", decoded.Uuid, original.Uuid)
+	}
 }
 
 func BenchmarkRawMarshalJSON(b *testing.B) {
@@ -98,6 +108,7 @@ func BenchmarkRawMarshalJSON(b *testing.B) {
 		Connector: "testConnector",
 		Timestamp: time.Now(),
 		Type:      "manner_ethernet",
+		Uuid:      uuid.New(),
 		Value:     []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c},
 	}
 	b.ResetTimer()
@@ -113,6 +124,7 @@ func BenchmarkRawMarshalJSONOld(b *testing.B) {
 		Connector: "testConnector",
 		Timestamp: time.Now(),
 		Type:      "manner_ethernet",
+		Uuid:      uuid.New(),
 		Value:     []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c},
 	}
 	b.ResetTimer()

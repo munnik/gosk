@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/allegro/bigcache/v3"
+	"github.com/google/uuid"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
@@ -47,7 +48,7 @@ func (c *BigCache) WriteRaw(raw *message.Raw, returnChanges bool) []*message.Raw
 		return []*message.Raw{}
 	}
 
-	c.rawCache.Set(rawCacheKey(raw), rawBytes)
+	c.rawCache.Set(raw.Uuid.String(), rawBytes)
 	if returnChanges {
 		return []*message.Raw{raw}
 	}
@@ -88,19 +89,13 @@ func (c *BigCache) WriteMapped(mappedList ...*message.Mapped) []*message.Mapped 
 	return result
 }
 
-// rawCacheKey identifies a raw message in the cache: the connector it
-// came from and when, which is as much identity as a raw message has.
-func rawCacheKey(raw *message.Raw) string {
-	return fmt.Sprintf("%s/%d", raw.Connector, raw.Timestamp.UnixNano())
-}
-
 func (c *BigCache) ReadRaw(where string, arguments ...interface{}) ([]message.Raw, error) {
-	if where != "" {
-		bytes, err := c.rawCache.Get(where)
+	if uuid, err := uuid.Parse(where); err == nil {
+		bytes, err := c.rawCache.Get(uuid.String())
 		if err != nil {
 			logger.GetLogger().Warn(
 				"Could not find the raw message",
-				zap.String("Key", where),
+				zap.String("Key", uuid.String()),
 				zap.String("Error", err.Error()),
 			)
 			return nil, err

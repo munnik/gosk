@@ -47,7 +47,7 @@ func (m *BinaryMapper) Map(subscriber *nanomsg.Subscriber[message.Raw], publishe
 
 func (m *BinaryMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	result := message.NewMapped().WithContext(m.config.Context).WithOrigin(m.config.Context)
-	s := message.NewSource().WithLabel(r.Connector).WithType(m.protocol)
+	s := message.NewSource().WithLabel(r.Connector).WithType(m.protocol).WithUuid(r.Uuid)
 	u := message.NewUpdate().WithSource(*s).WithTimestamp(r.Timestamp)
 	m.env["value"] = r.Value
 	// By index rather than by value: &mc would point at the loop's copy,

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"github.com/munnik/gosk/message"
@@ -122,7 +123,7 @@ func (m *FftMapper) Map(subscriber *nanomsg.Subscriber[message.Mapped], publishe
 // there is no start timeout left to extend by the time this runs.
 func (m *FftMapper) DoMap(input *message.Mapped) (*message.Mapped, error) {
 	result := message.NewMapped().WithContext(m.config.Context).WithOrigin(m.config.Context)
-	s := message.NewSource().WithLabel("signalk").WithType(m.protocol)
+	s := message.NewSource().WithLabel("signalk").WithType(m.protocol).WithUuid(uuid.Nil)
 	u := message.NewUpdate().WithSource(*s).WithTimestamp(time.Time{}) // initialize with empty timestamp instead of hidden now
 
 	for _, svm := range input.ToSingleValueMapped() {

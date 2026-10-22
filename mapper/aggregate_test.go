@@ -3,6 +3,7 @@ package mapper_test
 import (
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/munnik/gosk/config"
 	. "github.com/munnik/gosk/mapper"
 	"github.com/munnik/gosk/message"
@@ -31,7 +32,7 @@ var _ = Describe("DoMap aggregate same update", func() {
 			mapper,
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -40,7 +41,7 @@ var _ = Describe("DoMap aggregate same update", func() {
 			),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -53,7 +54,7 @@ var _ = Describe("DoMap aggregate same update", func() {
 			mapper,
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -62,7 +63,7 @@ var _ = Describe("DoMap aggregate same update", func() {
 			),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -70,7 +71,7 @@ var _ = Describe("DoMap aggregate same update", func() {
 				),
 			).AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("signalk").WithType(config.SignalKType),
+					*message.NewSource().WithLabel("signalk").WithType(config.SignalKType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -83,7 +84,7 @@ var _ = Describe("DoMap aggregate same update", func() {
 			mapper,
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -94,7 +95,7 @@ var _ = Describe("DoMap aggregate same update", func() {
 			),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -104,7 +105,7 @@ var _ = Describe("DoMap aggregate same update", func() {
 				),
 			).AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("signalk").WithType(config.SignalKType),
+					*message.NewSource().WithLabel("signalk").WithType(config.SignalKType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -117,7 +118,7 @@ var _ = Describe("DoMap aggregate same update", func() {
 			mapper,
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -126,7 +127,7 @@ var _ = Describe("DoMap aggregate same update", func() {
 			),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -134,7 +135,7 @@ var _ = Describe("DoMap aggregate same update", func() {
 				),
 			).AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("signalk").WithType(config.SignalKType),
+					*message.NewSource().WithLabel("signalk").WithType(config.SignalKType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -147,7 +148,7 @@ var _ = Describe("DoMap aggregate same update", func() {
 			mapper,
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -155,7 +156,7 @@ var _ = Describe("DoMap aggregate same update", func() {
 				),
 			).AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now.Add(time.Second),
 				).AddValue(
@@ -164,7 +165,7 @@ var _ = Describe("DoMap aggregate same update", func() {
 			),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -172,7 +173,7 @@ var _ = Describe("DoMap aggregate same update", func() {
 				),
 			).AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now.Add(time.Second),
 				).AddValue(
@@ -180,7 +181,7 @@ var _ = Describe("DoMap aggregate same update", func() {
 				),
 			).AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("signalk").WithType(config.SignalKType),
+					*message.NewSource().WithLabel("signalk").WithType(config.SignalKType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -193,7 +194,7 @@ var _ = Describe("DoMap aggregate same update", func() {
 			mapper,
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -201,7 +202,7 @@ var _ = Describe("DoMap aggregate same update", func() {
 				),
 			).AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now.Add(time.Second),
 				).AddValue(
@@ -210,7 +211,7 @@ var _ = Describe("DoMap aggregate same update", func() {
 			),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -218,7 +219,7 @@ var _ = Describe("DoMap aggregate same update", func() {
 				),
 			).AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now.Add(time.Second),
 				).AddValue(
@@ -226,7 +227,7 @@ var _ = Describe("DoMap aggregate same update", func() {
 				),
 			).AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("signalk").WithType(config.SignalKType),
+					*message.NewSource().WithLabel("signalk").WithType(config.SignalKType).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now.Add(time.Second),
 				).AddValue(
@@ -276,7 +277,7 @@ var _ = Describe("DoMap aggregate same update", func() {
 			// satisfy within a fast-running test.
 			result, err := m.DoMap(message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.JSONType).WithUuid(uuid.Nil),
 				).WithTimestamp(time.Now()).AddValue(
 					message.NewValue().WithPath("test.fast").WithValue(float64(i)),
 				),

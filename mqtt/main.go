@@ -56,13 +56,31 @@ const (
 	maxTrackedPublishes = 256
 )
 
+// sessionRoles are the roles whose client gets a stable id and a session
+// the broker keeps across connections (see createClientOptions): the
+// outbox, whose acknowledgements and deliveries are QoS 1 and have to
+// survive a dropped link. Every other role connects as it always has, with
+// a clean session under an id the broker assigns. Not for want of a name
+// but because a derived one would collide: a vessel runs its live writer
+// and the writer behind its responder as two "write" processes against the
+// same broker with the same username, and two clients sharing an id take
+// turns disconnecting each other. A configured client_id applies to any
+// role, and brings the session with it.
+var sessionRoles = map[string]bool{
+	"transferSend":    true,
+	"transferReceive": true,
+	"transferSeed":    true,
+	"transferDigest":  true,
+}
+
 type Client struct {
 	config         *config.MQTTConfig
 	publishHandler paho.MessageHandler
 	topics         []string
 	pahoClient     *paho.Client
-	clientID       string
-	publishTokens  chan paho.Token
+	// clientID is empty for a role without a session, see sessionRoles.
+	clientID      string
+	publishTokens chan paho.Token
 	// subscribed is closed the first time every topic has been subscribed
 	// to, for a caller that publishes a request whose answer comes back on
 	// one of them (WaitSubscribed).
@@ -71,15 +89,18 @@ type Client struct {
 	// connection counts connections; a retry worker belongs to the one it
 	// was started on, and stops once another has replaced it.
 	connection atomic.Uint64
+	// session is whether the broker is asked to keep this client's session,
+	// see sessionRoles.
+	session bool
 }
 
 // New builds a client for the broker without connecting it; call Connect
 // once everything the handler touches is in place. role names what this
-// process does with the connection ("read", "write", "transferSend", ...);
-// it is only used to derive a client id when the configuration does not
-// set one, and so has to be unique among the gosk processes on one host
-// that connect to the same broker with the same username. See
-// MQTTConfig.ClientID.
+// process does with the connection ("read", "write", "transferSend", ...).
+// For the roles in sessionRoles it is what the client id is derived from
+// when the configuration does not set one, and so has to be unique among
+// the gosk processes on one host that connect to the same broker with the
+// same username. See MQTTConfig.ClientID.
 //
 // more subscribes the client to further topics, all through the same
 // handler, which tells them apart by the message's topic. One client rather
@@ -99,6 +120,7 @@ func New(config *config.MQTTConfig, role string, publishHandler paho.MessageHand
 		topics:         topics,
 		subscribed:     make(chan struct{}),
 		clientID:       clientID(config, role),
+		session:        config.ClientID != "" || sessionRoles[role],
 		publishTokens:  make(chan paho.Token, maxTrackedPublishes),
 	}
 	pahoClient := paho.NewClient(result.createClientOptions())
@@ -219,8 +241,9 @@ func (c *Client) Disconnect() {
 	(*c.pahoClient).Disconnect(uint(disconnectWait.Milliseconds()))
 }
 
-// clientID returns the configured client id, or derives one from the
-// process's role, the hostname and the username. All three matter: the
+// clientID returns the configured client id, or for a role in sessionRoles
+// derives one from the role, the hostname and the username; for any other
+// role it is empty and the broker assigns one. All three matter: the
 // hostname keeps two vessels (or a vessel and the cloud) apart, the role
 // keeps the several gosk processes on one host apart, and the username
 // keeps apart two processes of one role on one host that talk to
@@ -230,6 +253,9 @@ func (c *Client) Disconnect() {
 func clientID(c *config.MQTTConfig, role string) string {
 	if c.ClientID != "" {
 		return c.ClientID
+	}
+	if !sessionRoles[role] {
+		return ""
 	}
 
 	host, err := os.Hostname()
@@ -284,20 +310,26 @@ func (c *Client) createClientOptions() *paho.ClientOptions {
 	// The broker has to be willing to hold that session: mosquitto's
 	// max_queued_messages defaults to 1000, and persistence has to be on
 	// for the queue to survive a broker restart.
-	result.SetClientID(c.clientID)
-	result.SetCleanSession(false)
-	// Resume the session's subscriptions on reconnect. What this does not
-	// do is carry unacknowledged publishes across a restart of the
-	// process: paho's store here is in memory, so a publish in flight
-	// when the process stops is gone. That is the outbox's job - the rows
-	// stay in the database until acknowledged and are sent again - and a
-	// receiver that never acknowledges (acknowledge: false) is on its own
-	// in that respect: what it misses it does not get back.
-	result.SetResumeSubs(true)
-	// Drip the backlog out on reconnect instead of handing the whole store
-	// to the network at once (paho's default is no limit). The link that
-	// just came back is the same one that dropped.
-	result.SetMaxResumePubInFlight(maxResumePubInFlight)
+	//
+	// Only for the roles that need it (sessionRoles): the others publish
+	// at QoS 0 or ask for nothing a session would keep, and connect as they
+	// always did.
+	if c.session {
+		result.SetClientID(c.clientID)
+		result.SetCleanSession(false)
+		// Resume the session's subscriptions on reconnect. What this does
+		// not do is carry unacknowledged publishes across a restart of the
+		// process: paho's store here is in memory, so a publish in flight
+		// when the process stops is gone. That is the outbox's job - the
+		// rows stay in the database until acknowledged and are sent again
+		// - and a receiver that never acknowledges (acknowledge: false) is
+		// on its own in that respect: what it misses it does not get back.
+		result.SetResumeSubs(true)
+		// Drip the backlog out on reconnect instead of handing the whole
+		// store to the network at once (paho's default is no limit). The
+		// link that just came back is the same one that dropped.
+		result.SetMaxResumePubInFlight(maxResumePubInFlight)
+	}
 
 	result.SetDefaultPublishHandler(c.publishHandler)
 	result.SetOnConnectHandler(c.onConnectHandler)

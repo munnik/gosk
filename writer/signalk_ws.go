@@ -34,7 +34,7 @@ func (h *Handler) getName(socket *gws.Conn) string {
 	if exist {
 		return name.(string)
 	} else {
-		name = uuid.New().String()
+		name = uuid.Must(uuid.NewUUID()).String()
 		socket.Session().Store("name", name)
 	}
 

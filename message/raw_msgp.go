@@ -2,6 +2,8 @@ package message
 
 import (
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // rawMsgp is Raw's msgpack wire shape - map mode, see mapped_msgp.go's
@@ -14,6 +16,7 @@ type rawMsgp struct {
 	Connector string    `msg:"connector"`
 	Timestamp time.Time `msg:"timestamp"`
 	Type      string    `msg:"type"`
+	Uuid      string    `msg:"uuid"`
 	Value     []byte    `msg:"value"`
 }
 
@@ -28,6 +31,7 @@ func (r Raw) MarshalMsg(b []byte) ([]byte, error) {
 		Connector: r.Connector,
 		Timestamp: r.Timestamp.UTC(),
 		Type:      r.Type,
+		Uuid:      r.Uuid.String(),
 		Value:     value,
 	}
 	return wire.MarshalMsg(b)
@@ -41,9 +45,15 @@ func (r *Raw) UnmarshalMsg(bts []byte) ([]byte, error) {
 		return rest, err
 	}
 
+	id, err := uuid.Parse(wire.Uuid)
+	if err != nil {
+		return rest, err
+	}
+
 	r.Connector = wire.Connector
 	r.Timestamp = wire.Timestamp
 	r.Type = wire.Type
+	r.Uuid = id
 	r.Value = wire.Value
 	return rest, nil
 }

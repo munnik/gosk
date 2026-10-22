@@ -23,8 +23,9 @@
 // tolerated percentage. It needed a count per period on both ends forever,
 // a continuous aggregate to produce them, a uuid per source message to
 // narrow a difference down with, and a tolerance for permanent loss to
-// stop itself spinning. The outbox needs the time column and nothing else,
-// which is what let mapped_data.uuid be dropped.
+// stop itself spinning. The outbox needs the time column and nothing else.
+// Both run side by side for now: the responder keeps answering the central
+// server's count protocol while the outbox delivers to another server.
 package transfer
 
 import (

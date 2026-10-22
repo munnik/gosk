@@ -44,6 +44,7 @@ The JSON message contains the following fields:
 
 1. collector, identifier for the source of the data;
 1. timestamp, the time when the data was receive in UTC and RFC3339Nano format;
+1. uuid, used to link raw and mapped data together;
 1. value, the actual value in base64 encoded format. This value contains all information needed for the mapper to map the data.
 
 ##### An example message for a NMEA0183 string:
@@ -52,6 +53,7 @@ The JSON message contains the following fields:
 {
   "collector": "GPS",
   "timestamp": "2022-02-09T16:12:29.481162381Z",
+  "uuid": "49175a7e-c4cb-455c-ae99-05eca8f7997d",
   "value": "JEdQR0xMLDM3MjMuMjQ3NSxOLDEyMTU4LjM0MTYsVywxNjEyMjkuNDg3LEEsQSo0MQ=="
 }
 ```
@@ -64,6 +66,7 @@ The `value` is a base 64 encoded string of the NMEA018 sentence `$GPGLL,3723.247
 {
   "collector": "CAT 3512",
   "timestamp": "2022-02-09T12:03:57.431272983Z",
+  "uuid": "c67ae38f-64c6-427d-a91d-282a25623cc2",
   "value": "AQAEyOwAAgABjnA="
 }
 ```
@@ -79,7 +82,7 @@ The `value` is a base64 encoded string of the following bytes
 
 #### 1.2.2 Mapped JSON messages
 
-The basis is the [Signal K Delta format](https://signalk.org/specification/1.5.0/doc/data_model.html#delta-format) with some extras. The `label`, `type` and `src` properties in the `source` section are used as follows. `label` is filled with `name` property of the collector config, `type` is filled with protocol that is used and `src` is filled with the `url` property of the collector config.
+The basis is the [Signal K Delta format](https://signalk.org/specification/1.5.0/doc/data_model.html#delta-format) with some extras. The `label`, `type` and `src` properties in the `source` section are used as follows. `label` is filled with `name` property of the collector config, `type` is filled with protocol that is used and `src` is filled with the `url` property of the collector config. Each individual `value` section has an extra property `uuid` that is filled with the `uuid` of the corresponding raw data.
 
 ##### Example:
 
@@ -97,11 +100,13 @@ The basis is the [Signal K Delta format](https://signalk.org/specification/1.5.0
       "values": [
         {
           "path": "propulsion.0.revolutions",
-          "value": 16.341667
+          "value": 16.341667,
+          "uuid": "05a2ce62-6c52-4ce9-bb4f-07bb47cfa348"
         },
         {
           "path": "propulsion.0.boostPressure",
-          "value": 45500
+          "value": 45500,
+          "uuid": "05a2ce62-6c52-4ce9-bb4f-07bb47cfa348"
         }
       ]
     }

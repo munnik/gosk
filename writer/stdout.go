@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/munnik/gosk/message"
 	"github.com/munnik/gosk/nanomsg"
 )
@@ -32,6 +33,7 @@ func (w *StdOutWriter) WriteRaw(subscriber *nanomsg.Subscriber[message.Raw]) {
 		Connector string
 		Timestamp time.Time
 		Type      string
+		Uuid      uuid.UUID
 		Value     string
 	}
 	var rb = rawBytes{}
@@ -43,6 +45,7 @@ func (w *StdOutWriter) WriteRaw(subscriber *nanomsg.Subscriber[message.Raw]) {
 		rb.Connector = raw.Connector
 		rb.Timestamp = raw.Timestamp
 		rb.Type = raw.Type
+		rb.Uuid = raw.Uuid
 		rb.Value = fmt.Sprintf("%v", raw.Value)
 		jsonData, _ := json.MarshalIndent(rb, "", "  ")
 		fmt.Println(string(jsonData))
@@ -54,6 +57,7 @@ func (w *StdOutWriter) WriteRawString(subscriber *nanomsg.Subscriber[message.Raw
 		Connector string
 		Timestamp time.Time
 		Type      string
+		Uuid      uuid.UUID
 		Value     string
 	}
 	var rs = rawString{}
@@ -65,6 +69,7 @@ func (w *StdOutWriter) WriteRawString(subscriber *nanomsg.Subscriber[message.Raw
 		rs.Connector = raw.Connector
 		rs.Timestamp = raw.Timestamp
 		rs.Type = raw.Type
+		rs.Uuid = raw.Uuid
 		rs.Value = string(raw.Value)
 		jsonData, _ := json.MarshalIndent(rs, "", "  ")
 		fmt.Println(string(jsonData))

@@ -4,7 +4,6 @@ package message
 
 import (
 	json "encoding/json"
-
 	easyjson "github.com/mailru/easyjson"
 	jlexer "github.com/mailru/easyjson/jlexer"
 	jwriter "github.com/mailru/easyjson/jwriter"
@@ -33,11 +32,7 @@ func easyjson4cd21e21DecodeGithubComMunnikGoskMessage(in *jlexer.Lexer, out *Upd
 		in.WantColon()
 		switch key {
 		case "source":
-			if in.IsNull() {
-				in.Skip()
-			} else {
-				(out.Source).UnmarshalEasyJSON(in)
-			}
+			easyjson4cd21e21DecodeGithubComMunnikGoskMessage1(in, &out.Source)
 		case "timestamp":
 			if in.IsNull() {
 				in.Skip()
@@ -92,7 +87,7 @@ func easyjson4cd21e21EncodeGithubComMunnikGoskMessage(out *jwriter.Writer, in Up
 	{
 		const prefix string = ",\"source\":"
 		out.RawString(prefix[1:])
-		(in.Source).MarshalEasyJSON(out)
+		easyjson4cd21e21EncodeGithubComMunnikGoskMessage1(out, in.Source)
 	}
 	{
 		const prefix string = ",\"timestamp\":"
@@ -110,7 +105,7 @@ func easyjson4cd21e21EncodeGithubComMunnikGoskMessage(out *jwriter.Writer, in Up
 				if v2 > 0 {
 					out.RawByte(',')
 				}
-				easyjson4cd21e21EncodeGithubComMunnikGoskMessage1(out, v3)
+				easyjson4cd21e21EncodeGithubComMunnikGoskMessage2(out, v3)
 			}
 			out.RawByte(']')
 		}
@@ -141,7 +136,7 @@ func (v *Update) UnmarshalJSON(data []byte) error {
 func (v *Update) UnmarshalEasyJSON(l *jlexer.Lexer) {
 	easyjson4cd21e21DecodeGithubComMunnikGoskMessage(l, v)
 }
-func easyjson4cd21e21DecodeGithubComMunnikGoskMessage1(in *jlexer.Lexer, out *Value) {
+func easyjson4cd21e21DecodeGithubComMunnikGoskMessage2(in *jlexer.Lexer, out *Value) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -179,7 +174,7 @@ func easyjson4cd21e21DecodeGithubComMunnikGoskMessage1(in *jlexer.Lexer, out *Va
 		in.Consumed()
 	}
 }
-func easyjson4cd21e21EncodeGithubComMunnikGoskMessage1(out *jwriter.Writer, in Value) {
+func easyjson4cd21e21EncodeGithubComMunnikGoskMessage2(out *jwriter.Writer, in Value) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -198,6 +193,84 @@ func easyjson4cd21e21EncodeGithubComMunnikGoskMessage1(out *jwriter.Writer, in V
 		} else {
 			out.Raw(json.Marshal(in.Value))
 		}
+	}
+	out.RawByte('}')
+}
+func easyjson4cd21e21DecodeGithubComMunnikGoskMessage1(in *jlexer.Lexer, out *Source) {
+	isTopLevel := in.IsStart()
+	if in.IsNull() {
+		if isTopLevel {
+			in.Consumed()
+		}
+		in.Skip()
+		return
+	}
+	in.Delim('{')
+	for !in.IsDelim('}') {
+		key := in.UnsafeFieldName(false)
+		in.WantColon()
+		switch key {
+		case "label":
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Label = string(in.String())
+			}
+		case "type":
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Type = string(in.String())
+			}
+		case "uuid":
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				if data := in.UnsafeBytes(); in.Ok() {
+					in.AddError((out.Uuid).UnmarshalText(data))
+				}
+			}
+		case "transferUuid":
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				if data := in.UnsafeBytes(); in.Ok() {
+					in.AddError((out.TransferUuid).UnmarshalText(data))
+				}
+			}
+		default:
+			in.SkipRecursive()
+		}
+		in.WantComma()
+	}
+	in.Delim('}')
+	if isTopLevel {
+		in.Consumed()
+	}
+}
+func easyjson4cd21e21EncodeGithubComMunnikGoskMessage1(out *jwriter.Writer, in Source) {
+	out.RawByte('{')
+	first := true
+	_ = first
+	{
+		const prefix string = ",\"label\":"
+		out.RawString(prefix[1:])
+		out.String(string(in.Label))
+	}
+	{
+		const prefix string = ",\"type\":"
+		out.RawString(prefix)
+		out.String(string(in.Type))
+	}
+	{
+		const prefix string = ",\"uuid\":"
+		out.RawString(prefix)
+		out.RawText((in.Uuid).MarshalText())
+	}
+	{
+		const prefix string = ",\"transferUuid\":"
+		out.RawString(prefix)
+		out.RawText((in.TransferUuid).MarshalText())
 	}
 	out.RawByte('}')
 }

@@ -25,7 +25,7 @@
 --
 -- The time column is partitioned on, so a bucket is a chunk-prunable range
 -- on both ends, and the (time, origin, ...) unique index serves the read.
--- Nothing here needs mapped_data.uuid, which is what lets that column go.
+-- Nothing here needs mapped_data.uuid.
 CREATE SEQUENCE "transfer_outbox_generation_seq";
 
 CREATE TABLE "transfer_outbox" (

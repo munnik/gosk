@@ -42,6 +42,12 @@ func (z *rawMsgp) DecodeMsg(dc *msgp.Reader) (err error) {
 				err = msgp.WrapError(err, "Type")
 				return
 			}
+		case "uuid":
+			z.Uuid, err = dc.ReadString()
+			if err != nil {
+				err = msgp.WrapError(err, "Uuid")
+				return
+			}
 		case "value":
 			z.Value, err = dc.ReadBytes(z.Value)
 			if err != nil {
@@ -61,9 +67,9 @@ func (z *rawMsgp) DecodeMsg(dc *msgp.Reader) (err error) {
 
 // EncodeMsg implements msgp.Encodable
 func (z *rawMsgp) EncodeMsg(en *msgp.Writer) (err error) {
-	// map header, size 4
+	// map header, size 5
 	// write "connector"
-	err = en.Append(0x84, 0xa9, 0x63, 0x6f, 0x6e, 0x6e, 0x65, 0x63, 0x74, 0x6f, 0x72)
+	err = en.Append(0x85, 0xa9, 0x63, 0x6f, 0x6e, 0x6e, 0x65, 0x63, 0x74, 0x6f, 0x72)
 	if err != nil {
 		return
 	}
@@ -92,6 +98,16 @@ func (z *rawMsgp) EncodeMsg(en *msgp.Writer) (err error) {
 		err = msgp.WrapError(err, "Type")
 		return
 	}
+	// write "uuid"
+	err = en.Append(0xa4, 0x75, 0x75, 0x69, 0x64)
+	if err != nil {
+		return
+	}
+	err = en.WriteString(z.Uuid)
+	if err != nil {
+		err = msgp.WrapError(err, "Uuid")
+		return
+	}
 	// write "value"
 	err = en.Append(0xa5, 0x76, 0x61, 0x6c, 0x75, 0x65)
 	if err != nil {
@@ -108,9 +124,9 @@ func (z *rawMsgp) EncodeMsg(en *msgp.Writer) (err error) {
 // MarshalMsg implements msgp.Marshaler
 func (z *rawMsgp) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.Require(b, z.Msgsize())
-	// map header, size 4
+	// map header, size 5
 	// string "connector"
-	o = append(o, 0x84, 0xa9, 0x63, 0x6f, 0x6e, 0x6e, 0x65, 0x63, 0x74, 0x6f, 0x72)
+	o = append(o, 0x85, 0xa9, 0x63, 0x6f, 0x6e, 0x6e, 0x65, 0x63, 0x74, 0x6f, 0x72)
 	o = msgp.AppendString(o, z.Connector)
 	// string "timestamp"
 	o = append(o, 0xa9, 0x74, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d, 0x70)
@@ -118,6 +134,9 @@ func (z *rawMsgp) MarshalMsg(b []byte) (o []byte, err error) {
 	// string "type"
 	o = append(o, 0xa4, 0x74, 0x79, 0x70, 0x65)
 	o = msgp.AppendString(o, z.Type)
+	// string "uuid"
+	o = append(o, 0xa4, 0x75, 0x75, 0x69, 0x64)
+	o = msgp.AppendString(o, z.Uuid)
 	// string "value"
 	o = append(o, 0xa5, 0x76, 0x61, 0x6c, 0x75, 0x65)
 	o = msgp.AppendBytes(o, z.Value)
@@ -160,6 +179,12 @@ func (z *rawMsgp) UnmarshalMsg(bts []byte) (o []byte, err error) {
 				err = msgp.WrapError(err, "Type")
 				return
 			}
+		case "uuid":
+			z.Uuid, bts, err = msgp.ReadStringBytes(bts)
+			if err != nil {
+				err = msgp.WrapError(err, "Uuid")
+				return
+			}
 		case "value":
 			z.Value, bts, err = msgp.ReadBytesBytes(bts, z.Value)
 			if err != nil {
@@ -180,6 +205,6 @@ func (z *rawMsgp) UnmarshalMsg(bts []byte) (o []byte, err error) {
 
 // Msgsize returns an upper bound estimate of the number of bytes occupied by the serialized message
 func (z *rawMsgp) Msgsize() (s int) {
-	s = 1 + 10 + msgp.StringPrefixSize + len(z.Connector) + 10 + msgp.TimeSize + 5 + msgp.StringPrefixSize + len(z.Type) + 6 + msgp.BytesPrefixSize + len(z.Value)
+	s = 1 + 10 + msgp.StringPrefixSize + len(z.Connector) + 10 + msgp.TimeSize + 5 + msgp.StringPrefixSize + len(z.Type) + 5 + msgp.StringPrefixSize + len(z.Uuid) + 6 + msgp.BytesPrefixSize + len(z.Value)
 	return
 }

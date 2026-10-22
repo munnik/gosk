@@ -3,6 +3,7 @@ package mapper_test
 import (
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/munnik/gosk/config"
 	. "github.com/munnik/gosk/mapper"
 	"github.com/munnik/gosk/message"
@@ -33,6 +34,7 @@ var _ = Describe("DoMap nmea0183", func() {
 			mapper,
 			func() *message.Raw {
 				m := message.NewRaw().WithConnector("testingConnector").WithType(config.NMEA0183Type).WithValue([]byte{})
+				m.Uuid = uuid.Nil
 				m.Timestamp = now
 				return m
 			}(),
@@ -43,12 +45,13 @@ var _ = Describe("DoMap nmea0183", func() {
 			mapper,
 			func() *message.Raw {
 				m := message.NewRaw().WithConnector("testingConnector").WithType(config.NMEA0183Type).WithValue([]byte("$AIALR,100615.00,002,V,V,AIS: Antenna VSWR exceeds limit*46"))
+				m.Uuid = uuid.Nil
 				m.Timestamp = now
 				return m
 			}(),
 			message.NewMapped().WithContext("testingContext").WithOrigin("testingContext").AddUpdate(
 				message.NewUpdate().WithSource(
-					*message.NewSource().WithLabel("testingConnector").WithType(config.NMEA0183Type),
+					*message.NewSource().WithLabel("testingConnector").WithType(config.NMEA0183Type).WithUuid(uuid.Nil),
 				).WithTimestamp(
 					now,
 				).AddValue(
@@ -61,6 +64,7 @@ var _ = Describe("DoMap nmea0183", func() {
 			mapper,
 			func() *message.Raw {
 				m := message.NewRaw().WithConnector("testingConnector").WithType(config.NMEA0183Type).WithValue([]byte{0x21, 0x41, 0x49, 0x56, 0x44, 0x4d, 0x2c, 0x31, 0x2c, 0x31, 0x2c, 0x2c, 0x42, 0x2c, 0x33, 0x33, 0x63, 0x3a, 0x37, 0x32, 0x30, 0x30, 0x31, 0x47, 0x50, 0x45, 0x34, 0x53, 0x3c, 0x4d, 0x64, 0x45, 0x70, 0x34, 0x3b, 0x53, 0x4d, 0x3e, 0x30, 0x31, 0x34, 0x31, 0x2c, 0x30, 0x2a, 0x37, 0x36})
+				m.Uuid = uuid.Nil
 				m.Timestamp = now
 				return m
 			}(),
@@ -70,7 +74,7 @@ var _ = Describe("DoMap nmea0183", func() {
 				mmsi := "246581000"
 				m := message.NewMapped().WithContext("vessels.urn:mrn:imo:mmsi:246581000").WithOrigin("testingContext").AddUpdate(
 					message.NewUpdate().WithSource(
-						*message.NewSource().WithLabel("testingConnector").WithType(config.NMEA0183Type),
+						*message.NewSource().WithLabel("testingConnector").WithType(config.NMEA0183Type).WithUuid(uuid.Nil),
 					).WithTimestamp(
 						now,
 					).AddValue(

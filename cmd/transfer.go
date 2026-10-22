@@ -22,7 +22,21 @@ var (
 		Short: "deliver data from vessels to the central server through an outbox",
 		Long: `Deliver a vessel's mapped data to the central server and make sure nothing is missing there.
 
-The vessel's mapped writer (write database mapped, with "outbox: true" in its configuration) records which minute of data every row it writes belongs to. "send" sends the rows of those minutes and clears them once the central server, running "receive", has stored them and said so. "seed" compares history on both ends and puts what the central server is missing into the outbox; "digest" answers it.`,
+The vessel's mapped writer (write database mapped, with "outbox: true" in its configuration) records which minute of data every row it writes belongs to. "send" sends the rows of those minutes and clears them once the central server, running "receive", has stored them and said so. "seed" compares history on both ends and puts what the central server is missing into the outbox; "digest" answers it.
+
+"request" and "respond" are the count protocol the outbox replaces: the central server asks a vessel how many rows it holds per five-minute period and re-requests the periods where its own count falls short. A vessel can run "respond" and "send" at the same time, towards different servers.`,
+	}
+	transferRequestCmd = &cobra.Command{
+		Use:   "request",
+		Short: "request clients for data count and missing data",
+		Long:  `On the central server: request clients for their data count in a certain period, and for the missing data when the count on the central server is less.`,
+		Run:   doTransferRequest,
+	}
+	transferRespondCmd = &cobra.Command{
+		Use:   "respond",
+		Short: "respond to data count and missing data requests",
+		Long:  `On a vessel: answer the central server's count and data requests.`,
+		Run:   doTransferRespond,
 	}
 	transferSendCmd = &cobra.Command{
 		Use:   "send",
@@ -60,6 +74,10 @@ func init() {
 	transferCmd.AddCommand(transferReceiveCmd)
 	transferCmd.AddCommand(transferSeedCmd)
 	transferCmd.AddCommand(transferDigestCmd)
+	transferCmd.AddCommand(transferRequestCmd)
+	transferCmd.AddCommand(transferRespondCmd)
+	transferRespondCmd.Flags().StringVarP(&publishURL, "publishURL", "p", "", "Nanomsg URL, the URL is used to publish the data on. It listens for connections.")
+	transferRespondCmd.MarkFlagRequired("publishURL")
 
 	// Accepted on every subcommand because the NixOS module hands a
 	// --publishURL to every processor that is not a writer; only receive
@@ -119,6 +137,31 @@ func doTransferDigest(cmd *cobra.Command, args []string) {
 	r := transfer.NewDigestResponder(c)
 	sdnotify.Ready()
 	r.Run()
+}
+
+func doTransferRequest(cmd *cobra.Command, args []string) {
+	c := config.NewTransferConfig(cfgFile)
+	w := transfer.NewTransferRequester(c)
+	// Unlike every other processor type, this one neither subscribes to
+	// nor publishes any nanomsg data - Run polls the database/its peers
+	// directly - so there's no "first message" to hang readiness off of.
+	// It's ready as soon as it's constructed.
+	sdnotify.Ready()
+	w.Run()
+}
+
+func doTransferRespond(cmd *cobra.Command, args []string) {
+	c := config.NewTransferConfig(cfgFile)
+	w := transfer.NewTransferResponder(c)
+	// Like doTransferRequest above, but more so: this one only ever
+	// publishes in response to a request from a peer, so gating readiness
+	// on nanomsg.Publisher's first-successful-send (see pub.go's send)
+	// would mean a peer that simply never asks anything - not unusual, this
+	// is the responder side - leaves the unit stuck below TimeoutStartSec
+	// forever. Listening for requests is itself the meaningful ready state
+	// here.
+	sdnotify.Ready()
+	w.Run(nanomsg.NewPublisher[message.Mapped](publishURL))
 }
 
 // transferConfig reads the configuration and refuses to start on one that

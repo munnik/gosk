@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/munnik/gosk/message"
 )
 
@@ -53,6 +54,7 @@ func TestPubSubMsgpRoundTrip(t *testing.T) {
 		Connector: "testConnector",
 		Timestamp: time.Now(),
 		Type:      "manner_ethernet",
+		Uuid:      uuid.New(),
 		Value:     []byte{0x01, 0x02, 0x03},
 	}
 	sendCh <- &original
@@ -169,6 +171,7 @@ func TestSubscriberReceivesFromEveryPublisher(t *testing.T) {
 			Connector: fmt.Sprintf("connector-%d", i),
 			Timestamp: time.Now(),
 			Type:      "manner_ethernet",
+			Uuid:      uuid.New(),
 			Value:     []byte{byte(i)},
 		}
 	}

@@ -48,7 +48,7 @@ func absentSensorConfig(t *testing.T, urlString string) *config.ConnectorConfig 
 // with it the process that publishes anything at all, was never reached.
 // gosk's Type=notify units stayed in "activating" forever, holding systemd's
 // start job open and blocking switch-to-configuration. On
-// a-vessel that held the system profile lock for 28 hours.
+// one vessel that held the system profile lock for 28 hours.
 //
 // What has to be true, for every connector, is simply that one whose sensor
 // is absent still publishes its DisconnectedOrNoData status - which is both

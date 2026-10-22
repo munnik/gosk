@@ -53,7 +53,7 @@ type periodicMapper interface {
 // NMEA0183 sentence type this mapper has no case for - would otherwise
 // never publish anything at all and so never become ready, even though it
 // is correctly doing its job: this was observed live on
-// a-vessel's mapEchoSounder, stuck restarting under
+// one vessel's echo sounder mapper, stuck restarting under
 // TimeoutStartSec forever on a stream of unsupported $GPBWC sentences.
 //
 // It does not wait for the first message to arrive either, which it used

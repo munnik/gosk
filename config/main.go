@@ -468,7 +468,7 @@ type ReaderConfig struct {
 	// Context is the SignalK context that notification is published under.
 	// A reader aggregates data for many vessels and so has no vessel of
 	// its own; name the installation it runs on (e.g.
-	// "servers.the-test-server") to attribute the notification to it. The
+	// "servers.fleet-broker") to attribute the notification to it. The
 	// default is the SignalK alias for "this installation", which both
 	// NotificationMapper and MeteoHydroMapper already pass through.
 	Context string `mapstructure:"context"`
@@ -502,16 +502,6 @@ type MQTTConfig struct {
 	BufferSize int           `mapstructure:"buffer_size"` // maximum size of the cache in MBs, cache will be flushed when size is reached, ignored for reader
 	Compress   bool          `mapstructure:"compress"`    // compress the data before sending
 	Topic      string        `mapstructure:"topic"`       // topic to subscribe to
-
-	// ClientID is the MQTT client identifier. It has to be stable across
-	// restarts - the broker keys the persistent session (queued messages
-	// for a subscriber that is offline, unacknowledged QoS 1 publishes)
-	// on it - and unique among every client connected to the same
-	// broker: two clients sharing an id disconnect each other in a loop.
-	// Leave it empty to have mqtt.New derive one from the process's role,
-	// the hostname and the username, which is unique as long as a given
-	// role connects to a given broker once per host.
-	ClientID string `mapstructure:"client_id"`
 }
 
 func NewMQTTConfig(configFilePath string) *MQTTConfig {
@@ -530,20 +520,6 @@ type PostgresqlConfig struct {
 	BatchFlushLength   int           `mapstructure:"batch_flush_length"`
 	BatchFlushInterval time.Duration `mapstructure:"batch_flush_interval"`
 	Timeout            time.Duration `mapstructure:"timeout"`
-	// Outbox records the bucket of every mapped row written here in
-	// transfer_outbox, in the same transaction, so that `gosk transfer
-	// send` can deliver it and know when it has been acknowledged. Set it
-	// on the mapped writer of a vessel and nowhere else; see
-	// database/outbox.go.
-	Outbox bool `mapstructure:"outbox"`
-	// ExternalMigrations says the schema is migrated by something else -
-	// a dedicated unit that runs before any gosk process starts - and this
-	// process must only check that the database is at the newest migration
-	// it embeds, never migrate it itself. A gosk process that migrates
-	// lazily can be stopped by a deploy halfway through, which leaves the
-	// version dirty and every gosk process on the host refusing to start;
-	// see database.UpgradeDatabase.
-	ExternalMigrations bool `mapstructure:"external_migrations"`
 }
 
 func defaultPostgresqlConfig() PostgresqlConfig {
@@ -599,85 +575,27 @@ func (c *SignalKConfig) WithVersion(version string) *SignalKConfig {
 	return c
 }
 
-// TransferConfig configures the outbox processes, see transfer/outbox.go:
-// `transfer send` and `transfer seed` on a vessel, `transfer receive` and
-// `transfer digest` on the central server.
 type TransferConfig struct {
-	PostgresqlConfig PostgresqlConfig `mapstructure:"database"`
-	MQTTConfig       MQTTConfig       `mapstructure:"mqtt"`
-	// Origin is the vessel's SignalK context, which is what its rows are
-	// stored under on both ends. Only the vessel side needs it.
-	Origin string `mapstructure:"origin"`
-
-	// Interval is how long the sender waits between passes over the
-	// outbox, and so the most live data is delayed by.
-	Interval time.Duration `mapstructure:"interval"`
-	// MaxBucketsPerCycle bounds how much backlog one pass sends behind the
-	// current minute, so a vessel with a week to catch up on still sends
-	// what is happening now first.
-	MaxBucketsPerCycle int `mapstructure:"max_buckets_per_cycle"`
-	// MaxRowsPerDelivery bounds one delivery; a bucket with more rows
-	// than this is sent in several.
-	MaxRowsPerDelivery int `mapstructure:"max_rows_per_delivery"`
-	// RetryAfter is how long a delivery may go unacknowledged before its
-	// bucket is sent again. MQTT at QoS 1 redelivers the publish itself;
-	// this covers the far end receiving a delivery and failing to store
-	// it.
-	RetryAfter time.Duration `mapstructure:"retry_after"`
-	// Acknowledge is whether `transfer receive` tells the vessel what it
-	// has stored. Off for a server that only keeps a copy of the fleet's
-	// data: an acknowledgement from it would let the vessel forget rows
-	// the server that keeps the data never received.
-	Acknowledge bool `mapstructure:"acknowledge"`
-
-	// Seeding, see transfer/digest.go. SeedTimeout is how long one
-	// summary may go unanswered - the far end has to read the same range
-	// of history, so this is generous. SeedPause throttles the walk,
-	// because a seeding run competes with the writes the vessel is still
-	// taking. SeedMaxBuckets bounds one summary message. SeedTakeWholeBelow
-	// is the fraction of a bucket's rows the far end has to hold for it to
-	// ask what it is missing rather than for the whole bucket.
-	SeedTimeout        time.Duration `mapstructure:"seed_timeout"`
-	SeedPause          time.Duration `mapstructure:"seed_pause"`
-	SeedMaxBuckets     int           `mapstructure:"seed_max_buckets"`
-	SeedTakeWholeBelow float64       `mapstructure:"seed_take_whole_below"`
-}
-
-// Validate reports what this configuration cannot run with. needsOrigin
-// is whether the process is the vessel side (`transfer send`, `transfer
-// seed`): a sender without an origin would publish under one origin and
-// listen for acknowledgements under another, and retry forever.
-func (c *TransferConfig) Validate(needsOrigin bool) error {
-	if needsOrigin && c.Origin == "" {
-		return fmt.Errorf("origin is required")
-	}
-	if c.Interval <= 0 || c.RetryAfter <= 0 || c.SeedTimeout <= 0 {
-		return fmt.Errorf("interval, retry_after and seed_timeout must be positive")
-	}
-	if c.SeedPause < 0 {
-		return fmt.Errorf("seed_pause must not be negative")
-	}
-	if c.MaxBucketsPerCycle <= 0 || c.MaxRowsPerDelivery <= 0 || c.SeedMaxBuckets <= 0 {
-		return fmt.Errorf("max_buckets_per_cycle, max_rows_per_delivery and seed_max_buckets must be positive")
-	}
-	if c.SeedTakeWholeBelow < 0 || c.SeedTakeWholeBelow > 1 {
-		return fmt.Errorf("seed_take_whole_below must be between 0 and 1")
-	}
-	return nil
+	PostgresqlConfig          PostgresqlConfig `mapstructure:"database"`
+	MQTTConfig                MQTTConfig       `mapstructure:"mqtt"`
+	Origin                    string           `mapstructure:"origin"`
+	SleepBetweenCountRequests time.Duration    `mapstructure:"sleep_between_count_requests"`
+	SleepBetweenDataRequests  time.Duration    `mapstructure:"sleep_between_data_requests"`
+	SleepBetweenRespondDeltas time.Duration    `mapstructure:"sleep_between_respond_deltas"`
+	NumberOfRequestWorkers    int              `mapstructure:"number_of_request_workers"`
+	MaxPeriodsToRequest       int              `mapstructure:"max_periods_to_request"`
+	CompletenessFactor        float64          `mapstructure:"completeness_factor"`
 }
 
 func NewTransferConfig(configFilePath string) *TransferConfig {
 	result := &TransferConfig{
-		PostgresqlConfig:   defaultPostgresqlConfig(),
-		Interval:           5 * time.Second,
-		MaxBucketsPerCycle: 10,
-		MaxRowsPerDelivery: 20000,
-		RetryAfter:         5 * time.Minute,
-		Acknowledge:        true,
-		SeedTimeout:        2 * time.Minute,
-		SeedPause:          100 * time.Millisecond,
-		SeedMaxBuckets:     4096,
-		SeedTakeWholeBelow: 0.25,
+		PostgresqlConfig:          defaultPostgresqlConfig(),
+		SleepBetweenCountRequests: 30 * time.Minute,
+		SleepBetweenDataRequests:  6 * time.Hour,
+		SleepBetweenRespondDeltas: 10 * time.Millisecond,
+		NumberOfRequestWorkers:    5,
+		MaxPeriodsToRequest:       500,
+		CompletenessFactor:        0.99,
 	}
 	readConfigFile(result, configFilePath)
 

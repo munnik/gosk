@@ -2,6 +2,8 @@ package message
 
 import (
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // mappedMsgp, updateMsgp, sourceMsgp are Mapped/Update/Source's msgpack
@@ -13,14 +15,16 @@ import (
 // that type's own native msgp encoding, so Value.Value's polymorphism
 // (see Decode in mapped_update_value_types.go) costs a single byte and a
 // direct dispatch instead of Decode()'s linear trial-and-error - the
-// second profiling round on a-vessel found that guessing, not the
+// second profiling round on a vessel with a shaft power meter found that guessing, not the
 // outer envelope, was what kept aggregate's CPU cost high after the
 // first msgp pass.
 //
 //go:generate msgp -tests=false -o=mapped_msgp_gen.go -unexported
 type sourceMsgp struct {
-	Label string `msg:"label"`
-	Type  string `msg:"type"`
+	Label        string `msg:"label"`
+	Type         string `msg:"type"`
+	Uuid         string `msg:"uuid"`
+	TransferUuid string `msg:"transferUuid"`
 }
 
 type updateMsgp struct {
@@ -47,11 +51,19 @@ type singleValueMappedMsgp struct {
 }
 
 func sourceToMsgp(s Source) sourceMsgp {
-	return sourceMsgp{Label: s.Label, Type: s.Type}
+	return sourceMsgp{Label: s.Label, Type: s.Type, Uuid: s.Uuid.String(), TransferUuid: s.TransferUuid.String()}
 }
 
 func sourceFromMsgp(w sourceMsgp) (Source, error) {
-	return Source{Label: w.Label, Type: w.Type}, nil
+	id, err := uuid.Parse(w.Uuid)
+	if err != nil {
+		return Source{}, err
+	}
+	transferID, err := uuid.Parse(w.TransferUuid)
+	if err != nil {
+		return Source{}, err
+	}
+	return Source{Label: w.Label, Type: w.Type, Uuid: id, TransferUuid: transferID}, nil
 }
 
 // MarshalMsg implements msgp.Marshaler. b is msgp's usual append-target

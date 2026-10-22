@@ -44,9 +44,9 @@ type LineConnector struct {
 // published message (see nanomsg.Publisher.send), so the unit sat in
 // "activating" for as long as the process lived. systemd keeps the start job
 // open, switch-to-configuration waits on that job, and the whole activation
-// stops: on a-vessel that held the system profile lock for 28
-// hours and failed every deploy to that vessel, and it timed out the
-// confirmation on a-vessel and a-vessel.
+// stops: on one vessel that held the system profile lock for 28 hours and
+// failed every deploy to it, and it timed out the confirmation on two
+// others.
 //
 // The connection is opened from receive instead, which runs in the goroutine
 // Publish starts, so process is already running and reports

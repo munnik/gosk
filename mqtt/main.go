@@ -119,11 +119,11 @@ func New(config *config.MQTTConfig, role string, publishHandler paho.MessageHand
 // A broker that is not up yet is not a reason to die. This used to be
 // Fatal, and restarting the broker was enough to kill anything that
 // happened to start during the gap: deploying the mosquitto config to
-// the-production-server restarted it, gosk-transferRequest2 started inside that
+// the fleet broker's host restarted it, gosk-transferRequest2 started inside that
 // window, exited 1, and took the whole activation down with it - systemd
 // restarted the unit successfully five seconds later, but by then
 // switch-to-configuration had already recorded the failure and rolled
-// back. The same Fatal on the-test-server's reader made the two servers
+// back. The same Fatal on the test server's reader made the two servers
 // deadlock, since that reader needs a broker user that only the production
 // deploy creates.
 //
@@ -224,7 +224,7 @@ func (c *Client) Disconnect() {
 // hostname keeps two vessels (or a vessel and the cloud) apart, the role
 // keeps the several gosk processes on one host apart, and the username
 // keeps apart two processes of one role on one host that talk to
-// different brokers - the-production-server runs one reader per broker. It stays
+// different brokers - the central server runs one reader per broker. It stays
 // the same across restarts, which is what lets the broker hold a session
 // for it.
 func clientID(c *config.MQTTConfig, role string) string {

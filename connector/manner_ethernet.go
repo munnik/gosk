@@ -40,8 +40,7 @@ type MannerEthernetConnector struct {
 // published - which is what a Type=notify gosk unit signals readiness from.
 // The unit stayed in "activating", holding systemd's start job open and with
 // it switch-to-configuration. See NewLineConnector, which had the same bug;
-// between them they blocked a-vessel, a-vessel
-// and a-vessel.
+// between them they blocked the deploys of three vessels.
 func NewMannerEthernetConnector(c *config.ConnectorConfig) (*MannerEthernetConnector, error) {
 	switch c.URL.Scheme {
 	case "tcp", "udp":

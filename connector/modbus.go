@@ -181,7 +181,7 @@ func (m *ModbusConnector) receive(stream chan<- []byte) error {
 	// real register group's never-returning Poll normally does (see
 	// this function's own doc comment). Publish's `for { m.receive
 	// (stream) }` would then spin as fast as the scheduler allows -
-	// observed on a-vessel burning more than a full CPU
+	// observed on one vessel burning more than a full CPU
 	// core per idle connector, entirely from channel/waitgroup
 	// allocation churn. Block forever instead: connector/main.go's
 	// process already reports this connector as DisconnectedOrNoData -
@@ -211,7 +211,7 @@ func (m *ModbusConnector) receive(stream chan<- []byte) error {
 			// waits out the full request timeout while holding the lock
 			// and the whole connector collapses to one request per
 			// timeout. That is what the ComAp failures on
-			// a-vessel look like in the journal just
+			// one vessel look like in the journal just
 			// before the controller resets the connection: seven
 			// register groups taking turns, one error per second, none
 			// of them anywhere near their 5 second interval.

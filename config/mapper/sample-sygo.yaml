@@ -1,5 +1,5 @@
 ---
-context: "vessels.urn:mrn:imo:mmsi:244620991" # if the data itself doesn't provide a context then this context is used
+context: "vessels.urn:mrn:imo:mmsi:222222222" # if the data itself doesn't provide a context then this context is used
 protocol: "csv"
 mappings:
   - beginsWith: "01,"

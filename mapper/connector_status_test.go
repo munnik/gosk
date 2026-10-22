@@ -40,10 +40,10 @@ var _ = Describe("NewConnectorStatusUpdate", func() {
 
 var _ = Describe("NewReaderStatusUpdate", func() {
 	It("raises an alarm notification under the readers namespace", func() {
-		result := NewReaderStatusUpdate("servers.the-test-server", "fleet broker", false)
+		result := NewReaderStatusUpdate("servers.fleet-broker", "fleet broker", false)
 
-		Expect(result.Context).To(Equal("servers.the-test-server"))
-		Expect(result.Origin).To(Equal("servers.the-test-server"))
+		Expect(result.Context).To(Equal("servers.fleet-broker"))
+		Expect(result.Origin).To(Equal("servers.fleet-broker"))
 		Expect(result.Updates).To(HaveLen(1))
 		Expect(result.Updates[0].Values).To(HaveLen(1))
 
@@ -57,7 +57,7 @@ var _ = Describe("NewReaderStatusUpdate", func() {
 	})
 
 	It("clears the notification when the source is available", func() {
-		result := NewReaderStatusUpdate("servers.the-test-server", "fleet broker", true)
+		result := NewReaderStatusUpdate("servers.fleet-broker", "fleet broker", true)
 
 		Expect(result.Updates).To(HaveLen(1))
 		Expect(result.Updates[0].Values).To(HaveLen(1))

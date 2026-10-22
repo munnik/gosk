@@ -73,7 +73,7 @@ type ModbusHeader struct {
 // connection wedged the connector for the lifetime of the process: every
 // poll from then on wrote to the dead socket, logged "write: broken
 // pipe" and tried the same dead socket again a polling interval later.
-// On a-vessel's ComAp genset controller, which resets
+// On one vessel's ComAp genset controller, which resets
 // the link after a stretch of unanswered requests, that ran for 18 hours
 // straight and only ever ended because a deploy restarted the unit. Do
 // closes the transport whenever an error means the connection itself is
@@ -380,7 +380,7 @@ func (m *ModbusClient) Poll(stream chan<- []byte, pollingInterval time.Duration,
 	// succeeded. A read that keeps failing fails identically every
 	// polling interval, and a dropped connection used to put thousands
 	// of copies of the same broken pipe warning in the journal - 13k of
-	// them in one 18 hour stretch on a-vessel - so
+	// them in one 18 hour stretch on one vessel - so
 	// only the transitions are worth a warning, the repeats go to debug.
 	var lastError string
 

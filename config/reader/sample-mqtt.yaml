@@ -12,7 +12,7 @@ name: "fleet broker"
 # aggregates data for many vessels and so has no vessel of its own; name the
 # installation it runs on to attribute the notification to it. Defaults to
 # "vessels.self".
-context: "servers.the-test-server"
+context: "servers.fleet-broker"
 
 # How long to wait without receiving anything from the broker before raising
 # that notification, and how often to repeat it while the source stays quiet.

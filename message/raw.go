@@ -68,7 +68,7 @@ func (r *Raw) WithValue(v []byte) *Raw {
 // encoding/json already base64-encodes a []byte field itself (with the
 // same standard, padded alphabet base64.StdEncoding.EncodeToString would
 // produce), writing straight into the output buffer instead of needing an
-// intermediate string allocation. On a-vessel, MarshalJSON on Raw
+// intermediate string allocation. On a vessel with a shaft power meter, MarshalJSON on Raw
 // values - one of the hottest paths in the whole pipeline, called on
 // every 2kHz sample from the shaft power meter - accounted for close to
 // half of a connector process's total CPU time under load (see gosk's

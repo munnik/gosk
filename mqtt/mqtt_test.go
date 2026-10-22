@@ -13,7 +13,7 @@ import (
 //
 // New used to call logger.Fatal when the first connection failed, so anything
 // that started while the broker was down exited 1. Deploying the mosquitto
-// config to the-production-server restarts the broker, gosk-transferRequest2 started
+// config to the fleet broker's host restarts the broker, gosk-transferRequest2 started
 // inside that window and died, and switch-to-configuration rolled the whole
 // activation back - even though systemd restarted the unit successfully five
 // seconds later.

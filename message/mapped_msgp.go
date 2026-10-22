@@ -15,7 +15,7 @@ import (
 // that type's own native msgp encoding, so Value.Value's polymorphism
 // (see Decode in mapped_update_value_types.go) costs a single byte and a
 // direct dispatch instead of Decode()'s linear trial-and-error - the
-// second profiling round on a-vessel found that guessing, not the
+// second profiling round on a vessel with a shaft power meter found that guessing, not the
 // outer envelope, was what kept aggregate's CPU cost high after the
 // first msgp pass.
 //

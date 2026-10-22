@@ -55,7 +55,7 @@ func (m *JSONMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	// them only bought a fresh copy nothing needs - the expression
 	// environment's functions are pure and none of them touch the map. A
 	// mapper with three mappings therefore decoded the same bytes three
-	// times: on a-vessel that was 28 IO-Link vibration sensors
+	// times: on one vessel that was 28 IO-Link vibration sensors
 	// publishing ~4.3 times a second, so ~360 decodes per second of a
 	// 1715 byte payload where 120 will do.
 	//

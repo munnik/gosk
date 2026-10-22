@@ -468,7 +468,7 @@ type ReaderConfig struct {
 	// Context is the SignalK context that notification is published under.
 	// A reader aggregates data for many vessels and so has no vessel of
 	// its own; name the installation it runs on (e.g.
-	// "servers.the-test-server") to attribute the notification to it. The
+	// "servers.fleet-broker") to attribute the notification to it. The
 	// default is the SignalK alias for "this installation", which both
 	// NotificationMapper and MeteoHydroMapper already pass through.
 	Context string `mapstructure:"context"`

@@ -19,17 +19,6 @@ in
     taplo
   ];
 
-  scripts = {
-    claude-local = {
-      exec = ''exec "$DEVENV_ROOT/scripts/claude-local.sh" "$@"'';
-      description = "Claude Code against gpt-oss-120b on the-office-server (VPN only) instead of Anthropic.";
-    };
-    codex-local = {
-      exec = ''exec "$DEVENV_ROOT/scripts/codex-local.sh" "$@"'';
-      description = "codex against gpt-oss-120b on the-office-server (VPN only) instead of OpenAI.";
-    };
-  };
-
   languages = {
     go = {
       enable = true;

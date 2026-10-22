@@ -1,3 +1,4 @@
 ---
-context: "vessels.urn:mrn:imo:mmsi:244770688" # if the data itself doesn't provide a context then this context is used
+# Used when the data itself does not provide a context.
+context: "vessels.urn:mrn:imo:mmsi:111111111"
 protocol: "nmea0183"

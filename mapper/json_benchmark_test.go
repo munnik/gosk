@@ -16,7 +16,7 @@ import (
 // mappings ignore. "small" is the shape of the torque message the suite
 // already covers; "wide" is the shape of a real sensor message, which is
 // mostly fields nobody maps - an IO-Link vibration sensor on
-// a-vessel publishes 31 items in ~1.7kB and three of them are read.
+// one vessel publishes 31 items in ~1.7kB and three of them are read.
 func payload(extraKeys int) []byte {
 	var b strings.Builder
 	b.WriteString(`{"pwr":"8409.6","spd":"980","trq":"82.29"`)

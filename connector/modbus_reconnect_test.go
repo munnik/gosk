@@ -15,7 +15,7 @@ import (
 
 // fakeModbusSlave serves read input register requests over modbus/tcp and
 // hangs up on the spot whenever dropConnection is set, the way the ComAp
-// genset controller on a-vessel resets the link after
+// genset controller on one vessel resets the link after
 // a stretch of unanswered requests. It counts the connections it accepts
 // so a test can tell a reconnect from a connection that was never
 // dropped.
@@ -62,7 +62,7 @@ func fakeModbusSlave(t *testing.T, dropConnection *atomic.Bool, accepted *atomic
 }
 
 // TestModbusConnectorReconnectsAfterTheSlaveDropsTheConnection guards the
-// bug that left gosk-connectComAp on a-vessel polling a
+// bug that left a ComAp connector polling a
 // dead socket for 18 hours at a stretch: modbus.Client never redials by
 // itself, and nothing in the read path ever closed the transport, so once
 // the ComAp reset the connection every later poll wrote to the same dead

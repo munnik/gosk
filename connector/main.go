@@ -87,7 +87,7 @@ type Connector[T nanomsg.Message] interface {
 // deploy-rs treat a unit that never reaches "started" as a failed
 // deploy: one offline sensor could fail an entire fleet-wide deployment
 // (see gosk.nix's history of exactly this with the FFT mappers, and
-// a-vessel's Ampero TCP module).
+// a vessel's Ampero TCP module).
 //
 // The DisconnectedOrNoData report repeats every timeoutDuration for as
 // long as the stream stays quiet, rather than firing once, so that a

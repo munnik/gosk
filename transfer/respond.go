@@ -111,7 +111,7 @@ func (t *TransferResponder) Run(publisher *nanomsg.Publisher[message.Mapped]) {
 // sleep_between_respond_deltas between every delta. On origins with a large
 // backfill backlog the requests arrived faster than the handlers retired: we
 // measured 1982 of 2007 goroutines parked in that sleep at N GB of heap,
-// which OOM-killed gosk 33 times in a week on a N GB machine and took the
+// which OOM-killed gosk dozens of times in a week and took the
 // co-located postgres down with it.
 //
 // Draining each command from a single worker bounds the responder to one

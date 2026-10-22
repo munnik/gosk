@@ -1,0 +1,27 @@
+---
+# gosk transfer send - on a vessel. Reads pending minutes from transfer_outbox,
+# sends their rows to the central server and records what it acknowledges.
+# The vessel's "write database mapped" process must have "outbox: true" in its
+# database configuration, or nothing is ever pending.
+database:
+  # add &application_name=gosk_transfer_send to tell the processes apart
+  # in pg_stat_activity
+  url: "postgres://gosk:password@127.0.0.1:5432/gosk?sslmode=disable"
+  timeout: 1m
+mqtt:
+  username: "111111111"
+  password: "secret"
+  url: "mqtt://broker.vpn.example.org:1883"
+  compress: true
+  # client_id: set only when the derived one
+  # (gosk-transferSend-<hostname>-<username>) is not unique on the broker
+origin: "vessels.urn:mrn:imo:mmsi:111111111"
+# How long to wait between passes over the outbox, and so the most live
+# data is delayed by.
+interval: 5s
+# How many backlog minutes one pass sends behind the current minute.
+max_buckets_per_cycle: 10
+# A minute with more rows than this is sent in several deliveries.
+max_rows_per_delivery: 20000
+# How long a delivery may go unacknowledged before its minute is sent again.
+retry_after: 5m

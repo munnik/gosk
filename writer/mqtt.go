@@ -64,7 +64,8 @@ func (w *MqttWriter) sendMQTT(deltas []message.Mapped) {
 }
 
 func (w *MqttWriter) WriteMapped(subscriber *nanomsg.Subscriber[message.Mapped]) {
-	w.mqttClient = mqtt.New(w.mqttConfig, nil, "")
+	w.mqttClient = mqtt.New(w.mqttConfig, "write", nil, "")
+	w.mqttClient.Connect()
 	defer w.mqttClient.Disconnect()
 	receiveBuffer := make(chan *message.Mapped, bufferCapacity)
 	defer close(receiveBuffer)

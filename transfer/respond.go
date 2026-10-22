@@ -94,7 +94,8 @@ func (t *TransferResponder) Run(publisher *nanomsg.Publisher[message.Mapped]) {
 	go t.respondWithCountWorker()
 	go t.respondWithDataWorker()
 
-	t.mqttClient = mqtt.New(&t.config.MQTTConfig, t.messageReceived, fmt.Sprintf(requestTopic, t.config.Origin))
+	t.mqttClient = mqtt.New(&t.config.MQTTConfig, "transferRespond", t.messageReceived, fmt.Sprintf(requestTopic, t.config.Origin))
+	t.mqttClient.Connect()
 	defer t.mqttClient.Disconnect()
 
 	// never exit

@@ -60,6 +60,17 @@ var _ = Describe("Decode", func() {
 		Expect(decoded).To(BeNil())
 	})
 
+	It("returns a boolean as it is, without an error", func() {
+		// It used to fall through every struct candidate and come back as
+		// itself with "don't know how to decode true" - harmless, but
+		// logged for every boolean row the outbox sender read.
+		for _, b := range []bool{true, false} {
+			decoded, err := Decode(b)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(decoded).To(Equal(b))
+		}
+	})
+
 	It("keeps a JSON null value nil after unmarshalling, e.g. a cleared notification", func() {
 		v := &Value{}
 		err := json.Unmarshal([]byte(`{"path":"notifications.test","value":null}`), v)

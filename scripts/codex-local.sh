@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # codex against the fleet's own model: gpt-oss-120b, served by llama.cpp on
-# the-office-server (hosts/the-office-server/services/llm in the nix repo) and reachable over the VPN from
-# the laptop and server blocks only. llama-server speaks the Responses API
+# a local server reachable over the VPN from
+# a few hosts only. llama-server speaks the Responses API
 # codex uses, so this is only a provider definition; no API key.
 #
 # A wrapper rather than a provider in ~/.codex/config.toml so that plain

@@ -14,8 +14,9 @@ What it carries from the `transfer-outbox` branch: `database/outbox.go`,
 `transfer/{outbox,send,receive,seed,digest,digest_respond,validate}.go`, the
 `outbox` and `external_migrations` options of the database configuration,
 the MQTT client's persistent sessions and subscription checks, the writer's
-retry backoff and the migration retry, and the three migrations that create
-`transfer_outbox`, `transfer_received` and the epoch tables.
+retry backoff and the migration retry. The three migrations that create
+`transfer_outbox`, `transfer_received` and the epoch tables are on `master`
+as well, see "Going back".
 
 What it leaves out, on purpose: the migrations that drop the `transfer_*`
 tables and the `uuid` columns, the removal of the uuid from every message,
@@ -39,26 +40,27 @@ the third is a decision of its own (`DEPLOY_OUTBOX.md`, step 1).
   for the outbox roles (`mqtt.sessionRoles`). A vessel runs two `write mqtt`
   processes against the same broker with the same username, and a derived
   client id for those would have them disconnecting each other.
-- Migration numbers: this branch's newest is `20261020120000`. When the full
-  `transfer-outbox` branch is deployed later, its drop migrations
-  (`20261017120100`, `20261017120200`) sort below that and golang-migrate
-  would skip them on a database that ran this branch. Renumber them above
-  `20261020120000` when that day comes.
+- Migration numbers: this branch adds no migration of its own any more -
+  the three it needs are on `master` (see "Going back"). The newest is
+  `20261020120000`. When the full `transfer-outbox` branch is deployed
+  later, its drop migrations (`20261017120100`, `20261017120200`) sort
+  below that and golang-migrate would skip them on a database that ran
+  this. Renumber them above `20261020120000` when that day comes.
 
 ## Going back
 
-A database that ran this branch has three unused tables and a
-`schema_migrations` version (`20261020120000`) that `master` does not know.
-golang-migrate refuses to start from a version that is not among the
-binary's migrations (`readUp` checks `versionExists` first), so `master`'s
-gosk fails `UpgradeDatabase` against such a database until the version is
-set back:
+`master` carries the same three migrations since "The outbox tables, ahead
+of the outbox" (its PR #30), and has to be deployed before this branch is:
+golang-migrate refuses to start from a schema version the binary has no
+migration for, and a deploy that is rolled back to an older build - which
+deploy-rs does on its own when an activation fails - would otherwise leave
+every gosk process refusing the database. With the tables on both sides,
+the two builds replace each other freely, and going back is deploying
+`master` again: `transfer_outbox` simply stops being written.
+
+A database that ran this branch before `master` had the tables needs its
+version set back first, in the gosk user's schema:
 
 ```sql
 UPDATE schema_migrations SET version = 20261015120000, dirty = false;
 ```
-
-(in the gosk user's schema, where its migrations table lives). The tables
-can stay. The cheaper way back is to keep this build and stop the sender:
-the build is `master` plus additions, so a vessel that no longer runs
-`transfer send` behaves as `master` does.

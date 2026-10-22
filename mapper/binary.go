@@ -60,7 +60,12 @@ func (m *BinaryMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	for i := range m.mappingsConfig {
 		mc := &m.mappingsConfig[i]
 		output, err := runExpr(m.env, mc)
-		if err == nil {
+		// A nil result is an expression declining to produce a value - the
+		// `x == 0 ? nil : ...` idiom for a sentinel the device sends when
+		// it has no measurement - and publishes nothing, as the modbus
+		// mapper already treats it; a null on the path would be taken for
+		// a reading by everything downstream.
+		if err == nil && output != nil {
 			u.AddValue(message.NewValue().WithPath(mc.Path).WithValue(output))
 		}
 	}

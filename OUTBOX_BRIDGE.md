@@ -47,7 +47,18 @@ the third is a decision of its own (`DEPLOY_OUTBOX.md`, step 1).
 
 ## Going back
 
-Deploying `master` again against a database that ran this branch leaves
-three unused tables and a `schema_migrations` version `master` does not
-know; nothing else. `master`'s `UpgradeDatabase` reports no change for a
-database that is ahead of it.
+A database that ran this branch has three unused tables and a
+`schema_migrations` version (`20261020120000`) that `master` does not know.
+golang-migrate refuses to start from a version that is not among the
+binary's migrations (`readUp` checks `versionExists` first), so `master`'s
+gosk fails `UpgradeDatabase` against such a database until the version is
+set back:
+
+```sql
+UPDATE schema_migrations SET version = 20261015120000, dirty = false;
+```
+
+(in the gosk user's schema, where its migrations table lives). The tables
+can stay. The cheaper way back is to keep this build and stop the sender:
+the build is `master` plus additions, so a vessel that no longer runs
+`transfer send` behaves as `master` does.

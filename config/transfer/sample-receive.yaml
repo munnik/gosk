@@ -1,0 +1,17 @@
+---
+# gosk transfer receive - on the central server. Stores what vessels send and
+# acknowledges each delivery once it is committed. Run one per broker.
+database:
+  # add &application_name=gosk_transfer_receive to tell the processes apart
+  # in pg_stat_activity
+  url: "postgres://gosk:password@127.0.0.1:5432/gosk?sslmode=disable"
+  timeout: 1m
+mqtt:
+  username: "the-production-server"
+  password: "secret"
+  url: "mqtt://10.64.0.1:1883"
+  compress: true
+# Set to false on a server that ingests the fleet's data as a copy (such as
+# the-test-server) and must never tell a vessel that its data is safe; only
+# the server that keeps the data acknowledges.
+acknowledge: true

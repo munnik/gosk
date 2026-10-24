@@ -63,7 +63,8 @@ func NewTransferRequester(c *config.TransferConfig) *TransferRequester {
 }
 
 func (t *TransferRequester) Run() {
-	t.mqttClient = mqtt.New(t.mqttConfig, t.messageReceived, fmt.Sprintf(respondTopic, "#"))
+	t.mqttClient = mqtt.New(t.mqttConfig, "transferRequest", t.messageReceived, fmt.Sprintf(respondTopic, "#"))
+	t.mqttClient.Connect()
 	defer t.mqttClient.Disconnect()
 
 	// send count requests

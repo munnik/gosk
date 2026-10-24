@@ -1,0 +1,16 @@
+---
+# gosk transfer digest - on the central server. Answers the summaries vessels
+# send while seeding. Reads only. Run one per broker.
+database:
+  # add &application_name=gosk_transfer_digest to tell the processes apart
+  # in pg_stat_activity
+  url: "postgres://gosk:password@127.0.0.1:5432/gosk?sslmode=disable"
+  timeout: 5m
+mqtt:
+  username: "the-production-server"
+  password: "secret"
+  url: "mqtt://10.64.0.1:1883"
+  compress: true
+# When this server holds less than this fraction of a bucket's rows, it asks
+# for the whole bucket instead of opening it up further.
+seed_take_whole_below: 0.25

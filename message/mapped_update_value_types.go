@@ -224,6 +224,14 @@ func Decode(input interface{}) (interface{}, error) {
 	if s, ok := input.(string); ok {
 		return s, nil
 	}
+	// A boolean is as plain as the scalars above (a connector's connected
+	// flag, a switch), and was the one scalar left to fall through to the
+	// struct candidates, fail them all, and come back as itself with an
+	// error - harmless, but logged for every such row the outbox sender
+	// read.
+	if b, ok := input.(bool); ok {
+		return b, nil
+	}
 
 	var metadata mapstructure.Metadata
 	p := Position{}

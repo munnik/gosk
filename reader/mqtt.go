@@ -89,7 +89,7 @@ func (r *MqttReader) ReadMapped(publisher *nanomsg.Publisher[message.Mapped]) {
 	// first successful send (see pub.go's send). That send needs a vessel
 	// to have actually published something on mqttTopic, and for it to
 	// decompress, unmarshal and publish - none of which this process
-	// controls - and mqtt.New below blocks for up to
+	// controls - and Connect below blocks for up to
 	// mqtt.initialConnectWait first, so on a quiet fleet or a broker that
 	// has just been restarted the unit could sit below gosk.nix's
 	// TimeoutStartSec (40s) and be killed while doing nothing wrong. A
@@ -99,7 +99,8 @@ func (r *MqttReader) ReadMapped(publisher *nanomsg.Publisher[message.Mapped]) {
 
 	go r.watchSource()
 
-	m := mqtt.New(r.mqttConfig, r.messageHandler, mqttTopic)
+	m := mqtt.New(r.mqttConfig, "read", r.messageHandler, mqttTopic)
+	m.Connect()
 	defer m.Disconnect()
 
 	// never exit

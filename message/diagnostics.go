@@ -19,10 +19,12 @@ import (
 // up with it by timestamp.
 //
 // The field is a flat object of finite numbers, booleans and strings (see
-// NormalizeDiagnostic). It is gosk's own and has no counterpart in a
-// Signal K delta, which is why the Signal K writers leave it out; Signal K's
-// "meta" is something else again - static units, zones and display names
-// per path.
+// NormalizeDiagnostic). Numbers are in SI units, as in Signal K - seconds,
+// volts, amperes, kelvin, ratios rather than percentages - and a name never
+// carries its unit: "supplyCurrent" in amperes, not "supplyCurrentmA". It
+// is gosk's own and has no counterpart in a Signal K delta, which is why
+// the Signal K writers leave it out; Signal K's "meta" is something else
+// again - static units, zones and display names per path.
 //
 // A value may carry diagnostics and no value at all: that is how a mapper
 // says it received a reading and rejected it (see DiagnosticRejected),

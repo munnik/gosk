@@ -18,8 +18,9 @@ import (
 // and stored as one sample - instead of as separate paths that only line
 // up with it by timestamp.
 //
-// The field is a flat object of finite numbers, booleans and strings (see
-// NormalizeDiagnostic). Numbers are in SI units, as in Signal K - seconds,
+// The field is an object of finite numbers, booleans and strings (see
+// NormalizeDiagnostic), with one exception: DiagnosticDetails holds an
+// object of the same leaves, one level down. Numbers are in SI units, as in Signal K - seconds,
 // volts, amperes, kelvin, ratios rather than percentages - and a name never
 // carries its unit: "supplyCurrent" in amperes, not "supplyCurrentmA". It
 // is gosk's own and has no counterpart in a Signal K delta, which is why
@@ -36,6 +37,14 @@ import (
 // mapping cannot configure a diagnostic of that name (see the mapper's
 // precompileDiagnostics), so it only ever means what the mapper says.
 const DiagnosticRejected = "rejected"
+
+// DiagnosticDetails is the one key whose value is an object: the
+// diagnostics only one kind of sensor has - a rotor's raw voltage, a loop
+// current - kept one level down so that the keys beside it mean the same
+// for every sensor. Its entries are leaves like any top-level diagnostic;
+// it holds no object of its own. Like DiagnosticRejected, only a mapper
+// sets it (from a mapping's DiagnosticDetails).
+const DiagnosticDetails = "details"
 
 // NormalizeDiagnostic returns v as one of the types a diagnostic may hold -
 // float64, bool or string - or an error. Every integer type becomes a
@@ -110,16 +119,32 @@ func IsRejected(value any, d map[string]any) bool {
 
 // NormalizeDiagnostics applies NormalizeDiagnostic to every entry of d that
 // arrived from outside - a JSON message, a database row - dropping the ones
-// that do not normalise, and returns nil for an empty result. It never
-// fails: like Value.UnmarshalJSON, it keeps what it can rather than reject a
-// message for a field this version cannot interpret.
+// that do not normalise, and returns nil for an empty result. The entries
+// of DiagnosticDetails are normalised the same way, and an empty or
+// malformed details object is dropped. It never fails: like
+// Value.UnmarshalJSON, it keeps what it can rather than reject a message for
+// a field this version cannot interpret.
 func NormalizeDiagnostics(d map[string]any) map[string]any {
+	return normalizeDiagnostics(d, true)
+}
+
+// normalizeDiagnostics is NormalizeDiagnostics for the top level, or for
+// the entries of a details object, where no object is allowed.
+func normalizeDiagnostics(d map[string]any, top bool) map[string]any {
 	if len(d) == 0 {
 		return nil
 	}
 	result := make(map[string]any, len(d))
 	for k, v := range d {
 		if !ValidDiagnosticName(k) {
+			continue
+		}
+		if top && k == DiagnosticDetails {
+			if details, ok := v.(map[string]any); ok {
+				if n := normalizeDiagnostics(details, false); n != nil {
+					result[k] = n
+				}
+			}
 			continue
 		}
 		if n, err := NormalizeDiagnostic(v); err == nil {

@@ -25,28 +25,104 @@ stable identifier that says which hardware produced a reading (below).
 
 ## The object
 
-Flat; every leaf a finite number, a bool or a string (`NormalizeDiagnostic`).
-Numbers are in SI units, as in Signal K: seconds, volts, amperes, kelvin,
-ratios rather than percentages. A name never carries a unit (`diagnosticsAge`,
-not `diagnosticsAgeSeconds`; `supplyCurrent`, not `supplyCurrentmA`), so a
-producer reporting in other units is converted by the mapping. Names have
-stable types; a change of meaning gets a new name. A mapping expression
-that evaluates to nil omits that key - omission means "not known at the
-time", never "fine". Absence must never be read as healthy, and
-frame-derived facts (which sensors measured) are never dropped because some
-slower diagnostics are unavailable.
+Two levels: the common keys (below) at the top, the same for every kind of
+sensor, and `details` - the one key whose value is an object - holding what
+only this kind of sensor reports. Every other entry, at either level, is a
+leaf: a finite number, a bool or a string (`NormalizeDiagnostic`); `details`
+holds no object of its own, and anything deeper is dropped. Numbers are in SI
+units, as in Signal K: seconds, volts, amperes, kelvin, ratios rather than
+percentages. A name never carries a unit (`imageAge`, not `imageAgeSeconds`;
+`supplyCurrent`, not `supplyCurrentmA`), so a producer reporting in other
+units is converted by the mapping. Nor does a name repeat the object it is in
+(`status`, not `diagnosticsStatus`). Names have stable types; a change of
+meaning gets a new name. A mapping expression that evaluates to nil omits that
+key - omission means "not known at the time", never "fine". Absence must never
+be read as healthy, and frame-derived facts (which sensors measured) are never
+dropped because some slower diagnostics are unavailable.
+
+## Common keys
+
+Most keys belong to one kind of sensor and help only someone who knows it:
+a rotor's raw voltage, a loop current, a glitch rate. A few answer the same
+question for every sensor, so a consumer can ask it across a fleet without
+knowing what is behind a path:
+
+| Key | Type | Question |
+|---|---|---|
+| `sensor` | string | Which hardware produced this value? |
+| `connected` | bool | Does the sensor answer at all? |
+| `trust` | number, 0 to 1 | How far can this value be relied on? |
+| `rejected` | string | Why is there no value? (reserved, set by the mapper) |
+| `status`, `age` | string, seconds | How old is the evidence behind the above? |
+| `details` | object of leaves | What else does this kind of sensor report? |
+
+`sensor` and `connected` are required on every mapping that configures
+diagnostics. `status` and `age` exist only where the sensor's state arrives
+on a separate diagnostics input (below); a sensor whose value and state
+arrive in the same message has no older evidence to date.
+
+Everything else goes in `details`: a rotor's raw voltage and image age, a
+loop current, a glitch rate, which rotors measured. A query across sensor
+types reads the top level; a query about one sensor reads
+`diagnostics->'details'->>'rotor1RawVoltage'`. A mapping configures the two
+levels side by side, `diagnostics:` for the common keys and
+`diagnosticDetails:` for the details, each a map of names to expressions;
+`details` and `rejected` cannot be configured as top-level names.
+
+```json
+{
+  "sensor": "port-shaft-meter",
+  "connected": true,
+  "trust": 0.7,
+  "status": "fresh",
+  "age": 0.4,
+  "details": {
+    "torqueSelection": "sensor1",
+    "sensor1Valid": true,
+    "sensor2Valid": false,
+    "rotor1RawVoltage": 4.8,
+    "rotor1ImageAge": 0.5,
+    "supplyCurrent": 0.299,
+    "shutdownCounter": 263
+  }
+}
+```
+
+### Trust
+
+`trust` is a ratio: 0 means the value cannot be relied on at all, 1 means it
+is certainly correct, and anything between says there is some uncertainty.
+It has two parts, both the mapping's to configure:
+
+- **What the source is.** Some sources are better than others at the same
+  quantity: a calibrated flow meter measures fuel flow, an engine controller
+  calculates it. The mapping for each states its baseline, so that two
+  sources of one quantity compare - the meter's flow carries a higher
+  `trust` than the engine's.
+- **What the reading shows.** The mapping lowers the baseline from the
+  incoming data: a shaft power meter measuring with one rotor instead of
+  two (the value no longer cancels the shaft's bending), a loop current
+  near the edge of its range, stale diagnostics.
+
+A trust is set by an expression, like any other key, and is clamped to 0..1;
+a mapping that cannot judge leaves it out rather than guess 1. A value with
+`trust` 0 is still a value - the sensor answered and the mapper kept the
+reading - whereas `rejected` means there is no value at all. The number
+compares between sources of the same quantity and between readings of one
+sensor over time; it is not a calibrated probability, and the same number
+on two unrelated paths means only that both mappings judged alike.
 
 ## Two kinds of sensor state, one object
 
 Some sensor state is in the same message as the value. A shaft power meter's
 frame carries both rotor words, the combined word, speed and temperature; a
 modbus reply carries the raw register. The mapper that produces the value
-evaluates the mapping's `diagnostics` expressions over that same input:
-`sensor1Valid`, `sensor2Valid`, `validSensors`, `errorValue`, the raw words,
-and `torqueSelection` (`bothMean`, `sensor1`, `sensor2`: how the value was
-chosen). Every mapper that produces values evaluates them; today only the
-modbus mapper does, the binary and json mappers still need the same
-evaluator wired in.
+evaluates the mapping's `diagnostics` and `diagnosticDetails` expressions over
+that same input; the details here are `sensor1Valid`, `sensor2Valid`,
+`validSensors`, `errorValue`, the raw words, and `torqueSelection`
+(`bothMean`, `sensor1`, `sensor2`: how the value was chosen). Every mapper
+that produces values evaluates them; today only the modbus mapper does, the
+binary and json mappers still need the same evaluator wired in.
 
 Other sensor state arrives on its own, slower: the meter's proxy decodes the
 meter's memory images and emits one JSON line a second with per-rotor supply
@@ -71,34 +147,35 @@ attach the evidence atomically.
   freshness limit, and routed by that identity - never by sniffing the
   payload, and never keyed by the raw message UUID, which is fresh per
   message.
-- The mapper keeps the latest parsed diagnostics report per source, with the producer's
-  report time and the local monotonic receipt time, and a small bounded
-  history so the two streams can interleave. The join is "the latest report
-  no later than the reading", to the accuracy the timestamps allow; an older
-  report never replaces a newer state; no reading waits for diagnostics and no
-  emitted reading is rewritten when a report arrives late.
-- The latest report is exposed to the mapping's `diagnostics` expressions
-  as the variable `diagnostics`, with its age (not `context`, which already
-  means the Signal K vessel context in `MapperConfig`). Consuming a
-  diagnostics report that produces no value is normal, not an empty-mapping
-  warning.
+- The mapper keeps the latest parsed diagnostics report per source, with
+  the producer's report time and the local monotonic receipt time, and a
+  small bounded history so the two streams can interleave. The join is "the
+  latest report no later than the reading", to the accuracy the timestamps
+  allow; an older report never replaces a newer state; no reading waits for
+  diagnostics and no emitted reading is rewritten when a report arrives
+  late.
+- The latest report is exposed to the mapping's `diagnostics` and
+  `diagnosticDetails` expressions as the variable `diagnostics`, with its age
+  (not `context`, which already means the Signal K vessel context in
+  `MapperConfig`). Consuming a diagnostics report that produces no value is
+  normal, not an empty-mapping warning.
 - Startup and restart are simple: a report before the first reading is
   cached; readings before any report flow with their diagnostics marked
-  missing; a restart starts empty; diagnostics missing for minutes stays visibly missing
-  and never blocks the value. The proxy's periodic full reports repopulate
-  the cache on the next line. A retained message, where a transport retains
-  one, keeps its original timestamp and is not fresh because it was just
-  delivered.
+  missing; a restart starts empty; diagnostics missing for minutes stay
+  visibly missing and never block the value. The proxy's periodic full
+  reports repopulate the cache on the next line. A retained message, where
+  a transport retains one, keeps its original timestamp and is not fresh
+  because it was just delivered.
 
 ### Freshness is explicit, at two levels
 
-Every reading with a diagnostics input carries `diagnosticsStatus` (`fresh`,
-`stale`, `missing`) and, once any report has been seen, `diagnosticsAge` in
-seconds; for never-seen diagnostics the age is omitted, since neither zero
-nor a sentinel is true. A stale report omits the leaves it would have
-supplied (the voltages, the currents) but keeps the status, so a row can say
-"the diagnostics were stale" rather than leave it to be inferred from missing
-keys.
+Every reading with a diagnostics input carries `status` (`fresh`, `stale`,
+`missing`) and, once any report has been seen, `age` in seconds - both
+about the latest diagnostics report, not about the value. For never-seen
+diagnostics the age is omitted, since neither zero nor a sentinel is true.
+A stale report omits the leaves it would have supplied (the voltages, the
+currents) but keeps the status, so a row can say "the diagnostics were
+stale" rather than leave it to be inferred from missing keys.
 
 A fresh report can carry stale evidence: the proxy keeps the last memory
 image across a reconnect to the meter, with its age. So a rotor's effective
@@ -116,7 +193,8 @@ A change of sensor state between two samples would be invisible, so a small,
 configured set of transitions passes the limiter at once, as extra rows
 beside the periodic ones: per-rotor validity (tracked per rotor, since a
 count of one cannot tell rotor 1 from rotor 2), rejection and recovery,
-diagnostics freshness status, sensor identity. Never the whole object - ages,
+`connected`, diagnostics freshness status, sensor identity, and `trust`
+crossing a configured step. Never the whole object - ages,
 rates and voltages change on every row and would switch the limiter off.
 Degradation passes immediately, recovery is debounced, flapping is bounded.
 A transition the mapper never saw (a dip between two one-second reports) is
@@ -130,21 +208,24 @@ never manufacture readings.
 
 ## Identity
 
-A configured stable `sensorId`, and per-component identities where the
-sensor has replaceable parts (`rotor1SensorId`, `rotor2SensorId`, as
-strings), so that two sensors feeding one path over time can be told apart
-and a replaced rotor is visible. Rotor 1 and 2 are channel positions; the
-component id is the hardware. An identity read from an old cached image is
-not adopted as the identity of newly connected hardware. Longer term this
-belongs in source or provenance metadata; the column is the bridge.
+A configured, stable identifier in `sensor`, and per-component identities
+where the sensor has replaceable parts (`rotor1Sensor`, `rotor2Sensor`, as
+strings, in `details`), so that two sensors feeding one path over time can be
+told apart and a replaced rotor is visible. Rotor 1 and 2 are channel
+positions; the component id is the hardware. An identity read from an old
+cached image is not adopted as the identity of newly connected hardware.
+Longer term this belongs in source or provenance metadata; the column is the
+bridge.
 
 ## Derived values
 
 A derived value (power from torque and speed) carries a compact, configured
 summary of its inputs' evidence, evaluated by the aggregate mapper over the
 same environment as the value expression: the torque's sensor identity,
-validity and diagnostics status, the speed's source and age, and a derived
-quality where the mapping defines one, with operand-prefixed keys. Not every
+validity and diagnostics status, the speed's source and age, with
+operand-prefixed keys, and its own `trust`. A derived value is no more
+trustworthy than its least trusted input, so its trust defaults to the
+minimum of its inputs' and a mapping may lower it further. Not every
 rotor voltage copied onto every derived path - that duplicates trends and
 pretends the derived value has one sensor. Freshness of a derived value
 includes the age of its input readings. A diagnostics-only report does not

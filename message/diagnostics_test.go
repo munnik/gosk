@@ -241,3 +241,65 @@ func TestUndecodableDiagnosticsKeepTheValue(t *testing.T) {
 		t.Fatal("a null path decoded")
 	}
 }
+
+// Details are the one object a diagnostics field holds: their leaves are
+// normalised like the top level's, and anything deeper, or a details that
+// is not an object, is dropped without costing the rest.
+func TestNormalizeDiagnosticsKeepsDetailsOneLevelDown(t *testing.T) {
+	got := NormalizeDiagnostics(map[string]any{
+		"connected": true,
+		DiagnosticDetails: map[string]any{
+			"rawVoltage": 4.8,
+			"images":     uint16(12),
+			"nested":     map[string]any{"a": 1.0},
+			"bad":        math.NaN(),
+		},
+	})
+	details, ok := got[DiagnosticDetails].(map[string]any)
+	if got["connected"] != true || !ok || len(details) != 2 || details["rawVoltage"] != 4.8 || details["images"] != 12.0 {
+		t.Fatalf("got %#v", got)
+	}
+
+	for _, in := range []map[string]any{
+		{"trust": 0.5, DiagnosticDetails: "not an object"},
+		{"trust": 0.5, DiagnosticDetails: map[string]any{}},
+		{"trust": 0.5, DiagnosticDetails: map[string]any{"nested": map[string]any{"a": 1.0}}},
+	} {
+		if got := NormalizeDiagnostics(in); len(got) != 1 || got["trust"] != 0.5 {
+			t.Errorf("NormalizeDiagnostics(%#v) = %#v, want only the trust", in, got)
+		}
+	}
+	if got := NormalizeDiagnostics(map[string]any{"connected": map[string]any{"a": 1.0}}); got != nil {
+		t.Errorf("an object under a key other than details survived: %#v", got)
+	}
+}
+
+func TestDetailsSurviveJSONAndMsgpack(t *testing.T) {
+	d := map[string]any{"connected": true, DiagnosticDetails: map[string]any{"current": 0.012, "inputConnected": true}}
+	in := NewMapped().WithContext("c").WithOrigin("c").AddUpdate(
+		NewUpdate().WithSource(*NewSource().WithLabel("l").WithType("modbus").WithUuid(uuid.New())).
+			WithTimestamp(time.Date(2026, 10, 17, 6, 0, 0, 0, time.UTC)).
+			AddValue(NewValue().WithPath("tanks.fuel.aft.currentLevel").WithValue(0.5).WithDiagnostics(d)))
+
+	blob, err := json.Marshal(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fromJSON Mapped
+	if err := json.Unmarshal(blob, &fromJSON); err != nil {
+		t.Fatal(err)
+	}
+	pack, err := in.MarshalMsg(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fromMsgpack Mapped
+	if _, err := fromMsgpack.UnmarshalMsg(pack); err != nil {
+		t.Fatal(err)
+	}
+	for name, out := range map[string]Mapped{"JSON": fromJSON, "msgpack": fromMsgpack} {
+		if !in.Equals(out) {
+			t.Errorf("%s round trip changed the message:\n in: %+v\nout: %+v", name, *in, out)
+		}
+	}
+}

@@ -87,6 +87,31 @@ func TestModbusAttachesDiagnostics(t *testing.T) {
 	}
 }
 
+// A mapping's details land one level down, beside its top-level
+// diagnostics, and a reserved name cannot be configured as either.
+func TestModbusAttachesDetails(t *testing.T) {
+	mapping := holdingRegister(52, "tanks.fuel.aft.currentLevel", "currentToRatio(registers[52] * 1.0)", map[string]string{
+		"connected":               "isBitSet(registers[50], 0)",
+		message.DiagnosticDetails: "1.0",
+	})
+	mapping.DiagnosticDetails = map[string]string{
+		"current": "registers[52] * 1.0 / 1000000",
+		"broken":  "registers[999].nothing",
+	}
+	m, err := NewModbusMapper(config.MapperConfig{Context: "testingContext"}, []config.ModbusMappingsConfig{mapping})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	_, _ = m.DoMap(rawReply(now, 1, 50, 1))
+
+	v := mapOne(t, m, rawReply(now.Add(time.Second), 1, 52, 12000))
+	details, ok := v.Diagnostics[message.DiagnosticDetails].(map[string]any)
+	if v.Diagnostics["connected"] != true || !ok || len(details) != 1 || details["current"] != 0.012 {
+		t.Fatalf("diagnostics %#v", v.Diagnostics)
+	}
+}
+
 func TestModbusPublishesAnAllZeroReplyAsRejected(t *testing.T) {
 	m := amperoTankMapper(t, nil)
 	now := time.Now()

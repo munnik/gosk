@@ -250,6 +250,12 @@ type MappingConfig struct {
 	// so far.
 	Diagnostics         map[string]string `mapstructure:"diagnostics"`
 	CompiledDiagnostics map[string]*vm.Program
+	// DiagnosticDetails names expressions the same way for what only this
+	// kind of sensor reports - a rotor's raw voltage, a loop current -
+	// carried one level down, under the diagnostics' "details", so that the
+	// keys in Diagnostics mean the same for every sensor.
+	DiagnosticDetails         map[string]string `mapstructure:"diagnosticDetails"`
+	CompiledDiagnosticDetails map[string]*vm.Program
 }
 
 func (m *MappingConfig) verify() {

@@ -10,27 +10,34 @@ import (
 )
 
 // configurable reports whether a mapping may name a diagnostic name: one
-// that can be stored, and not message.DiagnosticRejected, which only a
-// mapper sets, on a reading it rejected.
+// that can be stored, and neither message.DiagnosticRejected, which only a
+// mapper sets, on a reading it rejected, nor message.DiagnosticDetails,
+// which holds the mapping's DiagnosticDetails.
 func configurable(name string) bool {
-	return message.ValidDiagnosticName(name) && name != message.DiagnosticRejected
+	return message.ValidDiagnosticName(name) && name != message.DiagnosticRejected && name != message.DiagnosticDetails
 }
 
-// precompileDiagnostics compiles a mapping's diagnostic expressions once,
-// at construction, next to its value expression (see precompileMapping).
-// A diagnostic that does not compile is logged and left out; it never stops
-// the mapping itself.
+// precompileDiagnostics compiles a mapping's diagnostic and detail
+// expressions once, at construction, next to its value expression (see
+// precompileMapping). One that does not compile is logged and left out; it
+// never stops the mapping itself.
 func precompileDiagnostics(mc *config.MappingConfig) {
-	if len(mc.Diagnostics) == 0 || mc.CompiledDiagnostics != nil {
-		return
+	if len(mc.Diagnostics) > 0 && mc.CompiledDiagnostics == nil {
+		mc.CompiledDiagnostics = compileDiagnostics(mc.Diagnostics, configurable, mc.Path)
 	}
-	mc.CompiledDiagnostics = make(map[string]*vm.Program, len(mc.Diagnostics))
-	for name, source := range mc.Diagnostics {
-		if !configurable(name) {
+	if len(mc.DiagnosticDetails) > 0 && mc.CompiledDiagnosticDetails == nil {
+		mc.CompiledDiagnosticDetails = compileDiagnostics(mc.DiagnosticDetails, message.ValidDiagnosticName, mc.Path)
+	}
+}
+
+func compileDiagnostics(sources map[string]string, allowed func(string) bool, path string) map[string]*vm.Program {
+	compiled := make(map[string]*vm.Program, len(sources))
+	for name, source := range sources {
+		if !allowed(name) {
 			logger.GetLogger().Error(
 				"Ignoring a diagnostic whose name is reserved or cannot be stored",
 				zap.String("Diagnostic", name),
-				zap.String("Path", mc.Path),
+				zap.String("Path", path),
 			)
 			continue
 		}
@@ -40,17 +47,19 @@ func precompileDiagnostics(mc *config.MappingConfig) {
 				"Could not compile a diagnostic expression",
 				zap.String("Diagnostic", name),
 				zap.String("Expression", source),
-				zap.String("Path", mc.Path),
+				zap.String("Path", path),
 				zap.String("Error", err.Error()),
 			)
 			continue
 		}
-		mc.CompiledDiagnostics[name] = program
+		compiled[name] = program
 	}
+	return compiled
 }
 
 // runDiagnostics evaluates every diagnostic of mc in env and returns the
-// ones that produced a number, a bool or a string, or nil for none.
+// ones that produced a number, a bool or a string, with the details that
+// did so under message.DiagnosticDetails, or nil for none.
 //
 // One that fails is left out of this reading and logged at debug only:
 // a diagnostic describes a reading, so failing to describe one - a status
@@ -62,19 +71,30 @@ func precompileDiagnostics(mc *config.MappingConfig) {
 // share between goroutines, so a diagnostic left uncompiled by a mapper
 // that never precompiled is compiled for this call alone.
 func runDiagnostics(env ExpressionEnvironment, mc *config.MappingConfig) map[string]any {
-	if len(mc.Diagnostics) == 0 {
+	if len(mc.Diagnostics) == 0 && len(mc.DiagnosticDetails) == 0 {
 		return nil
 	}
 	for key, value := range mc.ExpressionEnvironment {
 		env[key] = value
 	}
 
-	result := make(map[string]any, len(mc.Diagnostics))
-	for name, source := range mc.Diagnostics {
-		if !configurable(name) {
+	result := evaluateDiagnostics(env, mc.Diagnostics, mc.CompiledDiagnostics, configurable, mc.Path)
+	if details := evaluateDiagnostics(env, mc.DiagnosticDetails, mc.CompiledDiagnosticDetails, message.ValidDiagnosticName, mc.Path); len(details) > 0 {
+		result[message.DiagnosticDetails] = details
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func evaluateDiagnostics(env ExpressionEnvironment, sources map[string]string, compiled map[string]*vm.Program, allowed func(string) bool, path string) map[string]any {
+	result := make(map[string]any, len(sources))
+	for name, source := range sources {
+		if !allowed(name) {
 			continue
 		}
-		program := mc.CompiledDiagnostics[name]
+		program := compiled[name]
 		if program == nil {
 			var err error
 			if program, err = expr.Compile(source); err != nil {
@@ -89,15 +109,12 @@ func runDiagnostics(env ExpressionEnvironment, mc *config.MappingConfig) map[str
 			logger.GetLogger().Debug(
 				"Leaving out a diagnostic that did not evaluate",
 				zap.String("Diagnostic", name),
-				zap.String("Path", mc.Path),
+				zap.String("Path", path),
 				zap.String("Error", err.Error()),
 			)
 			continue
 		}
 		result[name] = output
-	}
-	if len(result) == 0 {
-		return nil
 	}
 	return result
 }

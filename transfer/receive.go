@@ -57,7 +57,7 @@ func NewReceiver(c *config.TransferConfig) *Receiver {
 		stale:    promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_outbox_stale_deliveries_total", Help: "total number of outbox deliveries not stored because a newer generation of their bucket already was"}),
 		rejected: promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_outbox_rejected_deliveries_total", Help: "total number of outbox deliveries not stored because they did not match their topic or bucket"}),
 		stored:   promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_outbox_stored_total", Help: "total number of mapped rows stored from outbox deliveries"}),
-		acked:    promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_outbox_acks_sent_total", Help: "total number of outbox acknowledgements sent"}),
+		acked:    promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_outbox_acks_sent_total", Help: "total number of outbox acknowledgements handed to the MQTT client; a publish the broker then does not confirm is logged by the client, and the vessel sends the delivery again after retry_after"}),
 		failed:   promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_outbox_write_failures_total", Help: "total number of outbox deliveries that could not be stored"}),
 	}
 }
@@ -192,7 +192,7 @@ func (r *Receiver) deliveryReceived(c paho.Client, m paho.Message) {
 	}
 	r.acked.Inc()
 	logger.GetLogger().Info(
-		"Stored and acknowledged an outbox delivery",
+		"Stored an outbox delivery and queued its acknowledgement",
 		zap.String("Delivery", delivery.Delivery.String()),
 		zap.String("Origin", delivery.Origin),
 		zap.Time("Bucket", delivery.Bucket),
@@ -201,8 +201,12 @@ func (r *Receiver) deliveryReceived(c paho.Client, m paho.Message) {
 	)
 }
 
-// publishAck sends an acknowledgement, or a refusal, to the vessel it is
-// for, and reports whether it could be encoded.
+// publishAck hands an acknowledgement, or a refusal, for the vessel it is
+// for to the MQTT client, and reports whether it could be encoded. The
+// publish is asynchronous: a failure after this is logged by the client
+// (mqtt.watchPublishTokens), and costs only time - the rows are already
+// committed, and the vessel sends the delivery again after retry_after,
+// which stores nothing new and is acknowledged again.
 func (r *Receiver) publishAck(ack Ack) bool {
 	payload, err := r.codec.encode(ack)
 	if err != nil {

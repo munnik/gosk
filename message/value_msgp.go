@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/munnik/gosk/logger"
 	"github.com/tinylib/msgp/msgp"
+	"go.uber.org/zap"
 )
 
 // valueTag identifies which concrete type Value.Value holds, written by
@@ -61,12 +63,19 @@ const (
 
 // marshalValueMsg appends v's msgpack encoding to b (the usual
 // reused-buffer convention) and returns the result.
+// The diagnostics are normalised first, as the JSON encoding's readers
+// normalise them: an entry no diagnostic may hold is left out here rather
+// than failing the whole value's encoding.
 func marshalValueMsg(v Value, b []byte) ([]byte, error) {
 	b, err := marshalValuePayload(v, b)
-	if err != nil || len(v.Diagnostics) == 0 {
+	if err != nil {
 		return b, err
 	}
-	return msgp.AppendMapStrIntf(b, v.Diagnostics)
+	d := NormalizeDiagnostics(v.Diagnostics)
+	if len(d) == 0 {
+		return b, nil
+	}
+	return msgp.AppendMapStrIntf(b, d)
 }
 
 // marshalValuePayload is marshalValueMsg without the diagnostics: the
@@ -135,13 +144,21 @@ func unmarshalValueMsg(bts []byte) (Value, []byte, error) {
 	if err != nil || len(bts) == 0 {
 		return v, bts, err
 	}
-	var d map[string]interface{}
-	d, bts, err = msgp.ReadMapStrIntfBytes(bts, nil)
+	// A tail that does not decode costs the diagnostics, never the value
+	// they came with - the same as a diagnostics field that does not decode
+	// in JSON (see decodeDiagnosticsJSON). The blob is this value's alone,
+	// so nothing after it is lost by giving up on the tail.
+	d, rest, err := msgp.ReadMapStrIntfBytes(bts, nil)
 	if err != nil {
-		return v, bts, err
+		logger.GetLogger().Warn(
+			"Ignoring msgpack diagnostics that do not decode as a map",
+			zap.String("Path", v.Path),
+			zap.Error(err),
+		)
+		return v, nil, nil
 	}
 	v.Diagnostics = NormalizeDiagnostics(d)
-	return v, bts, nil
+	return v, rest, nil
 }
 
 // unmarshalValuePayload reads the path, tag and value of a blob and returns

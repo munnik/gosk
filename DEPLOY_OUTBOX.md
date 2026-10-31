@@ -20,8 +20,8 @@ alike):
 | migration | effect |
 | --- | --- |
 | `20261017120000_transfer_outbox` | creates `transfer_outbox` |
-| `20261017120100_drop_transfer_requests` | drops `transfer_data`, `transfer_local_data` and its two continuous aggregates, `transfer_remote_data`, `transfer_log` |
-| `20261017120200_drop_uuid_columns` | drops `uuid` and `transfer_uuid` from both `mapped_data` tables and `uuid` from `raw_data`, recreates the `mapped_data` view |
+| `20261031130000_drop_transfer_requests` | drops `transfer_data`, `transfer_local_data` and its two continuous aggregates, `transfer_remote_data`, `transfer_log` |
+| `20261031130100_drop_uuid_columns` | drops `uuid` and `transfer_uuid` from both `mapped_data` tables and `uuid` from `raw_data`, recreates the `mapped_data` view |
 | `20261017120300_transfer_received` | creates `transfer_received`, the receiver's record of which generation of each bucket it stored; one row per bucket ever delivered, kept for good (empty on a vessel) |
 
 `DROP COLUMN` is a catalog change: measured on TimescaleDB 2.27.1 it took
@@ -365,7 +365,7 @@ Both stopped the migrations half way there, and both apply to production.
 **The hand-made views.** `public.mapped_data`, `public.mapped_data_all` and
 `api.mapped_data` were created by hand on the-production-server - no repository
 has them - and they name the `uuid` and `transfer_uuid` columns, so
-`20261017120200` fails with `cannot drop desired object(s) because other
+`20261031130100` (then `20261017120200`) failed with `cannot drop desired object(s) because other
 objects depend on them`. gosk cannot fix that itself: the views belong to
 `postgres` and `api`. The nix repo's container migration
 20261020100000_drop_uuid_from_views (in
@@ -383,7 +383,7 @@ SELECT attname FROM pg_attribute WHERE attrelid = 'api.mapped_data'::regclass AN
 SELECT relname, relacl FROM pg_class WHERE oid IN ('public.mapped_data'::regclass, 'public.mapped_data_all'::regclass, 'api.mapped_data'::regclass);
 ```
 
-**The refresh jobs.** `20261017120100` failed twice with
+**The refresh jobs.** `20261031130000` (then `20261017120100`) failed twice with
 `tuple concurrently deleted`: dropping the old continuous aggregates races
 any refresh of *another* aggregate on the same hypertable - on the clone,
 the five-minute aggregate's historical refresh - over the invalidation log
@@ -572,8 +572,8 @@ journalctl -u gosk-transferSend -f
 Within a flush interval it logs `Sent an outbox delivery` with the bucket and
 row count, and shortly after `An outbox delivery was acknowledged` with the
 same bucket. On `the-production-server`, `journalctl -u gosk-transferReceive2 -f`
-(or `1`, depending on the vessel's broker) shows `Stored and acknowledged an
-outbox delivery` for that origin. Then:
+(or `1`, depending on the vessel's broker) shows `Stored an outbox delivery and
+queued its acknowledgement` for that origin. Then:
 
 ```sh
 curl -s http://<wg address>:9203/metrics | grep gosk_outbox_depth

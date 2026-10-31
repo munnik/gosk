@@ -119,6 +119,31 @@ func TestDiagnosticsSurviveMsgpack(t *testing.T) {
 
 // A gosk that predates diagnostics reads only a blob's payload and drops
 // the rest unread: what it gets must be the value as it was.
+// Diagnostics never cost the value they came with: not when they cannot be
+// encoded (left out on the way in) and not when the tail of a blob does not
+// decode (left out on the way out), the same as the JSON encoding does.
+func TestMsgpackDiagnosticsNeverCostTheValue(t *testing.T) {
+	v := *NewValue().WithPath("a.b").WithValue(2.5).WithDiagnostics(map[string]any{"ok": 1.0, "bad": math.NaN(), "nested": []int{1}})
+	blob, err := marshalValueMsg(v, nil)
+	if err != nil {
+		t.Fatalf("diagnostics that cannot all be stored failed the value's encoding: %v", err)
+	}
+	got, _, err := unmarshalValueMsg(blob)
+	if err != nil || got.Value != 2.5 || len(got.Diagnostics) != 1 || got.Diagnostics["ok"] != 1.0 {
+		t.Fatalf("got %+v, %v; want the value with only the diagnostic that can be stored", got, err)
+	}
+
+	payload, err := marshalValuePayload(*NewValue().WithPath("a.b").WithValue(2.5), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	corrupt := append(payload, 0xc1) // 0xc1 is never valid msgpack
+	got, _, err = unmarshalValueMsg(corrupt)
+	if err != nil || got.Value != 2.5 || got.Diagnostics != nil {
+		t.Fatalf("a corrupt diagnostics tail gave %+v, %v; want the value without diagnostics", got, err)
+	}
+}
+
 func TestValueBlobReadByAGoskWithoutDiagnostics(t *testing.T) {
 	v := *NewValue().WithPath("tanks.fuel.aft.currentLevel").WithValue(0.5).WithDiagnostics(map[string]any{"current": 0.012})
 	blob, err := marshalValueMsg(v, nil)

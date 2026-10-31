@@ -91,7 +91,7 @@ func (h *Handler) OnMessage(socket *gws.Conn, message *gws.Message) {
 }
 
 func (h *Handler) Broadcast(message *message.Mapped) {
-	payload, err := json.Marshal(message)
+	payload, err := json.Marshal(withoutDiagnostics(message))
 	if err != nil {
 		logger.GetLogger().Warn(
 			"Could not marshal the message",
@@ -115,4 +115,32 @@ func (h *Handler) ping() {
 			return true
 		})
 	}
+}
+
+// withoutDiagnostics returns m as a Signal K delta: without the
+// diagnostics gosk carries on its values, which Signal K has no field for
+// (see message/diagnostics.go). m itself is shared with the other
+// subscribers of the same message, so it is copied, and only when one of
+// its values has any.
+func withoutDiagnostics(m *message.Mapped) *message.Mapped {
+	found := false
+	for _, u := range m.Updates {
+		for _, v := range u.Values {
+			if len(v.Diagnostics) > 0 {
+				found = true
+			}
+		}
+	}
+	if !found {
+		return m
+	}
+	result := message.NewMapped().WithContext(m.Context).WithOrigin(m.Origin)
+	for _, u := range m.Updates {
+		stripped := message.NewUpdate().WithSource(u.Source).WithTimestamp(u.Timestamp)
+		for _, v := range u.Values {
+			stripped.AddValue(message.NewValue().WithPath(v.Path).WithValue(v.Value))
+		}
+		result.AddUpdate(stripped)
+	}
+	return result
 }

@@ -46,6 +46,18 @@ func (f *ExpressionFilter) DoMap(delta *message.Mapped) (*message.Mapped, error)
 	result := message.NewMapped().WithContext(delta.Context).WithOrigin(delta.Origin)
 
 	for _, svm := range delta.ToSingleValueMapped() {
+		// A rejected reading (see message.DiagnosticRejected) has no value
+		// for a filter to judge, and judging it anyway fails the
+		// expression - which drops this whole message, every other value
+		// in it included. It passes unfiltered, and stays out of env, so a
+		// filter reading this path as another's source keeps seeing the
+		// last value that was a value.
+		if message.IsRejected(svm.Value, svm.Diagnostics) {
+			for _, u := range svm.ToMapped().Updates {
+				result.AddUpdate(&u)
+			}
+			continue
+		}
 		shouldSkip := false
 		if mappings, ok := f.filterMappings[svm.Path]; ok {
 			path := strings.ReplaceAll(svm.Path, ".", "_")

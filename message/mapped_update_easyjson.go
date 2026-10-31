@@ -169,6 +169,12 @@ func easyjson4cd21e21DecodeGithubComMunnikGoskMessage1(in *jlexer.Lexer, out *Va
 			} else {
 				out.Value = in.Interface()
 			}
+		case "diagnostics":
+			if in.IsNull() {
+				in.Skip()
+			} else if d, ok := in.Interface().(map[string]interface{}); ok {
+				out.Diagnostics = NormalizeDiagnostics(d)
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -198,6 +204,11 @@ func easyjson4cd21e21EncodeGithubComMunnikGoskMessage1(out *jwriter.Writer, in V
 		} else {
 			out.Raw(json.Marshal(in.Value))
 		}
+	}
+	if len(in.Diagnostics) != 0 {
+		const prefix string = ",\"diagnostics\":"
+		out.RawString(prefix)
+		out.Raw(json.Marshal(in.Diagnostics))
 	}
 	out.RawByte('}')
 }

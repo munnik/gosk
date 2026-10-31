@@ -306,6 +306,8 @@ func precompileMapping(mc *config.MappingConfig) {
 			)
 		}
 	}
+
+	precompileDiagnostics(mc)
 }
 
 func runExpr(env ExpressionEnvironment, mappingConfig *config.MappingConfig) (interface{}, error) {

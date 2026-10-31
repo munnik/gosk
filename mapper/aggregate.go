@@ -341,6 +341,19 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 		if mapping.Overwrite {
 			overwrites[mapping.Path] = struct{}{}
 		}
+		// An in-place transform corrects a reading rather than deriving a
+		// new one, so the reading's diagnostics - the raw loop current,
+		// or why it was rejected - stay with the corrected value. Taken
+		// from env, which holds the reading as it arrived or as corrected
+		// before (and runTransform has restored by now), so they are
+		// there whichever of a transform's source paths triggered it. A
+		// derived value has none of its own.
+		var diagnostics map[string]any
+		if isTransform(mapping) {
+			if current, ok := m.env[strings.ReplaceAll(mapping.Path, ".", "_")].(message.SingleValueMapped); ok {
+				diagnostics = current.Diagnostics
+			}
+		}
 		switch mapping.Path {
 		case "name":
 			name := output.(string)
@@ -349,19 +362,20 @@ func (m *AggregateMapper) DoMap(input *message.Mapped) (*message.Mapped, error) 
 			mmsi := output.(string)
 			u.AddValue(message.NewValue().WithPath("").WithValue(message.VesselInfo{MMSI: &mmsi}))
 		default:
-			u.AddValue(message.NewValue().WithPath(mapping.Path).WithValue(output))
+			u.AddValue(message.NewValue().WithPath(mapping.Path).WithValue(output).WithDiagnostics(diagnostics))
 		}
 
 		if mapping.Path == "" {
 			continue
 		}
 		m.remember(historyMap, appended, message.SingleValueMapped{
-			Context:   input.Context,
-			Origin:    input.Origin,
-			Source:    u.Source,
-			Timestamp: u.Timestamp,
-			Path:      mapping.Path,
-			Value:     output,
+			Context:     input.Context,
+			Origin:      input.Origin,
+			Source:      u.Source,
+			Timestamp:   u.Timestamp,
+			Path:        mapping.Path,
+			Value:       output,
+			Diagnostics: diagnostics,
 		}, true)
 		for _, consumer := range m.aggregateMappings[mapping.Path] {
 			triggered[consumer] = struct{}{}
@@ -428,6 +442,16 @@ func (m *AggregateMapper) runTransform(mapping *config.ExpressionMappingConfig, 
 // the retention eviction above may already have removed some or all of
 // them (retentionTime 0 evicts a path's previous entry as soon as real
 // time moves past its timestamp), hence the min.
+//
+// A value with no value - a rejected reading (see
+// message.DiagnosticRejected), or a mapping's nil result, such as one
+// derived from a rejected reading - becomes the path's current value in
+// env, so an expression reading the path sees that there is none (and,
+// for a rejected reading, can read why), but it never enters history.
+// History is a series of samples for the numeric functions over it,
+// movingAverage first, and a reading with no value is not one: one in the
+// window would fail them until it aged out, long after the sensor
+// recovered.
 func (m *AggregateMapper) remember(historyMap map[string][]message.SingleValueMapped, appended map[string]int, svm message.SingleValueMapped, computed bool) {
 	path := strings.ReplaceAll(svm.Path, ".", "_")
 	cutoff := time.Now().Add(-m.pathRetentionTime[svm.Path])
@@ -440,9 +464,12 @@ func (m *AggregateMapper) remember(historyMap map[string][]message.SingleValueMa
 		}
 		appended[svm.Path] = 0
 	}
+	m.env[path] = svm
+	if svm.Value == nil {
+		return
+	}
 	historyMap[path] = append(historyMap[path], svm)
 	appended[svm.Path]++
-	m.env[path] = svm
 }
 
 func (*AggregateMapper) removeOverWrites(input *message.Mapped, overwrites map[string]struct{}) *message.Mapped {

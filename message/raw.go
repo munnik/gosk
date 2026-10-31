@@ -108,7 +108,7 @@ func (r *Raw) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	// A "uuid" key is accepted and ignored: raw messages carried one until
-	// the column it was stored in was dropped (20261017120200), and a
+	// the column it was stored in was dropped (20261031130100), and a
 	// process from before that may still be sending them.
 	for _, key := range []string{"connector", "timestamp", "type", "value"} {
 		if _, ok := j[key]; !ok {

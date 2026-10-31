@@ -126,6 +126,8 @@ CREATE TABLE "raw_data" (
 
 #### 1.3.2. Mapped data
 
+A mapped value may carry a `diagnostics` object about the sensor that produced it: `DIAGNOSTICS.md` has the rule and the design.
+
 ```sql
 CREATE TABLE "key_value_data" (
     "time" TIMESTAMPTZ NOT NULL,

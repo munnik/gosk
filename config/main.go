@@ -242,6 +242,20 @@ type MappingConfig struct {
 	CompiledExpression          *vm.Program
 	CompiledTimestampExpression *vm.Program
 	Path                        string `mapstructure:"path"`
+	// Diagnostics names expressions that describe the reading rather than
+	// the quantity - the raw register, a status bit - evaluated in the
+	// same environment as Expression and carried on the value as its
+	// Diagnostics (see message/diagnostics.go). Each must produce a
+	// number, a bool or a string. Only the modbus mapper evaluates them
+	// so far.
+	Diagnostics         map[string]string `mapstructure:"diagnostics"`
+	CompiledDiagnostics map[string]*vm.Program
+	// DiagnosticDetails names expressions the same way for what only this
+	// kind of sensor reports - a rotor's raw voltage, a loop current -
+	// carried one level down, under the diagnostics' "details", so that the
+	// keys in Diagnostics mean the same for every sensor.
+	DiagnosticDetails         map[string]string `mapstructure:"diagnosticDetails"`
+	CompiledDiagnosticDetails map[string]*vm.Program
 }
 
 func (m *MappingConfig) verify() {

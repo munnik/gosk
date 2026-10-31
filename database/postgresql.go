@@ -34,9 +34,9 @@ import (
 var rawDataColumns = []string{"time", "connector", "value", "type"}
 
 const (
-	mappedInsertQuery           = `INSERT INTO "%s" ("time", "connector", "type", "context", "path", "value", "origin") VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT ("time", "origin", "context", "connector", "path") DO UPDATE SET value = EXCLUDED.value`
-	selectMappedQuery           = `SELECT "time", "connector", "type", "context", "path", "value", "origin" FROM "mapped_data"`
-	selectMostRecentMappedQuery = `SELECT DISTINCT ON ("context", "path") "time", "connector", "type", "context", "path", "value", "origin" FROM "mapped_data" WHERE "time" > $1 ORDER BY "context", "path", "time" DESC`
+	mappedInsertQuery           = `INSERT INTO "%s" ("time", "connector", "type", "context", "path", "value", "origin", "diagnostics") VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT ("time", "origin", "context", "connector", "path") DO UPDATE SET value = EXCLUDED.value, diagnostics = EXCLUDED.diagnostics`
+	selectMappedQuery           = `SELECT "time", "connector", "type", "context", "path", "value", "origin", "diagnostics" FROM "mapped_data"`
+	selectMostRecentMappedQuery = `SELECT DISTINCT ON ("context", "path") "time", "connector", "type", "context", "path", "value", "origin", "diagnostics" FROM "mapped_data" WHERE "time" > $1 ORDER BY "context", "path", "time" DESC`
 )
 
 //go:embed migrations/*.sql
@@ -298,12 +298,38 @@ func (db *PostgresqlDatabase) mappedInsert(svm message.SingleValueMapped) (query
 		return "", nil, nil, false
 	}
 
+	// SQL NULL when there are none, never the jsonb null literal: a NULL
+	// is what every row written before the column existed holds, so "has
+	// diagnostics" stays one test. NormalizeDiagnostic keeps every entry
+	// encodable, but should one not be, it is the diagnostics that are
+	// dropped and not the value they describe.
+	//
+	// They are normalised once more here, whatever produced them: an entry
+	// a mapper's expression could never yield - a NUL in a string, which
+	// encoding/json writes but jsonb refuses - would otherwise make
+	// postgres refuse the row, value and all.
+	var diagnostics any
+	if normalized := message.NormalizeDiagnostics(svm.Diagnostics); len(normalized) > 0 {
+		if _, err := json.Marshal(normalized); err != nil {
+			logger.GetLogger().Error(
+				"Dropping diagnostics that cannot be encoded as jsonb",
+				zap.Any("diagnostics", svm.Diagnostics),
+				zap.Time("time", svm.Timestamp),
+				zap.String("path", path),
+				zap.String("context", svm.Context),
+				zap.Error(err),
+			)
+		} else {
+			diagnostics = normalized
+		}
+	}
+
 	table := "mapped_data_matching_context"
 	if svm.Context != svm.Origin {
 		table = "mapped_data_other_context"
 	}
 	query = fmt.Sprintf(mappedInsertQuery, table)
-	arguments = []any{svm.Timestamp, svm.Source.Label, svm.Source.Type, svm.Context, path, svm.Value, svm.Origin}
+	arguments = []any{svm.Timestamp, svm.Source.Label, svm.Source.Type, svm.Context, path, svm.Value, svm.Origin, diagnostics}
 	return query, arguments, static, true
 }
 
@@ -384,6 +410,7 @@ func (db *PostgresqlDatabase) ReadMostRecentMapped(fromTime time.Time) ([]*messa
 			&m.Path,
 			&m.Value,
 			&m.Origin,
+			&m.Diagnostics,
 		)
 		if err != nil {
 			return nil, err
@@ -453,6 +480,7 @@ func (db *PostgresqlDatabase) readSingleValueMapped(ctx context.Context, q query
 			&m.Path,
 			&m.Value,
 			&m.Origin,
+			&m.Diagnostics,
 		)
 		if err != nil {
 			return nil, err
@@ -489,8 +517,8 @@ const (
 // A migration can lose a race with a TimescaleDB background job: dropping
 // a continuous aggregate while a refresh of another aggregate on the same
 // hypertable is processing the invalidation log fails with "tuple
-// concurrently deleted", as 20261017120100 did on the the-test-server
-// trial, twice. Every migration here runs in one transaction, so such a
+// concurrently deleted", as this migration (then numbered
+// 20261017120100) did on the the-test-server trial, twice. Every migration here runs in one transaction, so such a
 // failure leaves the schema as it was - only golang-migrate has marked it
 // dirty, which stops every gosk process on the host until someone resets
 // it by hand. For that one error the migration is instead put back to the

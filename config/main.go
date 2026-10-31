@@ -242,6 +242,20 @@ type MappingConfig struct {
 	CompiledExpression          *vm.Program
 	CompiledTimestampExpression *vm.Program
 	Path                        string `mapstructure:"path"`
+	// Diagnostics names expressions that describe the reading rather than
+	// the quantity - the raw register, a status bit - evaluated in the
+	// same environment as Expression and carried on the value as its
+	// Diagnostics (see message/diagnostics.go). Each must produce a
+	// number, a bool or a string. Only the modbus mapper evaluates them
+	// so far.
+	Diagnostics         map[string]string `mapstructure:"diagnostics"`
+	CompiledDiagnostics map[string]*vm.Program
+	// DiagnosticDetails names expressions the same way for what only this
+	// kind of sensor reports - a rotor's raw voltage, a loop current -
+	// carried one level down, under the diagnostics' "details", so that the
+	// keys in Diagnostics mean the same for every sensor.
+	DiagnosticDetails         map[string]string `mapstructure:"diagnosticDetails"`
+	CompiledDiagnosticDetails map[string]*vm.Program
 }
 
 func (m *MappingConfig) verify() {
@@ -468,7 +482,7 @@ type ReaderConfig struct {
 	// Context is the SignalK context that notification is published under.
 	// A reader aggregates data for many vessels and so has no vessel of
 	// its own; name the installation it runs on (e.g.
-	// "servers.fleet-broker") to attribute the notification to it. The
+	// "servers.the-test-server") to attribute the notification to it. The
 	// default is the SignalK alias for "this installation", which both
 	// NotificationMapper and MeteoHydroMapper already pass through.
 	Context string `mapstructure:"context"`
@@ -510,9 +524,7 @@ type MQTTConfig struct {
 	// broker: two clients sharing an id disconnect each other in a loop.
 	// Leave it empty to have mqtt.New derive one from the process's role,
 	// the hostname and the username, which is unique as long as a given
-	// role connects to a given broker once per host. Only the outbox
-	// processes (mqtt.sessionRoles) use it at all; every other process
-	// connects with a clean session under an id the broker assigns.
+	// role connects to a given broker once per host.
 	ClientID string `mapstructure:"client_id"`
 }
 
@@ -603,8 +615,7 @@ func (c *SignalKConfig) WithVersion(version string) *SignalKConfig {
 
 // TransferConfig configures the outbox processes, see transfer/outbox.go:
 // `transfer send` and `transfer seed` on a vessel, `transfer receive` and
-// `transfer digest` on the central server - and, at the end, the count
-// protocol (`transfer request` / `respond`) that runs beside it.
+// `transfer digest` on the central server.
 type TransferConfig struct {
 	PostgresqlConfig PostgresqlConfig `mapstructure:"database"`
 	MQTTConfig       MQTTConfig       `mapstructure:"mqtt"`
@@ -644,17 +655,6 @@ type TransferConfig struct {
 	SeedPause          time.Duration `mapstructure:"seed_pause"`
 	SeedMaxBuckets     int           `mapstructure:"seed_max_buckets"`
 	SeedTakeWholeBelow float64       `mapstructure:"seed_take_whole_below"`
-
-	// The count protocol (`transfer request` on the central server,
-	// `transfer respond` on a vessel), which runs beside the outbox for as
-	// long as the central server asks for history that way. Nothing below
-	// is read by the outbox processes.
-	SleepBetweenCountRequests time.Duration `mapstructure:"sleep_between_count_requests"`
-	SleepBetweenDataRequests  time.Duration `mapstructure:"sleep_between_data_requests"`
-	SleepBetweenRespondDeltas time.Duration `mapstructure:"sleep_between_respond_deltas"`
-	NumberOfRequestWorkers    int           `mapstructure:"number_of_request_workers"`
-	MaxPeriodsToRequest       int           `mapstructure:"max_periods_to_request"`
-	CompletenessFactor        float64       `mapstructure:"completeness_factor"`
 }
 
 // Validate reports what this configuration cannot run with. needsOrigin
@@ -692,13 +692,6 @@ func NewTransferConfig(configFilePath string) *TransferConfig {
 		SeedPause:          100 * time.Millisecond,
 		SeedMaxBuckets:     4096,
 		SeedTakeWholeBelow: 0.25,
-
-		SleepBetweenCountRequests: 30 * time.Minute,
-		SleepBetweenDataRequests:  6 * time.Hour,
-		SleepBetweenRespondDeltas: 10 * time.Millisecond,
-		NumberOfRequestWorkers:    5,
-		MaxPeriodsToRequest:       500,
-		CompletenessFactor:        0.99,
 	}
 	readConfigFile(result, configFilePath)
 

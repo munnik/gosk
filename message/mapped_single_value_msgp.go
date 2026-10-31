@@ -11,7 +11,7 @@ package message
 // MarshalMsg implements msgp.Marshaler - see Mapped.MarshalMsg's doc
 // comment on b's reused-buffer convention.
 func (s SingleValueMapped) MarshalMsg(b []byte) ([]byte, error) {
-	valueBlob, err := marshalValueMsg(Value{Path: s.Path, Value: s.Value}, nil)
+	valueBlob, err := marshalValueMsg(Value{Path: s.Path, Value: s.Value, Diagnostics: s.Diagnostics}, nil)
 	if err != nil {
 		return b, err
 	}
@@ -48,5 +48,6 @@ func (s *SingleValueMapped) UnmarshalMsg(bts []byte) ([]byte, error) {
 	s.Timestamp = wire.Timestamp
 	s.Path = v.Path
 	s.Value = v.Value
+	s.Diagnostics = v.Diagnostics
 	return rest, nil
 }

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
-	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/zap"
@@ -46,13 +45,12 @@ type MqttReader struct {
 	// whose watchdog is momentarily busy must not stall message delivery,
 	// and a signal dropped because one is already queued says exactly what
 	// the queued one says.
-	received                       chan struct{}
-	decoder                        *zstd.Decoder
-	mqttMessagesReceived           prometheus.Counter
-	mqttMessagesDecompressed       prometheus.Counter
-	mqttMessagesUnmarshalled       prometheus.Counter
-	mqttTotalUpdatesSent           prometheus.Counter
-	mqttTransferRequestUpdatesSent prometheus.Counter
+	received                 chan struct{}
+	decoder                  *zstd.Decoder
+	mqttMessagesReceived     prometheus.Counter
+	mqttMessagesDecompressed prometheus.Counter
+	mqttMessagesUnmarshalled prometheus.Counter
+	mqttTotalUpdatesSent     prometheus.Counter
 }
 
 func NewMqttReader(c *config.MQTTConfig, rc *config.ReaderConfig) *MqttReader {
@@ -67,15 +65,14 @@ func NewMqttReader(c *config.MQTTConfig, rc *config.ReaderConfig) *MqttReader {
 	}
 
 	return &MqttReader{
-		mqttConfig:                     c,
-		readerConfig:                   rc,
-		received:                       make(chan struct{}, 1),
-		decoder:                        decoder,
-		mqttMessagesReceived:           promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_mqtt_messages_received_total", Help: "total number of received mqtt messages"}),
-		mqttMessagesDecompressed:       promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_mqtt_messages_decompressed_total", Help: "total number of decompressed mqtt messages"}),
-		mqttMessagesUnmarshalled:       promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_mqtt_messages_unmarshalled_total", Help: "total number of unmarshalled mqtt messages"}),
-		mqttTotalUpdatesSent:           promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_mqtt_updates_sent_total", Help: "total number of updates sent"}),
-		mqttTransferRequestUpdatesSent: promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_mqtt_updates_sent_transfer_request", Help: "number of updates sent via a transfer request"}),
+		mqttConfig:               c,
+		readerConfig:             rc,
+		received:                 make(chan struct{}, 1),
+		decoder:                  decoder,
+		mqttMessagesReceived:     promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_mqtt_messages_received_total", Help: "total number of received mqtt messages"}),
+		mqttMessagesDecompressed: promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_mqtt_messages_decompressed_total", Help: "total number of decompressed mqtt messages"}),
+		mqttMessagesUnmarshalled: promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_mqtt_messages_unmarshalled_total", Help: "total number of unmarshalled mqtt messages"}),
+		mqttTotalUpdatesSent:     promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_mqtt_updates_sent_total", Help: "total number of updates sent"}),
 	}
 }
 
@@ -244,11 +241,6 @@ func (r *MqttReader) messageHandler(c paho.Client, m paho.Message) {
 	for _, message := range messages {
 		r.sendBuffer <- message
 
-		for _, update := range message.Updates {
-			if update.Source.TransferUuid != uuid.Nil {
-				r.mqttTransferRequestUpdatesSent.Inc()
-			}
-			r.mqttTotalUpdatesSent.Inc()
-		}
+		r.mqttTotalUpdatesSent.Add(float64(len(message.Updates)))
 	}
 }

@@ -31,32 +31,16 @@ import (
 
 // rawDataColumns is both raw_data's COPY column list (see WriteRaw) and
 // the column order rawRow's fields must be produced in.
-var rawDataColumns = []string{"time", "connector", "value", "uuid", "type"}
+var rawDataColumns = []string{"time", "connector", "value", "type"}
 
 const (
-	mappedInsertQuery           = `INSERT INTO "%s" ("time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT ("time", "origin", "context", "connector", "path") DO UPDATE SET value = EXCLUDED.value`
-	selectMappedQuery           = `SELECT "time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid" FROM "mapped_data"`
-	selectMostRecentMappedQuery = `SELECT DISTINCT ON ("context", "path") "time", "connector", "type", "context", "path", "value", "uuid", "origin", "transfer_uuid" FROM "mapped_data" WHERE "time" > $1 ORDER BY "context", "path", "time" DESC`
-	// The count protocol (transfer request/respond), which runs beside the
-	// outbox for as long as the central server asks for history that way.
-	selectLocalCountQuery          = `SELECT "count" FROM "transfer_local_data" WHERE "origin" = $1 AND "start" = $2`
-	selectExistingRemoteCounts     = `SELECT "origin", "start" FROM "transfer_remote_data" WHERE "start" >= $1`
-	selectIncompletePeriodsQuery   = `SELECT "origin", "start", "local_count", "remote_count" FROM "transfer_data" WHERE "local_count" < "remote_count" * $1::double precision ORDER BY "start" DESC`
-	insertOrUpdateRemoteData       = `INSERT INTO "transfer_remote_data" ("start", "origin", "count") VALUES ($1, $2, $3) ON CONFLICT ("start", "origin") DO UPDATE SET "count" = EXCLUDED.count`
-	logTransferInsertQuery         = `INSERT INTO "transfer_log" ("time", "origin", "message") VALUES (NOW(), $1, $2)`
-	selectMappedCountPerUuid       = `SELECT "uuid", COUNT("uuid") FROM "mapped_data" WHERE "origin" = $1 AND "time" BETWEEN $2 AND $2 + '5m'::interval GROUP BY 1`
-	selectFirstMappedDataPerOrigin = `SELECT "origin", MIN("start") FROM "transfer_local_data" GROUP BY 1`
+	mappedInsertQuery           = `INSERT INTO "%s" ("time", "connector", "type", "context", "path", "value", "origin", "diagnostics") VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT ("time", "origin", "context", "connector", "path") DO UPDATE SET value = EXCLUDED.value, diagnostics = EXCLUDED.diagnostics`
+	selectMappedQuery           = `SELECT "time", "connector", "type", "context", "path", "value", "origin", "diagnostics" FROM "mapped_data"`
+	selectMostRecentMappedQuery = `SELECT DISTINCT ON ("context", "path") "time", "connector", "type", "context", "path", "value", "origin", "diagnostics" FROM "mapped_data" WHERE "time" > $1 ORDER BY "context", "path", "time" DESC`
 )
 
 //go:embed migrations/*.sql
 var fs embed.FS
-
-type IncompletePeriod struct {
-	Origin      string
-	Period      time.Time
-	LocalCount  int
-	RemoteCount int
-}
 
 // rawRow holds one raw_data row waiting to be COPYed in, in rawDataColumns
 // order.
@@ -64,7 +48,6 @@ type rawRow struct {
 	timestamp time.Time
 	connector string
 	value     []byte
-	uuid      uuid.UUID
 	type_     string
 }
 
@@ -196,7 +179,6 @@ func (db *PostgresqlDatabase) WriteRaw(raw *message.Raw) {
 		timestamp: raw.Timestamp,
 		connector: raw.Connector,
 		value:     raw.Value,
-		uuid:      raw.Uuid,
 		type_:     raw.Type,
 	})
 	length := len(db.rawBatch)
@@ -316,12 +298,38 @@ func (db *PostgresqlDatabase) mappedInsert(svm message.SingleValueMapped) (query
 		return "", nil, nil, false
 	}
 
+	// SQL NULL when there are none, never the jsonb null literal: a NULL
+	// is what every row written before the column existed holds, so "has
+	// diagnostics" stays one test. NormalizeDiagnostic keeps every entry
+	// encodable, but should one not be, it is the diagnostics that are
+	// dropped and not the value they describe.
+	//
+	// They are normalised once more here, whatever produced them: an entry
+	// a mapper's expression could never yield - a NUL in a string, which
+	// encoding/json writes but jsonb refuses - would otherwise make
+	// postgres refuse the row, value and all.
+	var diagnostics any
+	if normalized := message.NormalizeDiagnostics(svm.Diagnostics); len(normalized) > 0 {
+		if _, err := json.Marshal(normalized); err != nil {
+			logger.GetLogger().Error(
+				"Dropping diagnostics that cannot be encoded as jsonb",
+				zap.Any("diagnostics", svm.Diagnostics),
+				zap.Time("time", svm.Timestamp),
+				zap.String("path", path),
+				zap.String("context", svm.Context),
+				zap.Error(err),
+			)
+		} else {
+			diagnostics = normalized
+		}
+	}
+
 	table := "mapped_data_matching_context"
 	if svm.Context != svm.Origin {
 		table = "mapped_data_other_context"
 	}
 	query = fmt.Sprintf(mappedInsertQuery, table)
-	arguments = []any{svm.Timestamp, svm.Source.Label, svm.Source.Type, svm.Context, path, svm.Value, svm.Source.Uuid, svm.Origin, svm.Source.TransferUuid}
+	arguments = []any{svm.Timestamp, svm.Source.Label, svm.Source.Type, svm.Context, path, svm.Value, svm.Origin, diagnostics}
 	return query, arguments, static, true
 }
 
@@ -401,9 +409,8 @@ func (db *PostgresqlDatabase) ReadMostRecentMapped(fromTime time.Time) ([]*messa
 			&m.Context,
 			&m.Path,
 			&m.Value,
-			&m.Source.Uuid,
 			&m.Origin,
-			&m.Source.TransferUuid,
+			&m.Diagnostics,
 		)
 		if err != nil {
 			return nil, err
@@ -472,9 +479,8 @@ func (db *PostgresqlDatabase) readSingleValueMapped(ctx context.Context, q query
 			&m.Context,
 			&m.Path,
 			&m.Value,
-			&m.Source.Uuid,
 			&m.Origin,
-			&m.Source.TransferUuid,
+			&m.Diagnostics,
 		)
 		if err != nil {
 			return nil, err
@@ -499,192 +505,6 @@ func (db *PostgresqlDatabase) readSingleValueMapped(ctx context.Context, q query
 	return result, nil
 }
 
-// Returns the start timestamp of each period that has local count but no remote count
-func (db *PostgresqlDatabase) SelectFirstMappedDataPerOrigin() (map[string]time.Time, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
-	defer cancel()
-	rows, err := db.GetConnection().Query(ctx, selectFirstMappedDataPerOrigin)
-	if err != nil {
-		return nil, err
-	} else if ctx.Err() != nil {
-		logger.GetLogger().Error("Timeout during database lookup")
-		db.timeoutsCounter.Inc()
-		return nil, ctx.Err()
-	}
-	defer rows.Close()
-
-	result := make(map[string]time.Time)
-	var origin string
-	var minStart time.Time
-	for rows.Next() {
-		err := rows.Scan(&origin, &minStart)
-		if err != nil {
-			return nil, err
-		}
-		result[origin] = minStart
-	}
-	// check for errors after last call to .Next()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return result, nil
-}
-
-func (db *PostgresqlDatabase) SelectExistingRemoteCounts(from time.Time) (map[string]map[time.Time]struct{}, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
-	defer cancel()
-	rows, err := db.GetConnection().Query(ctx, selectExistingRemoteCounts, from)
-	if err != nil {
-		return nil, err
-	} else if ctx.Err() != nil {
-		logger.GetLogger().Error("Timeout during database lookup")
-		db.timeoutsCounter.Inc()
-		return nil, ctx.Err()
-	}
-	defer rows.Close()
-
-	result := make(map[string]map[time.Time]struct{})
-	var origin string
-	var start time.Time
-	for rows.Next() {
-		err := rows.Scan(&origin, &start)
-		if err != nil {
-			return nil, err
-		}
-		if _, ok := result[origin]; !ok {
-			result[origin] = make(map[time.Time]struct{})
-		}
-		result[origin][start] = struct{}{}
-	}
-	// check for errors after last call to .Next()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return result, nil
-}
-
-// Returns the start timestamp of each period that has the same or more local rows than remote
-func (db *PostgresqlDatabase) SelectIncompletePeriods(completenessFactor float64) ([]IncompletePeriod, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
-	defer cancel()
-	rows, err := db.GetConnection().Query(ctx, selectIncompletePeriodsQuery, completenessFactor)
-	if err != nil {
-		return nil, err
-	} else if ctx.Err() != nil {
-		logger.GetLogger().Error("Timeout during database lookup")
-		db.timeoutsCounter.Inc()
-		return nil, ctx.Err()
-	}
-	defer rows.Close()
-
-	result := make([]IncompletePeriod, 0)
-	var origin string
-	var period time.Time
-	var localCount int
-	var remoteCount int
-	for rows.Next() {
-		err := rows.Scan(&origin, &period, &localCount, &remoteCount)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, IncompletePeriod{
-			Origin:      origin,
-			Period:      period,
-			LocalCount:  localCount,
-			RemoteCount: remoteCount,
-		})
-	}
-	// check for errors after last call to .Next()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return result, nil
-}
-
-func (db *PostgresqlDatabase) SelectCountMapped(origin string, start time.Time) (int, error) {
-	var result int
-	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
-	defer cancel()
-	err := db.GetConnection().QueryRow(ctx, selectLocalCountQuery, origin, start).Scan(&result)
-	if errors.Is(err, pgx.ErrNoRows) {
-		logger.GetLogger().Warn(
-			"No rows found so returning 0 count",
-			zap.Error(err),
-		)
-		return 0, nil
-	}
-	if err != nil {
-		return 0, err
-	} else if ctx.Err() != nil {
-		logger.GetLogger().Error("Timeout during database lookup")
-		db.timeoutsCounter.Inc()
-		return 0, ctx.Err()
-	}
-
-	return result, nil
-}
-
-// Return the number of rows per (raw) uuid in the mapped_data table
-func (db *PostgresqlDatabase) SelectCountPerUuid(origin string, start time.Time) (map[uuid.UUID]int, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
-	defer cancel()
-	rows, err := db.GetConnection().Query(ctx, selectMappedCountPerUuid, origin, start)
-	if err != nil {
-		return nil, err
-	} else if ctx.Err() != nil {
-		logger.GetLogger().Error("Timeout during database lookup")
-		db.timeoutsCounter.Inc()
-		return nil, ctx.Err()
-	}
-	defer rows.Close()
-
-	result := make(map[uuid.UUID]int)
-	var uuid uuid.UUID
-	var count int
-	for rows.Next() {
-		err := rows.Scan(&uuid, &count)
-		if err != nil {
-			return nil, err
-		}
-		result[uuid] = count
-	}
-	// check for errors after last call to .Next()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return result, nil
-}
-
-// Creates a period in the database, the default value for the local data points is -1
-func (db *PostgresqlDatabase) CreateRemoteCount(start time.Time, origin string, count int) error {
-	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
-	defer cancel()
-	_, err := db.GetConnection().Exec(ctx, insertOrUpdateRemoteData, start, origin, count)
-	if ctx.Err() != nil {
-		logger.GetLogger().Error("Timeout during database insertion")
-		db.timeoutsCounter.Inc()
-		return ctx.Err()
-	}
-	return err
-}
-
-// Log the transfer request
-func (db *PostgresqlDatabase) LogTransferRequest(origin string, message interface{}) error {
-	ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
-	defer cancel()
-	_, err := db.GetConnection().Exec(ctx, logTransferInsertQuery, origin, message)
-	if ctx.Err() != nil {
-		logger.GetLogger().Error("Timeout during database insertion")
-		db.timeoutsCounter.Inc()
-		return ctx.Err()
-	}
-	return err
-}
-
 // Migrations that lose a race with a TimescaleDB background job are tried
 // again this many times, this far apart. See UpgradeDatabase.
 const (
@@ -697,8 +517,8 @@ const (
 // A migration can lose a race with a TimescaleDB background job: dropping
 // a continuous aggregate while a refresh of another aggregate on the same
 // hypertable is processing the invalidation log fails with "tuple
-// concurrently deleted", as dropping the old transfer aggregates did on the test server's
-// trial, twice. Every migration here runs in one transaction, so such a
+// concurrently deleted", as this migration (then numbered
+// 20261017120100) did on the the-test-server trial, twice. Every migration here runs in one transaction, so such a
 // failure leaves the schema as it was - only golang-migrate has marked it
 // dirty, which stops every gosk process on the host until someone resets
 // it by hand. For that one error the migration is instead put back to the
@@ -1043,7 +863,7 @@ func (db *PostgresqlDatabase) flushRawBatch() {
 		rawDataColumns,
 		pgx.CopyFromSlice(len(rows), func(i int) ([]any, error) {
 			r := rows[i]
-			return []any{r.timestamp, r.connector, r.value, r.uuid, r.type_}, nil
+			return []any{r.timestamp, r.connector, r.value, r.type_}, nil
 		}),
 	)
 	if err != nil {

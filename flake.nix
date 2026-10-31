@@ -26,7 +26,7 @@
 
           src = self;
 
-          vendorHash = "sha256-aOD0BWljhf7079ukGTPJ7Sfii12L9XoIBHXrqbd2hEA=";
+          vendorHash = "sha256-RGp+7+6V+SLdzB3zIs8rCdipfkRViiLT5Dy/dfClufg=";
 
           # Off for the package that gets installed, on for the flake
           # check. database/'s suite starts its own PostgreSQL and needs the

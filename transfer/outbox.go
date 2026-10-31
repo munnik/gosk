@@ -23,9 +23,8 @@
 // tolerated percentage. It needed a count per period on both ends forever,
 // a continuous aggregate to produce them, a uuid per source message to
 // narrow a difference down with, and a tolerance for permanent loss to
-// stop itself spinning. The outbox needs the time column and nothing else.
-// Both run side by side for now: the responder keeps answering the central
-// server's count protocol while the outbox delivers to another server.
+// stop itself spinning. The outbox needs the time column and nothing else,
+// which is what let mapped_data.uuid be dropped.
 package transfer
 
 import (
@@ -101,32 +100,17 @@ type Ack struct {
 // that share a context, a timestamp and a source become one update with
 // several values, which is the shape they were written in and a good deal
 // smaller on the wire than one message per row.
-//
-// The source's uuids are part of what makes rows one update: an update
-// carries them once, for all its values, so two rows that differ only in
-// the raw message they came from (or in the transfer that brought them)
-// have to stay apart, or the second would be stored on the far end under
-// the first one's uuid.
 func groupRows(rows []message.SingleValueMapped) []message.Mapped {
 	type key struct {
-		context      string
-		at           int64
-		label        string
-		type_        string
-		uuid         uuid.UUID
-		transferUuid uuid.UUID
+		context string
+		at      int64
+		label   string
+		type_   string
 	}
 	index := make(map[key]int, len(rows))
 	result := make([]message.Mapped, 0, len(rows))
 	for _, row := range rows {
-		k := key{
-			context:      row.Context,
-			at:           row.Timestamp.UnixNano(),
-			label:        row.Source.Label,
-			type_:        row.Source.Type,
-			uuid:         row.Source.Uuid,
-			transferUuid: row.Source.TransferUuid,
-		}
+		k := key{context: row.Context, at: row.Timestamp.UnixNano(), label: row.Source.Label, type_: row.Source.Type}
 		m := row.ToMapped()
 		if i, ok := index[k]; ok {
 			// Appended, not AddValue'd: that replaces a value whose path

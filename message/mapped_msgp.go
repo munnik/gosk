@@ -2,8 +2,6 @@ package message
 
 import (
 	"time"
-
-	"github.com/google/uuid"
 )
 
 // mappedMsgp, updateMsgp, sourceMsgp are Mapped/Update/Source's msgpack
@@ -21,10 +19,8 @@ import (
 //
 //go:generate msgp -tests=false -o=mapped_msgp_gen.go -unexported
 type sourceMsgp struct {
-	Label        string `msg:"label"`
-	Type         string `msg:"type"`
-	Uuid         string `msg:"uuid"`
-	TransferUuid string `msg:"transferUuid"`
+	Label string `msg:"label"`
+	Type  string `msg:"type"`
 }
 
 type updateMsgp struct {
@@ -51,19 +47,11 @@ type singleValueMappedMsgp struct {
 }
 
 func sourceToMsgp(s Source) sourceMsgp {
-	return sourceMsgp{Label: s.Label, Type: s.Type, Uuid: s.Uuid.String(), TransferUuid: s.TransferUuid.String()}
+	return sourceMsgp{Label: s.Label, Type: s.Type}
 }
 
 func sourceFromMsgp(w sourceMsgp) (Source, error) {
-	id, err := uuid.Parse(w.Uuid)
-	if err != nil {
-		return Source{}, err
-	}
-	transferID, err := uuid.Parse(w.TransferUuid)
-	if err != nil {
-		return Source{}, err
-	}
-	return Source{Label: w.Label, Type: w.Type, Uuid: id, TransferUuid: transferID}, nil
+	return Source{Label: w.Label, Type: w.Type}, nil
 }
 
 // MarshalMsg implements msgp.Marshaler. b is msgp's usual append-target

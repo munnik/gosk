@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/munnik/gosk/logger"
 	"github.com/tinylib/msgp/msgp"
+	"go.uber.org/zap"
 )
 
 // valueTag identifies which concrete type Value.Value holds, written by
@@ -50,9 +52,35 @@ const (
 	valueTagCurrent
 )
 
+// A value's blob is the path, the tag and the payload, followed - only
+// when the value has any - by its diagnostics as a msgpack map. Every
+// caller gets a value's blob as a whole []byte of its own (Values in
+// updateMsgp, Value in singleValueMappedMsgp), so whatever follows the
+// payload belongs to this value. That is also what keeps the change wire
+// compatible both ways: a gosk that predates diagnostics reads the
+// payload and discards the tail unread (see the "_" both callers use for
+// it), and a blob from such a gosk simply ends after its payload.
+
 // marshalValueMsg appends v's msgpack encoding to b (the usual
 // reused-buffer convention) and returns the result.
+// The diagnostics are normalised first, as the JSON encoding's readers
+// normalise them: an entry no diagnostic may hold is left out here rather
+// than failing the whole value's encoding.
 func marshalValueMsg(v Value, b []byte) ([]byte, error) {
+	b, err := marshalValuePayload(v, b)
+	if err != nil {
+		return b, err
+	}
+	d := NormalizeDiagnostics(v.Diagnostics)
+	if len(d) == 0 {
+		return b, nil
+	}
+	return msgp.AppendMapStrIntf(b, d)
+}
+
+// marshalValuePayload is marshalValueMsg without the diagnostics: the
+// path, the tag and the value itself.
+func marshalValuePayload(v Value, b []byte) ([]byte, error) {
 	b = msgp.AppendString(b, v.Path)
 
 	switch val := v.Value.(type) {
@@ -108,9 +136,35 @@ func marshalValueMsg(v Value, b []byte) ([]byte, error) {
 	}
 }
 
-// unmarshalValueMsg reads a Value from the front of bts (as written by
-// marshalValueMsg) and returns it along with the unconsumed tail.
+// unmarshalValueMsg reads a Value from a blob written by marshalValueMsg
+// and returns it along with the unconsumed tail. bts must be one whole
+// blob: anything after the payload is read as its diagnostics.
 func unmarshalValueMsg(bts []byte) (Value, []byte, error) {
+	v, bts, err := unmarshalValuePayload(bts)
+	if err != nil || len(bts) == 0 {
+		return v, bts, err
+	}
+	// A tail that does not decode costs the diagnostics, never the value
+	// they came with - the same as a diagnostics field that does not decode
+	// in JSON (see decodeDiagnosticsJSON). The blob is this value's alone,
+	// so nothing after it is lost by giving up on the tail.
+	d, rest, err := msgp.ReadMapStrIntfBytes(bts, nil)
+	if err != nil {
+		logger.GetLogger().Warn(
+			"Ignoring msgpack diagnostics that do not decode as a map",
+			zap.String("Path", v.Path),
+			zap.Error(err),
+		)
+		return v, nil, nil
+	}
+	v.Diagnostics = NormalizeDiagnostics(d)
+	return v, rest, nil
+}
+
+// unmarshalValuePayload reads the path, tag and value of a blob and returns
+// whatever follows - which is exactly what a gosk that predates
+// diagnostics does with a blob that carries them.
+func unmarshalValuePayload(bts []byte) (Value, []byte, error) {
 	path, bts, err := msgp.ReadStringBytes(bts)
 	if err != nil {
 		return Value{}, bts, err

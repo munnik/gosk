@@ -9,7 +9,7 @@ database:
 mqtt:
   username: "the-production-server"
   password: "secret"
-  url: "mqtt://10.64.0.1:1883"
+  url: "mqtt://10.0.0.1:1883"
   compress: true
 # When this server holds less than this fraction of a bucket's rows, it asks
 # for the whole bucket instead of opening it up further.

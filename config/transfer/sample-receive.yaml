@@ -9,7 +9,7 @@ database:
 mqtt:
   username: "the-production-server"
   password: "secret"
-  url: "mqtt://10.64.0.1:1883"
+  url: "mqtt://10.0.0.1:1883"
   compress: true
 # Set to false on a server that ingests the fleet's data as a copy (such as
 # the-test-server) and must never tell a vessel that its data is safe; only

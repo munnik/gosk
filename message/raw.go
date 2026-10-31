@@ -6,15 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 type Raw struct {
 	Connector string    `json:"connector"`
 	Timestamp time.Time `json:"timestamp"`
 	Type      string    `json:"type"`
-	Uuid      uuid.UUID `json:"uuid"`
 	Value     []byte    `json:"value"`
 }
 
@@ -39,7 +36,6 @@ const (
 
 func NewRaw() *Raw {
 	return &Raw{
-		Uuid:      uuid.New(),
 		Timestamp: time.Now(),
 	}
 }
@@ -61,7 +57,7 @@ func (r *Raw) WithValue(v []byte) *Raw {
 
 // rawWire is Raw's JSON shape, field-for-field and in the same field order
 // the old map[string]string-based MarshalJSON produced (Go sorts map keys
-// alphabetically when marshaling, and connector/timestamp/type/uuid/value
+// alphabetically when marshaling, and connector/timestamp/type/value
 // already sort that way) - so this produces byte-identical output, just
 // via the struct encoder instead of allocating and sorting a map on every
 // single call. Value stays []byte rather than a pre-encoded string:
@@ -86,7 +82,6 @@ type rawWire struct {
 	Connector string `json:"connector"`
 	Timestamp string `json:"timestamp"`
 	Type      string `json:"type"`
-	Uuid      string `json:"uuid"`
 	Value     []byte `json:"value"`
 }
 
@@ -102,7 +97,6 @@ func (r Raw) MarshalJSON() ([]byte, error) {
 		Connector: r.Connector,
 		Timestamp: r.Timestamp.UTC().Format(time.RFC3339Nano),
 		Type:      r.Type,
-		Uuid:      r.Uuid.String(),
 		Value:     value,
 	}.MarshalJSON()
 }
@@ -113,7 +107,10 @@ func (r *Raw) UnmarshalJSON(data []byte) error {
 	if err = json.Unmarshal(data, &j); err != nil {
 		return err
 	}
-	for _, key := range []string{"connector", "timestamp", "type", "uuid", "value"} {
+	// A "uuid" key is accepted and ignored: raw messages carried one until
+	// the column it was stored in was dropped (20261017120200), and a
+	// process from before that may still be sending them.
+	for _, key := range []string{"connector", "timestamp", "type", "value"} {
 		if _, ok := j[key]; !ok {
 			return fmt.Errorf("the key '%v' is missing in the json message %+v", key, j)
 		}
@@ -123,9 +120,6 @@ func (r *Raw) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	r.Type = j["type"]
-	if r.Uuid, err = uuid.Parse(j["uuid"]); err != nil {
-		return err
-	}
 	if r.Value, err = base64.StdEncoding.DecodeString(j["value"]); err != nil {
 		return err
 	}

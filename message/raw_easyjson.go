@@ -4,6 +4,7 @@ package message
 
 import (
 	json "encoding/json"
+
 	easyjson "github.com/mailru/easyjson"
 	jlexer "github.com/mailru/easyjson/jlexer"
 	jwriter "github.com/mailru/easyjson/jwriter"
@@ -49,12 +50,6 @@ func easyjson193538d8DecodeGithubComMunnikGoskMessage(in *jlexer.Lexer, out *raw
 			} else {
 				out.Type = string(in.String())
 			}
-		case "uuid":
-			if in.IsNull() {
-				in.Skip()
-			} else {
-				out.Uuid = string(in.String())
-			}
 		case "value":
 			if in.IsNull() {
 				in.Skip()
@@ -90,11 +85,6 @@ func easyjson193538d8EncodeGithubComMunnikGoskMessage(out *jwriter.Writer, in ra
 		const prefix string = ",\"type\":"
 		out.RawString(prefix)
 		out.String(string(in.Type))
-	}
-	{
-		const prefix string = ",\"uuid\":"
-		out.RawString(prefix)
-		out.String(string(in.Uuid))
 	}
 	{
 		const prefix string = ",\"value\":"

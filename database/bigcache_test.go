@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/message"
 )
@@ -20,13 +19,12 @@ func TestBigCacheWriteReadRaw(t *testing.T) {
 		Connector: "testConnector",
 		Timestamp: time.Now(),
 		Type:      "manner_ethernet",
-		Uuid:      uuid.New(),
 		Value:     []byte{0x01, 0x02, 0x03},
 	}
 
 	c.WriteRaw(raw, false)
 
-	got, err := c.ReadRaw(raw.Uuid.String())
+	got, err := c.ReadRaw(rawCacheKey(raw))
 	if err != nil {
 		t.Fatalf("ReadRaw: %v", err)
 	}
@@ -85,7 +83,7 @@ func NewMappedWithPosition(t *testing.T) *message.Mapped {
 	lon := 5.9
 	return message.NewMapped().WithContext("vessels.urn:mrn:imo:mmsi:123456789").WithOrigin("vessels.urn:mrn:imo:mmsi:123456789").
 		AddUpdate(
-			message.NewUpdate().WithSource(*message.NewSource().WithLabel("GPS").WithType("nmea0183").WithUuid(uuid.New())).WithTimestamp(time.Now()).
+			message.NewUpdate().WithSource(*message.NewSource().WithLabel("GPS").WithType("nmea0183")).WithTimestamp(time.Now()).
 				AddValue(message.NewValue().WithPath("navigation.position").WithValue(message.Position{Latitude: &lat, Longitude: &lon})),
 		)
 }

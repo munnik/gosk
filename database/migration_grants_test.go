@@ -21,34 +21,49 @@ var _ = Describe("The uuid migration", func() {
 		_, err = db.GetConnection().Exec(context.Background(), string(sql))
 		Expect(err).ShouldNot(HaveOccurred(), file)
 	}
-	canRead := func(role string) bool {
+	has := func(role, privilege string) bool {
 		var ok bool
 		Expect(db.GetConnection().QueryRow(context.Background(),
-			`SELECT has_table_privilege($1, 'mapped_data', 'SELECT')`, role).Scan(&ok)).To(Succeed())
+			`SELECT has_table_privilege($1, 'mapped_data', $2)`, role, privilege).Scan(&ok)).To(Succeed())
 		return ok
+	}
+	// Both grants as they were: plain read access, and read access with the
+	// right to pass it on.
+	intact := func(when string) {
+		Expect(has("mapped_data_reader", "SELECT")).To(BeTrue(), when)
+		Expect(has("mapped_data_reader", "SELECT WITH GRANT OPTION")).To(BeFalse(), when)
+		Expect(has("mapped_data_delegate", "SELECT WITH GRANT OPTION")).To(BeTrue(), when)
 	}
 
 	It("keeps the mapped_data view's grants when it recreates the view", func() {
 		ctx := context.Background()
-		_, err := db.GetConnection().Exec(ctx, `DROP ROLE IF EXISTS "mapped_data_reader"`)
+		for _, role := range []string{"mapped_data_reader", "mapped_data_delegate"} {
+			_, err := db.GetConnection().Exec(ctx, `DROP ROLE IF EXISTS `+role)
+			Expect(err).ShouldNot(HaveOccurred())
+			_, err = db.GetConnection().Exec(ctx, `CREATE ROLE `+role)
+			Expect(err).ShouldNot(HaveOccurred())
+			DeferCleanup(func() {
+				_, _ = db.GetConnection().Exec(ctx, `REVOKE ALL ON "mapped_data" FROM `+role+` CASCADE`)
+				_, _ = db.GetConnection().Exec(ctx, `DROP ROLE IF EXISTS `+role)
+			})
+		}
+		_, err := db.GetConnection().Exec(ctx, `GRANT SELECT ON "mapped_data" TO mapped_data_reader`)
 		Expect(err).ShouldNot(HaveOccurred())
-		_, err = db.GetConnection().Exec(ctx, `CREATE ROLE "mapped_data_reader"`)
+		_, err = db.GetConnection().Exec(ctx, `GRANT SELECT ON "mapped_data" TO mapped_data_delegate WITH GRANT OPTION`)
 		Expect(err).ShouldNot(HaveOccurred())
-		DeferCleanup(func() {
-			_, _ = db.GetConnection().Exec(ctx, `REVOKE ALL ON "mapped_data" FROM "mapped_data_reader"`)
-			_, _ = db.GetConnection().Exec(ctx, `DROP ROLE IF EXISTS "mapped_data_reader"`)
-		})
-		_, err = db.GetConnection().Exec(ctx, `GRANT SELECT ON "mapped_data" TO "mapped_data_reader"`)
-		Expect(err).ShouldNot(HaveOccurred())
-		Expect(canRead("mapped_data_reader")).To(BeTrue())
+		intact("before")
 
-		// The schema is past 20261031130100 here; its down migration puts
-		// the columns back and its up migration takes them out again, both
-		// recreating the view.
+		// The schema is past both migrations here. Down through the
+		// diagnostics column and the uuid columns, then up again: each of
+		// the four recreates the view.
+		run("20261031130200_mapped_data_diagnostics.down.sql")
+		intact("after the diagnostics down migration")
 		run("20261031130100_drop_uuid_columns.down.sql")
-		Expect(canRead("mapped_data_reader")).To(BeTrue(), "after the down migration")
+		intact("after the uuid down migration")
 		run("20261031130100_drop_uuid_columns.up.sql")
-		Expect(canRead("mapped_data_reader")).To(BeTrue(), "after the up migration")
+		intact("after the uuid up migration")
+		run("20261031130200_mapped_data_diagnostics.up.sql")
+		intact("after the diagnostics up migration")
 
 		var columns []string
 		rows, err := db.GetConnection().Query(ctx,

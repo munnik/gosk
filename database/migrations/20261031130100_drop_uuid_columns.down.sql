@@ -37,11 +37,12 @@ DECLARE
     grant_ record;
 BEGIN
     FOR grant_ IN
-        SELECT acl.privilege_type, acl.grantee
+        SELECT acl.privilege_type, acl.grantee, acl.is_grantable
         FROM aclexplode(NULLIF(current_setting('gosk.mapped_data_acl'), '')::aclitem[]) acl
         WHERE acl.grantee <> acl.grantor
     LOOP
-        EXECUTE format('GRANT %s ON "mapped_data" TO %s', grant_.privilege_type,
-            CASE WHEN grant_.grantee = 0 THEN 'PUBLIC' ELSE quote_ident(pg_get_userbyid(grant_.grantee)) END);
+        EXECUTE format('GRANT %s ON "mapped_data" TO %s%s', grant_.privilege_type,
+            CASE WHEN grant_.grantee = 0 THEN 'PUBLIC' ELSE quote_ident(pg_get_userbyid(grant_.grantee)) END,
+            CASE WHEN grant_.is_grantable THEN ' WITH GRANT OPTION' ELSE '' END);
     END LOOP;
 END $$;

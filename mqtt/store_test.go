@@ -1,9 +1,12 @@
 package mqtt
 
 import (
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
+	paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/eclipse/paho.mqtt.golang/packets"
 )
 
@@ -121,15 +124,19 @@ func TestASenderClientHoldsAPublishUntilTheBrokerConfirmsIt(t *testing.T) {
 	}
 }
 
-// TestReconnectHasPahoResendWhatItHolds: the sender remakes the
-// connection when paho has held a delivery unconfirmed for too long, and
-// what it relies on is that paho re-sends on the new connection what it
-// holds, and that the broker's confirmation there releases it.
-func TestReconnectHasPahoResendWhatItHolds(t *testing.T) {
+// TestADroppedConnectionHasPahoResendWhatItHolds: the sender drops the
+// connection when paho has held a delivery unconfirmed for too long
+// (Stalled), and what it relies on is that paho sees the loss, reconnects,
+// re-sends what it holds on the new connection and subscribes again, and
+// that the broker's confirmation there releases the delivery.
+func TestADroppedConnectionHasPahoResendWhatItHolds(t *testing.T) {
 	broker := &fakeBroker{asked: map[string]int{}, granted: map[string]int{}, withholdConfirmations: true}
 	c := clientOnAs(t, broker, "transferSend", "ack/topic")
 	if !c.WaitSubscribed(5 * time.Second) {
 		t.Fatal("never subscribed")
+	}
+	if c.Stalled(0) {
+		t.Fatal("stalled with nothing in paho's hands")
 	}
 
 	payload := []byte("a delivery")
@@ -140,11 +147,17 @@ func TestReconnectHasPahoResendWhatItHolds(t *testing.T) {
 	if !c.Holds(Fingerprint(payload)) || c.Unconfirmed() != 1 {
 		t.Fatal("not held while the broker withholds its confirmation")
 	}
+	if !c.Stalled(0) {
+		t.Fatal("not stalled with a publish held unconfirmed on a connection that is up")
+	}
+	if c.Stalled(time.Hour) {
+		t.Fatal("stalled before the time given")
+	}
 
 	broker.confirmPublishes(true)
-	c.Reconnect()
+	c.DropConnection()
 	if n := publishedTimes(broker, "data/topic", 2, 10*time.Second); n != 2 {
-		t.Fatalf("the broker saw the publish %d times after the connection was remade, want 2", n)
+		t.Fatalf("the broker saw the publish %d times after the connection was dropped, want 2", n)
 	}
 	deadline := time.Now().Add(5 * time.Second)
 	for c.Holds(Fingerprint(payload)) {
@@ -153,14 +166,34 @@ func TestReconnectHasPahoResendWhatItHolds(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	// The subscription is made again on the remade connection, by the
+	// The subscription is made again on the new connection, by the
 	// connect handler, on its own time.
 	deadline = time.Now().Add(5 * time.Second)
 	for broker.timesGranted("ack/topic") < 2 {
 		if time.Now().After(deadline) {
-			t.Fatal("the subscription was not made again on the remade connection")
+			t.Fatal("the subscription was not made again on the new connection")
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+	if c.Stalled(0) {
+		t.Fatal("stalled with everything confirmed")
+	}
+}
+
+func TestDialBrokerKnowsPahoSchemes(t *testing.T) {
+	options := paho.NewClientOptions()
+	options.ConnectTimeout = time.Second
+	for _, scheme := range []string{"mqtt", "tcp", "ssl", "mqtts", "ws", "wss"} {
+		uri, _ := url.Parse(scheme + "://127.0.0.1:1")
+		if _, err := dialBroker(uri, *options); err == nil {
+			t.Fatalf("%s: dialing a closed port succeeded", scheme)
+		} else if strings.Contains(err.Error(), "unknown protocol") {
+			t.Fatalf("%s: not known", scheme)
+		}
+	}
+	uri, _ := url.Parse("gopher://127.0.0.1:1")
+	if _, err := dialBroker(uri, *options); err == nil || !strings.Contains(err.Error(), "unknown protocol") {
+		t.Fatalf("an unknown scheme was not refused: %v", err)
 	}
 }
 

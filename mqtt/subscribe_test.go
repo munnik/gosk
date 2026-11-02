@@ -155,10 +155,7 @@ func clientOn(t *testing.T, broker *fakeBroker, topics ...string) *Client {
 func clientOnAs(t *testing.T, broker *fakeBroker, role string, topics ...string) *Client {
 	t.Helper()
 	c := New(&config.MQTTConfig{URLString: "tcp://fake.invalid:1883", Username: "test", Password: "test"}, role, nil, topics[0], topics[1:]...)
-	options := c.createClientOptions()
-	options.SetCustomOpenConnectionFn(broker.open)
-	pahoClient := paho.NewClient(options)
-	c.pahoClient = &pahoClient
+	c.dial = broker.open
 	c.Connect()
 	t.Cleanup(c.Disconnect)
 	return c

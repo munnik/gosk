@@ -1,8 +1,11 @@
 package mqtt
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -96,6 +99,15 @@ type Client struct {
 	// store is paho's message store when the owner asks what the broker
 	// has not confirmed (Holds), nil otherwise; see trackedRoles.
 	store *trackedStore
+
+	// dial opens the connection to the broker, see openConnection; a test
+	// puts its own broker here.
+	dial func(uri *url.URL, options paho.ClientOptions) (net.Conn, error)
+	// conn is the connection paho is on and connectedAt when it was
+	// opened, for DropConnection and Stalled.
+	connMutex   sync.Mutex
+	conn        net.Conn
+	connectedAt time.Time
 }
 
 // New builds a client for the broker without connecting it; call Connect
@@ -130,6 +142,7 @@ func New(config *config.MQTTConfig, role string, publishHandler paho.MessageHand
 	if trackedRoles[role] {
 		result.store = newTrackedStore()
 	}
+	result.dial = dialBroker
 	pahoClient := paho.NewClient(result.createClientOptions())
 	result.pahoClient = &pahoClient
 	return result
@@ -278,31 +291,101 @@ func (c *Client) Disconnect() {
 	(*c.pahoClient).Disconnect(uint(disconnectWait.Milliseconds()))
 }
 
-// Reconnect closes the connection and opens a new one, for a caller that
-// sees paho hold a publish unconfirmed for too long (trackedRoles). paho
-// sends what it holds on a new connection, and on a new connection only: a
-// publish whose write makes no progress, one it stored because its writer
-// did not take it in time, one it stored while the link was already going
-// - all of them wait for one, and paho's own keepalive is not sure to
-// bring it about, since its ping goes out through the same stalled socket.
-// Disconnecting fails every open token and frees every message id; the
-// new connection claims the ids of the stored publishes again and re-sends
-// them (paho's resume). The session is persistent, so the broker keeps
-// what it queued for this client meanwhile, and the subscriptions are made
-// again on connecting as always (onConnectHandler).
-func (c *Client) Reconnect() {
+// openConnection opens the connection to the broker for paho and remembers
+// it, see DropConnection.
+func (c *Client) openConnection(uri *url.URL, options paho.ClientOptions) (net.Conn, error) {
+	conn, err := c.dial(uri, options)
+	if err != nil {
+		return nil, err
+	}
+	c.connMutex.Lock()
+	c.conn = conn
+	c.connectedAt = time.Now()
+	c.connMutex.Unlock()
+	return conn, nil
+}
+
+// dialBroker opens the connection to the broker the way paho itself does
+// (its openConnection), for the schemes it knows, minus one thing: paho
+// would route a tcp or tls connection through a proxy named by the
+// environment (all_proxy and friends), and this does not - the fleet's
+// brokers are reached over the VPN, and nothing sets those.
+func dialBroker(uri *url.URL, options paho.ClientOptions) (net.Conn, error) {
+	dialer := options.Dialer
+	if dialer == nil {
+		dialer = &net.Dialer{Timeout: options.ConnectTimeout}
+	}
+	switch uri.Scheme {
+	case "mqtt", "tcp":
+		return dialer.Dial("tcp", uri.Host)
+	case "ssl", "tls", "mqtts", "mqtt+ssl", "tcps":
+		return tls.DialWithDialer(dialer, "tcp", uri.Host, options.TLSConfig)
+	case "unix":
+		if uri.Host != "" {
+			return dialer.Dial("unix", uri.Host)
+		}
+		return dialer.Dial("unix", uri.Path)
+	case "ws", "wss":
+		// Gorilla's websocket does not take a url with a user in it.
+		dialURI := *uri
+		dialURI.User = nil
+		var tlsConfig *tls.Config
+		if uri.Scheme == "wss" {
+			tlsConfig = options.TLSConfig
+		}
+		return paho.NewWebsocket(dialURI.String(), tlsConfig, options.ConnectTimeout, options.HTTPHeaders, options.WebsocketOptions)
+	}
+	return nil, fmt.Errorf("unknown protocol %q", uri.Scheme)
+}
+
+// DropConnection closes the socket paho is on, so that paho sees the
+// connection lost and reconnects on its own, as it does when the link
+// drops - re-sending on the new connection everything it holds, and
+// subscribing again (onConnectHandler). For a caller that sees paho hold a
+// publish unconfirmed for too long (Stalled). paho sends what it holds on
+// a new connection, and on a new connection only: a publish whose write
+// makes no progress, one it stored because its writer did not take it in
+// time, one it stored while the link was already going - all wait for one,
+// and paho's own keepalive is not sure to bring it about, since its ping
+// goes out through the same stalled socket. Closing the socket is the one
+// thing that works from outside: paho's Disconnect returns before its
+// teardown is done and refuses a Connect meanwhile, with no retry.
+func (c *Client) DropConnection() {
+	c.connMutex.Lock()
+	conn := c.conn
+	c.connMutex.Unlock()
+	if conn == nil {
+		return
+	}
 	logger.GetLogger().Warn(
-		"Remaking the MQTT connection",
+		"Dropping the MQTT connection so that it is remade",
 		zap.String("ClientID", c.clientID),
 		zap.Int("Unconfirmed", c.Unconfirmed()),
 	)
-	(*c.pahoClient).Disconnect(uint(disconnectWait.Milliseconds()))
-	token := (*c.pahoClient).Connect()
-	if !token.WaitTimeout(initialConnectWait) {
-		logger.GetLogger().Warn("Not reconnected to the MQTT broker yet, continuing while it is retried in the background", zap.String("ClientID", c.clientID))
-	} else if err := token.Error(); err != nil {
-		logger.GetLogger().Warn("Could not reconnect to the MQTT broker, it will be retried in the background", zap.String("Error", err.Error()), zap.String("ClientID", c.clientID))
+	conn.Close()
+}
+
+// Stalled reports whether paho has held a publish unconfirmed, on a
+// connection that has been up, for longer than d: the broker is not going
+// to confirm it on this connection, see DropConnection. Measured against
+// the connection rather than the publish alone, so that a publish paho
+// held through an outage is given d on the connection that follows it.
+// Always false for a role not in trackedRoles.
+func (c *Client) Stalled(d time.Duration) bool {
+	if c.store == nil || !c.Connected() {
+		return false
 	}
+	since, held := c.store.heldSince()
+	if !held {
+		return false
+	}
+	c.connMutex.Lock()
+	connectedAt := c.connectedAt
+	c.connMutex.Unlock()
+	if connectedAt.After(since) {
+		since = connectedAt
+	}
+	return time.Since(since) > d
 }
 
 // clientID returns, for a role in sessionRoles, the configured client id or
@@ -400,6 +483,9 @@ func (c *Client) createClientOptions() *paho.ClientOptions {
 	if c.store != nil {
 		result.SetStore(c.store)
 	}
+	// The connection is opened here rather than by paho so that this
+	// client knows the socket paho is on, see DropConnection.
+	result.SetCustomOpenConnectionFn(c.openConnection)
 
 	result.SetDefaultPublishHandler(c.publishHandler)
 	result.SetOnConnectHandler(c.onConnectHandler)

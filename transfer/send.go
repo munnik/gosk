@@ -96,7 +96,8 @@ type senderClient interface {
 	Publish(topic string, qos byte, retained bool, payload []byte) paho.Token
 	Holds(fingerprint uint64) bool
 	Unconfirmed() int
-	Reconnect()
+	Stalled(d time.Duration) bool
+	DropConnection()
 }
 
 type inFlightKey struct {
@@ -204,18 +205,25 @@ func (s *Sender) sendOnce() {
 		s.connected = true
 	}
 
-	if s.heldTooLong() {
-		// paho has held a delivery unconfirmed on this connection for
-		// twice RetryAfter. Whatever the reason - a write that makes no
-		// progress, a delivery it stored because its writer did not take
-		// it in time (notSent), one it stored as the link was going - it
-		// sends what it holds on a new connection and on a new connection
-		// only, and its keepalive is not sure to bring one about: the
-		// ping goes out through the same stalled socket. So the
-		// connection is remade here, and paho re-sends on the new one
-		// everything it holds. The rows are safe in the outbox either
-		// way; this bounds how long their buckets wait.
-		s.mqttClient.Reconnect()
+	if s.mqttClient.Stalled(2 * s.config.RetryAfter) {
+		// The client has held a delivery unconfirmed, on this connection,
+		// for twice RetryAfter. Whatever the reason - a write that makes
+		// no progress, a delivery it stored because its writer did not
+		// take it in time (notSent), one it stored as the link was going
+		// - it sends what it holds on a new connection and on a new
+		// connection only, and its keepalive is not sure to bring one
+		// about: the ping goes out through the same stalled socket. So
+		// the connection is dropped here, and the client re-sends on the
+		// new one everything it holds. Every delivery the client holds
+		// counts, whether or not a bucket still waits on it - a late row
+		// resets a bucket and leaves its old delivery in the client's
+		// hands - so nothing it holds escapes this. The rows are safe in
+		// the outbox either way; this bounds how long their buckets
+		// wait. Twice RetryAfter rather than once: a delivery can take
+		// minutes to transmit on a poor link, and dropping the
+		// connection under it throws away what it had transmitted, so
+		// this errs towards waiting.
+		s.mqttClient.DropConnection()
 		return
 	}
 
@@ -378,7 +386,7 @@ func publishError(token paho.Token) error {
 // message id freed - and taking the delivery out of paho's store instead
 // would leave its id claimed for the life of the process. The wait is
 // bounded: the link dropping brings the new connection, and if it does not
-// drop, heldTooLong remakes it after twice RetryAfter.
+// drop, sendOnce drops it after twice RetryAfter (mqtt.Client.Stalled).
 func (s *Sender) notSent(entry database.OutboxEntry, fingerprint uint64, err error) {
 	if s.mqttClient.Holds(fingerprint) {
 		logger.GetLogger().Warn(
@@ -523,7 +531,8 @@ func (s *Sender) ackReceived(c paho.Client, m paho.Message) {
 // A delivery the client took nothing of is never in flight: send sees it
 // on the publish token and forgets it at once. One the client stored to
 // send on its next connection is in flight, held, until the broker
-// confirms it there (notSent); heldTooLong bounds how long that takes.
+// confirms it there (notSent); sendOnce bounds how long that takes
+// (mqtt.Client.Stalled).
 func (s *Sender) isInFlight(entry database.OutboxEntry) bool {
 	s.inFlightMutex.Lock()
 	defer s.inFlightMutex.Unlock()
@@ -581,30 +590,6 @@ func (s *Sender) markPublished(entry database.OutboxEntry, payload []byte, throu
 		fingerprint: mqtt.Fingerprint(payload),
 		through:     through,
 	}
-}
-
-// heldTooLong reports whether the MQTT client has held some bucket's
-// delivery unconfirmed for twice RetryAfter - a delivery the broker is not
-// going to confirm on this connection, see sendOnce - and starts the clock
-// of every such delivery over, so that one remade connection is given the
-// time to deliver before the next.
-//
-// Twice RetryAfter rather than once: a delivery can take minutes to
-// transmit on a poor link, and remaking the connection under it throws
-// away what it had transmitted, so this errs towards waiting.
-func (s *Sender) heldTooLong() bool {
-	s.inFlightMutex.Lock()
-	defer s.inFlightMutex.Unlock()
-	found := false
-	for key, flight := range s.inFlight {
-		if !flight.published || time.Since(flight.sent) < 2*s.config.RetryAfter || !s.mqttClient.Holds(flight.fingerprint) {
-			continue
-		}
-		found = true
-		flight.sent = time.Now()
-		s.inFlight[key] = flight
-	}
-	return found
 }
 
 // forgetInFlight drops a bucket's entry, if it is still the one made for

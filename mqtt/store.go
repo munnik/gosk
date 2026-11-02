@@ -4,6 +4,7 @@ import (
 	"hash/fnv"
 	"strings"
 	"sync"
+	"time"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/eclipse/paho.mqtt.golang/packets"
@@ -47,10 +48,17 @@ var trackedRoles = map[string]bool{
 type trackedStore struct {
 	mu       sync.Mutex
 	messages map[string]packets.ControlPacket
-	// fingerprints is the fingerprint of each outbound publish held, by
-	// its key, and held how many of each fingerprint there are.
-	fingerprints map[string]uint64
-	held         map[uint64]int
+	// publishes is each outbound publish held, by its key, and held how
+	// many of each fingerprint there are.
+	publishes map[string]heldPublish
+	held      map[uint64]int
+}
+
+// heldPublish is what the store notes about an outbound publish: what it
+// is, and since when paho has had it.
+type heldPublish struct {
+	fingerprint uint64
+	since       time.Time
 }
 
 // outboundKeyPrefix is how paho keys the packets it sent, as opposed to the
@@ -59,9 +67,9 @@ const outboundKeyPrefix = "o."
 
 func newTrackedStore() *trackedStore {
 	return &trackedStore{
-		messages:     make(map[string]packets.ControlPacket),
-		fingerprints: make(map[string]uint64),
-		held:         make(map[uint64]int),
+		messages:  make(map[string]packets.ControlPacket),
+		publishes: make(map[string]heldPublish),
+		held:      make(map[uint64]int),
 	}
 }
 
@@ -82,7 +90,7 @@ func (s *trackedStore) Put(key string, message packets.ControlPacket) {
 	s.messages[key] = message
 	if publish, ok := message.(*packets.PublishPacket); ok && strings.HasPrefix(key, outboundKeyPrefix) {
 		fingerprint := Fingerprint(publish.Payload)
-		s.fingerprints[key] = fingerprint
+		s.publishes[key] = heldPublish{fingerprint: fingerprint, since: time.Now()}
 		s.held[fingerprint]++
 	}
 }
@@ -112,10 +120,10 @@ func (s *trackedStore) Del(key string) {
 // forget drops key and its fingerprint, under the lock.
 func (s *trackedStore) forget(key string) {
 	delete(s.messages, key)
-	if fingerprint, ok := s.fingerprints[key]; ok {
-		delete(s.fingerprints, key)
-		if s.held[fingerprint]--; s.held[fingerprint] <= 0 {
-			delete(s.held, fingerprint)
+	if publish, ok := s.publishes[key]; ok {
+		delete(s.publishes, key)
+		if s.held[publish.fingerprint]--; s.held[publish.fingerprint] <= 0 {
+			delete(s.held, publish.fingerprint)
 		}
 	}
 }
@@ -124,7 +132,7 @@ func (s *trackedStore) Reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.messages = make(map[string]packets.ControlPacket)
-	s.fingerprints = make(map[string]uint64)
+	s.publishes = make(map[string]heldPublish)
 	s.held = make(map[uint64]int)
 }
 
@@ -140,7 +148,21 @@ func (s *trackedStore) holds(fingerprint uint64) bool {
 func (s *trackedStore) unconfirmed() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return len(s.fingerprints)
+	return len(s.publishes)
+}
+
+// heldSince is since when the store has held the outbound publish it has
+// held the longest, and whether it holds any.
+func (s *trackedStore) heldSince() (time.Time, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var oldest time.Time
+	for _, publish := range s.publishes {
+		if oldest.IsZero() || publish.since.Before(oldest) {
+			oldest = publish.since
+		}
+	}
+	return oldest, !oldest.IsZero()
 }
 
 var _ paho.Store = (*trackedStore)(nil)

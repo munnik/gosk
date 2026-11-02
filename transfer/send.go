@@ -33,15 +33,16 @@ const (
 type Sender struct {
 	db         *database.PostgresqlDatabase
 	config     *config.TransferConfig
-	mqttClient *mqtt.Client
+	mqttClient senderClient
 	codec      *codec
 
-	// inFlight remembers when each bucket was last sent, and under which
-	// generation, so a delivery the far end never acknowledged is retried
-	// after RetryAfter rather than on every pass, and the pass does not
-	// re-send what is still on its way. One entry per bucket: a bucket
-	// reset by a late row simply replaces its entry, so nothing lingers
-	// for generations that are gone.
+	// inFlight remembers what was last sent for each bucket, and under
+	// which generation, so a delivery the far end never acknowledged is
+	// retried after RetryAfter rather than on every pass, and the pass
+	// does not re-send what is still on its way - see isInFlight for what
+	// that means. One entry per bucket: a bucket reset by a late row
+	// simply replaces its entry, so nothing lingers for generations that
+	// are gone.
 	inFlight      map[inFlightKey]inFlightEntry
 	inFlightMutex sync.Mutex
 	// connected is what sendOnce last saw of the broker link, so that it
@@ -71,6 +72,20 @@ type Sender struct {
 	stale     prometheus.Counter
 	retried   prometheus.Counter
 	depth     *prometheus.GaugeVec
+	// unconfirmed is how many deliveries the MQTT client holds that the
+	// broker has not confirmed, see isInFlight.
+	unconfirmed prometheus.Gauge
+}
+
+// senderClient is what the sender asks of its MQTT client (mqtt.Client);
+// named so a test can stand in for it.
+type senderClient interface {
+	Connect()
+	Disconnect()
+	Connected() bool
+	WaitSubscribed(timeout time.Duration) bool
+	Publish(topic string, qos byte, retained bool, payload []byte)
+	Holds(fingerprint uint64) bool
 }
 
 type inFlightKey struct {
@@ -81,6 +96,15 @@ type inFlightKey struct {
 type inFlightEntry struct {
 	generation int64
 	sent       time.Time
+	// published is whether a delivery was handed to the MQTT client, and
+	// fingerprint identifies it to the client (mqtt.Fingerprint). A bucket
+	// held back without one (oversized, see send) has neither.
+	published   bool
+	fingerprint uint64
+	// confirmed is when the broker was first seen to have confirmed the
+	// delivery - the first pass that found the client no longer holding
+	// it - and from when RetryAfter counts; zero until then.
+	confirmed time.Time
 }
 
 func NewSender(c *config.TransferConfig) *Sender {
@@ -103,6 +127,7 @@ func NewSender(c *config.TransferConfig) *Sender {
 		stale:        promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_outbox_stale_acks_total", Help: "total number of outbox acknowledgements for a bucket generation that no longer existed"}),
 		retried:      promauto.NewCounter(prometheus.CounterOpts{Name: "gosk_outbox_retried_total", Help: "total number of buckets sent again because no acknowledgement arrived in time"}),
 		depth:        promauto.NewGaugeVec(prometheus.GaugeOpts{Name: "gosk_outbox_depth", Help: "buckets waiting to be acknowledged, partitioned by origin"}, []string{"origin"}),
+		unconfirmed:  promauto.NewGauge(prometheus.GaugeOpts{Name: "gosk_outbox_unconfirmed", Help: "outbox deliveries handed to the MQTT client that the broker has not confirmed; the client sends them again on every reconnect, and their buckets are not sent again until it has"}),
 	}
 }
 
@@ -170,6 +195,7 @@ func (s *Sender) sendOnce() {
 		}
 		s.send(entry)
 	}
+	s.unconfirmed.Set(float64(s.countUnconfirmed()))
 }
 
 func (s *Sender) send(entry database.OutboxEntry) {
@@ -260,7 +286,7 @@ func (s *Sender) send(entry database.OutboxEntry) {
 
 	// Marked before the publish, so that an acknowledgement arriving
 	// faster than this goroutine resumes still finds the entry.
-	s.markInFlight(entry)
+	s.markPublished(entry, payload)
 	s.mqttClient.Publish(fmt.Sprintf(dataTopic, entry.Origin), outboxQoS, outboxRetained, payload)
 
 	s.sent.Inc()
@@ -347,6 +373,23 @@ func (s *Sender) ackReceived(c paho.Client, m paho.Message) {
 	)
 }
 
+// isInFlight reports whether a pending bucket's last delivery is still on
+// its way, so that the pass leaves the bucket alone; where it is not, the
+// entry is forgotten so that the pass sends the bucket again.
+//
+// On its way means two things in turn. First, until the broker has
+// confirmed the delivery, the MQTT client holds it and sends it again on
+// every connection until the broker does (mqtt.Client.Holds): that may be
+// seconds on a good link or hours on a vessel whose link is down, and in
+// all that time there is nothing to add - another copy would wait in the
+// same queue behind the first, and keep waiting there after the first was
+// acknowledged, to be sent anyway and cost the link for nothing. On a
+// link that drops every few minutes that is how an outbox stopped
+// draining: every reconnect spent itself re-sending copies of buckets the
+// far end had long acknowledged. Second, once the broker has it, for
+// RetryAfter: the far end receives it, stores it and acknowledges, and
+// only its silence for that long says the delivery or its acknowledgement
+// was lost between broker and far end, or the far end could not store it.
 func (s *Sender) isInFlight(entry database.OutboxEntry) bool {
 	s.inFlightMutex.Lock()
 	defer s.inFlightMutex.Unlock()
@@ -362,7 +405,18 @@ func (s *Sender) isInFlight(entry database.OutboxEntry) bool {
 		delete(s.inFlight, key)
 		return false
 	}
-	if time.Since(flight.sent) < s.config.RetryAfter {
+	since := flight.sent
+	if flight.published {
+		if s.mqttClient.Holds(flight.fingerprint) {
+			return true
+		}
+		if flight.confirmed.IsZero() {
+			flight.confirmed = time.Now()
+			s.inFlight[key] = flight
+		}
+		since = flight.confirmed
+	}
+	if time.Since(since) < s.config.RetryAfter {
 		return true
 	}
 	// Long enough without an acknowledgement that the far end is assumed
@@ -372,10 +426,39 @@ func (s *Sender) isInFlight(entry database.OutboxEntry) bool {
 	return false
 }
 
+// markInFlight holds a bucket back as if sent, without a delivery to wait
+// for; see isInFlight.
 func (s *Sender) markInFlight(entry database.OutboxEntry) {
 	s.inFlightMutex.Lock()
 	defer s.inFlightMutex.Unlock()
 	s.inFlight[inFlightKey{origin: entry.Origin, bucket: entry.Bucket.UnixNano()}] = inFlightEntry{generation: entry.Generation, sent: time.Now()}
+}
+
+// markPublished holds a bucket back behind the delivery about to be handed
+// to the MQTT client with this payload; see isInFlight.
+func (s *Sender) markPublished(entry database.OutboxEntry, payload []byte) {
+	s.inFlightMutex.Lock()
+	defer s.inFlightMutex.Unlock()
+	s.inFlight[inFlightKey{origin: entry.Origin, bucket: entry.Bucket.UnixNano()}] = inFlightEntry{
+		generation:  entry.Generation,
+		sent:        time.Now(),
+		published:   true,
+		fingerprint: mqtt.Fingerprint(payload),
+	}
+}
+
+// countUnconfirmed is how many buckets' last delivery the MQTT client still
+// holds, for the gauge.
+func (s *Sender) countUnconfirmed() int {
+	s.inFlightMutex.Lock()
+	defer s.inFlightMutex.Unlock()
+	n := 0
+	for _, flight := range s.inFlight {
+		if flight.published && s.mqttClient.Holds(flight.fingerprint) {
+			n++
+		}
+	}
+	return n
 }
 
 func (s *Sender) clearInFlight(ack Ack) {

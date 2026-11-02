@@ -623,9 +623,12 @@ type TransferConfig struct {
 	// than this is sent in several.
 	MaxRowsPerDelivery int `mapstructure:"max_rows_per_delivery"`
 	// RetryAfter is how long a delivery may go unacknowledged before its
-	// bucket is sent again. MQTT at QoS 1 redelivers the publish itself;
-	// this covers the far end receiving a delivery and failing to store
-	// it.
+	// bucket is sent again, counted from the broker's confirmation of the
+	// delivery. Up to that confirmation the MQTT client holds the delivery
+	// and re-sends it on every reconnect itself, for as long as it takes,
+	// and the bucket is not sent again meanwhile; this covers the far end
+	// receiving a delivery and failing to store it, or its acknowledgement
+	// being lost.
 	RetryAfter time.Duration `mapstructure:"retry_after"`
 	// Acknowledge is whether `transfer receive` tells the vessel what it
 	// has stored. Off for a server that only keeps a copy of the fleet's

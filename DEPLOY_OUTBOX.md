@@ -172,6 +172,19 @@ services.mosquitto.settings = {
 };
 ```
 
+The vessel's MQTT client holds every delivery the broker has not confirmed
+and re-sends it on each reconnect. The sender hands it one delivery at a
+time, waits for the broker's confirmation before the next, and does not send
+a bucket again while the client still holds its last delivery
+(`gosk_outbox_unconfirmed` is 1 while one is on its way and 0 otherwise, the
+epoch reservation at start aside);
+`retry_after` runs from the broker's confirmation. That paces the sender to
+the link. On a link that drops every few minutes a sender that retried on the
+timer alone piled a copy of every unacknowledged bucket per `retry_after`
+onto the copies the client already held, and each reconnect spent itself
+re-sending copies of buckets the server had long acknowledged, so nothing new
+got through and the queue never drained.
+
 This deploys with step 4 (same host); do not deploy it separately unless you
 want the ACLs to land first, which is also fine.
 

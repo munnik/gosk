@@ -350,6 +350,11 @@ func dialBroker(uri *url.URL, options paho.ClientOptions) (net.Conn, error) {
 // goes out through the same stalled socket. Closing the socket is the one
 // thing that works from outside: paho's Disconnect returns before its
 // teardown is done and refuses a Connect meanwhile, with no retry.
+//
+// paho notices in its own time. Its reader and writer pass over the error
+// a closed socket gives them, so what reports the loss is the keepalive:
+// the next ping gets no answer, and paho declares the connection lost a
+// ping timeout later - keepAlive plus ten seconds at most.
 func (c *Client) DropConnection() {
 	c.connMutex.Lock()
 	conn := c.conn
@@ -366,11 +371,13 @@ func (c *Client) DropConnection() {
 }
 
 // Stalled reports whether paho has held a publish unconfirmed, on a
-// connection that has been up, for longer than d: the broker is not going
-// to confirm it on this connection, see DropConnection. Measured against
-// the connection rather than the publish alone, so that a publish paho
-// held through an outage is given d on the connection that follows it.
-// Always false for a role not in trackedRoles.
+// connection that has been up, for longer than d - the caller's threshold
+// for giving up on the connection (DropConnection). It measures time
+// without a confirmation, not the absence of progress: a large publish
+// still making its way over a very slow link counts the same, and is
+// interrupted. Measured against the connection rather than the publish
+// alone, so that a publish paho held through an outage is given d on the
+// connection that follows it. Always false for a role not in trackedRoles.
 func (c *Client) Stalled(d time.Duration) bool {
 	if c.store == nil || !c.Connected() {
 		return false

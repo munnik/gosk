@@ -218,11 +218,13 @@ func (s *Sender) sendOnce() {
 		// counts, whether or not a bucket still waits on it - a late row
 		// resets a bucket and leaves its old delivery in the client's
 		// hands - so nothing it holds escapes this. The rows are safe in
-		// the outbox either way; this bounds how long their buckets
-		// wait. Twice RetryAfter rather than once: a delivery can take
-		// minutes to transmit on a poor link, and dropping the
-		// connection under it throws away what it had transmitted, so
-		// this errs towards waiting.
+		// the outbox either way; this is the threshold past which the
+		// connection is given up on, not a bound on how long a bucket
+		// waits. Twice RetryAfter rather than once: the stall is judged
+		// by time without a confirmation, not by the absence of
+		// progress, and a delivery can take minutes to transmit on a
+		// poor link - dropping the connection under it throws away what
+		// it had transmitted, so this errs towards waiting.
 		s.mqttClient.DropConnection()
 		return
 	}

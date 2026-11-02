@@ -1,10 +1,12 @@
 package transfer
 
 import (
+	"errors"
 	"sync"
 	"testing"
 	"time"
 
+	paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/database"
 	"github.com/munnik/gosk/mqtt"
@@ -12,18 +14,54 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
+// fakeToken stands in for a paho publish token: open until done is
+// closed, then complete with err.
+type fakeToken struct {
+	done chan struct{}
+	err  error
+}
+
+func openToken() *fakeToken { return &fakeToken{done: make(chan struct{})} }
+
+func completeToken(err error) *fakeToken {
+	token := openToken()
+	token.err = err
+	close(token.done)
+	return token
+}
+
+func (f *fakeToken) Wait() bool { <-f.done; return true }
+func (f *fakeToken) WaitTimeout(d time.Duration) bool {
+	select {
+	case <-f.done:
+		return true
+	case <-time.After(d):
+		return false
+	}
+}
+func (f *fakeToken) Done() <-chan struct{} { return f.done }
+func (f *fakeToken) Error() error          { return f.err }
+
 // fakeSenderClient stands in for the MQTT client: it holds whatever
-// fingerprints the test says it does.
+// fingerprints the test says it does, and hands out the token the test
+// gave it.
 type fakeSenderClient struct {
 	mu      sync.Mutex
 	holding map[uint64]bool
+	token   paho.Token
 }
 
-func (f *fakeSenderClient) Connect()                           {}
-func (f *fakeSenderClient) Disconnect()                        {}
-func (f *fakeSenderClient) Connected() bool                    { return true }
-func (f *fakeSenderClient) WaitSubscribed(time.Duration) bool  { return true }
-func (f *fakeSenderClient) Publish(string, byte, bool, []byte) {}
+func (f *fakeSenderClient) Connect()                          {}
+func (f *fakeSenderClient) Disconnect()                       {}
+func (f *fakeSenderClient) Connected() bool                   { return true }
+func (f *fakeSenderClient) WaitSubscribed(time.Duration) bool { return true }
+
+func (f *fakeSenderClient) Publish(string, byte, bool, []byte) paho.Token {
+	if f.token == nil {
+		return completeToken(nil)
+	}
+	return f.token
+}
 
 func (f *fakeSenderClient) Holds(fingerprint uint64) bool {
 	f.mu.Lock()
@@ -41,6 +79,14 @@ func (f *fakeSenderClient) Unconfirmed() int {
 		}
 	}
 	return n
+}
+
+func (f *fakeSenderClient) Withdraw(fingerprint uint64) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	held := f.holding[fingerprint]
+	delete(f.holding, fingerprint)
+	return held
 }
 
 // confirm is the broker's confirmation of a publish.
@@ -173,35 +219,78 @@ func TestAnAcknowledgementClearsTheDeliveryItReaches(t *testing.T) {
 	}
 }
 
+func TestPublishErrorReadsOnlyACompleteToken(t *testing.T) {
+	if publishError(openToken()) != nil {
+		t.Fatal("an open token reported an error")
+	}
+	if publishError(completeToken(nil)) != nil {
+		t.Fatal("a token complete without an error reported one")
+	}
+	if publishError(completeToken(paho.ErrNotConnected)) != paho.ErrNotConnected {
+		t.Fatal("a token complete with an error did not report it")
+	}
+}
+
+func TestADeliveryTheClientWillNotSendIsWithdrawnAndForgotten(t *testing.T) {
+	payload := []byte("a delivery")
+	fingerprint := mqtt.Fingerprint(payload)
+
+	// paho's writer did not take it: stored, to be sent on the next
+	// connection, which is not what the sender wants.
+	client := &fakeSenderClient{holding: map[uint64]bool{fingerprint: true}}
+	s := inFlightSender(time.Hour, client)
+	s.markPublished(testEntry, payload, testThrough)
+	s.notSent(testEntry, fingerprint, errors.New("publish was broken by timeout"))
+	if client.Holds(fingerprint) {
+		t.Fatal("a delivery paho stored without sending was left in its hands")
+	}
+	if len(s.inFlight) != 0 {
+		t.Fatal("the bucket stayed in flight")
+	}
+
+	// paho was not connected: nothing stored, nothing to withdraw.
+	client = &fakeSenderClient{holding: map[uint64]bool{}}
+	s = inFlightSender(time.Hour, client)
+	s.markPublished(testEntry, payload, testThrough)
+	s.notSent(testEntry, fingerprint, paho.ErrNotConnected)
+	if len(s.inFlight) != 0 {
+		t.Fatal("the bucket stayed in flight")
+	}
+}
+
 func TestAwaitConfirmationReturnsOnTheBrokersConfirmation(t *testing.T) {
 	payload := []byte("a delivery")
 	fingerprint := mqtt.Fingerprint(payload)
 	client := &fakeSenderClient{holding: map[uint64]bool{fingerprint: true}}
 	s := inFlightSender(time.Hour, client)
 	s.config.Interval = 10 * time.Second
+	token := openToken()
 
+	started := time.Now()
 	go func() {
 		time.Sleep(150 * time.Millisecond)
 		client.confirm(fingerprint)
+		close(token.done)
 	}()
-	started := time.Now()
-	s.awaitConfirmation(fingerprint)
-	if waited := time.Since(started); waited < 100*time.Millisecond || waited > 5*time.Second {
+	s.awaitConfirmation(token, fingerprint)
+	if waited := time.Since(started); waited < 150*time.Millisecond || waited > 5*time.Second {
 		t.Fatalf("waited %v; want until the confirmation, not until Interval", waited)
 	}
 }
 
-func TestAwaitConfirmationGivesUpAfterInterval(t *testing.T) {
+func TestAwaitConfirmationOutlastsATokenPahoCompletedOnAReconnect(t *testing.T) {
 	payload := []byte("a delivery")
 	fingerprint := mqtt.Fingerprint(payload)
 	client := &fakeSenderClient{holding: map[uint64]bool{fingerprint: true}}
 	s := inFlightSender(time.Hour, client)
-	s.config.Interval = 200 * time.Millisecond
+	s.config.Interval = 300 * time.Millisecond
 
+	// The token is complete - paho re-queued the publish on a new
+	// connection - but the broker has not confirmed it: still held.
 	started := time.Now()
-	s.awaitConfirmation(fingerprint)
-	if waited := time.Since(started); waited < 200*time.Millisecond || waited > 2*time.Second {
-		t.Fatalf("waited %v; want about Interval", waited)
+	s.awaitConfirmation(completeToken(nil), fingerprint)
+	if waited := time.Since(started); waited < 300*time.Millisecond || waited > 3*time.Second {
+		t.Fatalf("waited %v; want Interval, since the store still held the delivery", waited)
 	}
 	if !client.Holds(fingerprint) {
 		t.Fatal("the fake confirmed by itself")

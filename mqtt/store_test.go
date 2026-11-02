@@ -49,6 +49,31 @@ func TestTrackedStoreHoldsAnOutboundPublishUntilItIsDeleted(t *testing.T) {
 	store.Del("o.8")
 }
 
+func TestTrackedStoreWithdrawsAPublishPahoWillNotSend(t *testing.T) {
+	store := newTrackedStore()
+	publish := packets.NewControlPacket(packets.Publish).(*packets.PublishPacket)
+	publish.Qos = 1
+	publish.Payload = []byte("a delivery")
+	other := packets.NewControlPacket(packets.Publish).(*packets.PublishPacket)
+	other.Qos = 1
+	other.Payload = []byte("another delivery")
+	store.Put("o.1", publish)
+	store.Put("o.2", other)
+
+	if !store.withdraw(Fingerprint(publish.Payload)) {
+		t.Fatal("withdrawing a held publish reported nothing withdrawn")
+	}
+	if store.holds(Fingerprint(publish.Payload)) || store.Get("o.1") != nil {
+		t.Fatal("the withdrawn publish is still in the store, for paho to re-send")
+	}
+	if !store.holds(Fingerprint(other.Payload)) || store.unconfirmed() != 1 {
+		t.Fatal("withdrawing one publish took another with it")
+	}
+	if store.withdraw(Fingerprint(publish.Payload)) {
+		t.Fatal("withdrawing what is not there reported something withdrawn")
+	}
+}
+
 func TestTrackedStoreResetForgetsEverything(t *testing.T) {
 	store := newTrackedStore()
 	publish := packets.NewControlPacket(packets.Publish).(*packets.PublishPacket)

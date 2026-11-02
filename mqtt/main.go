@@ -181,7 +181,16 @@ func (c *Client) Connect() {
 }
 
 // Publish hands a message to paho and returns without waiting for it to be
-// delivered.
+// delivered. The token it returns completes with the broker's confirmation
+// (the PUBACK, at QoS 1) - or, as paho has it, when paho re-queues the
+// publish on a new connection, so a caller that needs the confirmation
+// asks Holds as well. It is complete with an error before Publish returns
+// when paho will not send the message on this connection: it was not
+// connected (nothing stored), or its writer did not take the message
+// within thirty seconds ("publish was broken by timeout"), in which case
+// the message is in paho's store, held, and would be sent only on the
+// next connection; Withdraw takes it out. Every caller but the outbox
+// sender (trackedRoles) ignores the token.
 //
 // Waiting was viable when everything published at QoS 0, where the token
 // completes as soon as the packet reaches the network. At QoS 1 the token
@@ -190,7 +199,7 @@ func (c *Client) Connect() {
 // point of QoS 1 is that paho holds on to the message and redelivers it
 // later, on its own, while the caller gets on with the next one. Delivery
 // is therefore reported asynchronously, see watchPublishTokens.
-func (c *Client) Publish(topic string, qos byte, retained bool, bytes []byte) {
+func (c *Client) Publish(topic string, qos byte, retained bool, bytes []byte) paho.Token {
 	token := (*c.pahoClient).Publish(topic, qos, retained, bytes)
 
 	select {
@@ -200,6 +209,7 @@ func (c *Client) Publish(topic string, qos byte, retained bool, bytes []byte) {
 		// publishes. Dropping the token only gives up on logging this
 		// one's outcome; the message itself is unaffected.
 	}
+	return token
 }
 
 func (c *Client) watchPublishTokens() {
@@ -240,6 +250,15 @@ func (c *Client) Unconfirmed() int {
 		return 0
 	}
 	return c.store.unconfirmed()
+}
+
+// Withdraw takes a publish paho holds but will not send on this connection
+// (see Publish) out of paho's hands, so that it is neither held nor sent on
+// the next connection, and reports whether there was one. Its message id
+// stays claimed in paho until the next connection; paho has 65535, and
+// this is rare. False for a role not in trackedRoles.
+func (c *Client) Withdraw(fingerprint uint64) bool {
+	return c.store != nil && c.store.withdraw(fingerprint)
 }
 
 // Connected reports whether the connection to the broker is up right

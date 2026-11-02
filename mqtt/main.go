@@ -93,6 +93,9 @@ type Client struct {
 	// session is whether the broker is asked to keep this client's session,
 	// see sessionRoles.
 	session bool
+	// store is paho's message store when the owner asks what the broker
+	// has not confirmed (Holds), nil otherwise; see trackedRoles.
+	store *trackedStore
 }
 
 // New builds a client for the broker without connecting it; call Connect
@@ -123,6 +126,9 @@ func New(config *config.MQTTConfig, role string, publishHandler paho.MessageHand
 		clientID:       clientID(config, role),
 		session:        sessionRoles[role],
 		publishTokens:  make(chan paho.Token, maxTrackedPublishes),
+	}
+	if trackedRoles[role] {
+		result.store = newTrackedStore()
 	}
 	pahoClient := paho.NewClient(result.createClientOptions())
 	result.pahoClient = &pahoClient
@@ -214,6 +220,17 @@ func (c *Client) watchPublishTokens() {
 			)
 		}
 	}
+}
+
+// Holds reports whether a publish with this payload (Fingerprint) is still
+// in paho's hands: handed over and not yet confirmed by the broker, whether
+// in transit or waiting for the link to come back, from where paho sends
+// it again on every connection until the broker confirms it. Always false
+// for a role not in trackedRoles. The caller that asks is the one that
+// would otherwise send the same thing again (the outbox sender), and must
+// not while this is true.
+func (c *Client) Holds(fingerprint uint64) bool {
+	return c.store != nil && c.store.holds(fingerprint)
 }
 
 // Connected reports whether the connection to the broker is up right
@@ -333,6 +350,9 @@ func (c *Client) createClientOptions() *paho.ClientOptions {
 		// store to the network at once (paho's default is no limit). The
 		// link that just came back is the same one that dropped.
 		result.SetMaxResumePubInFlight(maxResumePubInFlight)
+	}
+	if c.store != nil {
+		result.SetStore(c.store)
 	}
 
 	result.SetDefaultPublishHandler(c.publishHandler)

@@ -52,8 +52,12 @@ const (
 
 	// QoS 1 throughout: the broker retransmits until the receiving end has
 	// confirmed, and with a persistent session (mqtt.New) holds what was
-	// published while the other end was away. A delivery that is lost
-	// anyway is sent again after TransferConfig.RetryAfter.
+	// published while the other end was away; the client, for its part,
+	// holds what the broker has not confirmed and sends it again on every
+	// connection until it has. A delivery that is lost anyway is sent
+	// again after TransferConfig.RetryAfter - counted from the broker's
+	// confirmation, and never while the client still holds the delivery
+	// (Sender.isInFlight).
 	outboxQoS      = 1
 	outboxRetained = false
 )

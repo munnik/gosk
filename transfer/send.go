@@ -87,9 +87,10 @@ type senderClient interface {
 	Disconnect()
 	Connected() bool
 	WaitSubscribed(timeout time.Duration) bool
-	Publish(topic string, qos byte, retained bool, payload []byte)
+	Publish(topic string, qos byte, retained bool, payload []byte) paho.Token
 	Holds(fingerprint uint64) bool
 	Unconfirmed() int
+	Withdraw(fingerprint uint64) bool
 }
 
 type inFlightKey struct {
@@ -301,18 +302,10 @@ func (s *Sender) send(entry database.OutboxEntry) {
 	// Marked before the publish, so that an acknowledgement arriving
 	// faster than this goroutine resumes still finds the entry.
 	s.markPublished(entry, payload, through)
-	s.mqttClient.Publish(fmt.Sprintf(dataTopic, entry.Origin), outboxQoS, outboxRetained, payload)
+	token := s.mqttClient.Publish(fmt.Sprintf(dataTopic, entry.Origin), outboxQoS, outboxRetained, payload)
 	fingerprint := mqtt.Fingerprint(payload)
-	if !s.mqttClient.Holds(fingerprint) {
-		// paho took nothing: the connection went down between
-		// sendOnce's check and the publish. Not sent, so not in flight;
-		// the next pass that finds the link up sends it.
-		s.forgetInFlight(entry)
-		logger.GetLogger().Warn(
-			"The MQTT client did not take an outbox delivery; the bucket will be sent again",
-			zap.String("Origin", entry.Origin),
-			zap.Time("Bucket", entry.Bucket),
-		)
+	if err := publishError(token); err != nil {
+		s.notSent(entry, fingerprint, err)
 		return
 	}
 
@@ -328,7 +321,39 @@ func (s *Sender) send(entry database.OutboxEntry) {
 		zap.Int("Rows", len(rows)),
 		zap.Int("Bytes", len(payload)),
 	)
-	s.awaitConfirmation(fingerprint)
+	s.awaitConfirmation(token, fingerprint)
+}
+
+// publishError is the error a publish token already carries when paho
+// will not send the message on this connection (mqtt.Client.Publish), nil
+// while the token is still open or when it completed without one.
+func publishError(token paho.Token) error {
+	select {
+	case <-token.Done():
+		return token.Error()
+	default:
+		return nil
+	}
+}
+
+// notSent handles a delivery paho will not send on this connection: it was
+// not connected, in which case nothing was stored, or its writer did not
+// take the delivery within thirty seconds, in which case paho stored it to
+// send on the next connection - held, with this sender waiting on it, and
+// on a link that stays up, waiting for good. The delivery is withdrawn
+// from the client in that case, so that it is neither held nor sent twice,
+// and the bucket is forgotten either way: not sent, so not in flight, and
+// the next pass that finds the link up sends it.
+func (s *Sender) notSent(entry database.OutboxEntry, fingerprint uint64, err error) {
+	withdrawn := s.mqttClient.Withdraw(fingerprint)
+	s.forgetInFlight(entry)
+	logger.GetLogger().Warn(
+		"The MQTT client will not send an outbox delivery; the bucket will be sent again",
+		zap.Error(err),
+		zap.Bool("Withdrawn", withdrawn),
+		zap.String("Origin", entry.Origin),
+		zap.Time("Bucket", entry.Bucket),
+	)
 }
 
 // awaitConfirmation waits, up to Interval, for the broker to confirm the
@@ -339,19 +364,27 @@ func (s *Sender) send(entry database.OutboxEntry) {
 // sends one packet at a time, and a Publish behind a packet that is still
 // being written waits for the writer, thirty seconds at most, after which
 // paho reports "publish was broken by timeout" and leaves the packet in its
-// store - unsent, and sent only on the next connection. A delivery that
-// met that would be held (mqtt.Client.Holds), and its bucket in flight,
-// until the link happened to drop. Handing paho the next delivery only
-// once the last is confirmed means the writer is idle when it is handed
-// over, and the wait is nil. It is also what paces the sender to the link:
-// a delivery takes what it takes to transmit and confirm, and the next one
-// follows; a vessel with a good link clears a pass in a second or two, a
-// vessel with a poor one sends what the link carries and nothing more.
+// store - unsent, and sent only on the next connection (notSent has the
+// rest). Handing paho the next delivery only once the last is confirmed
+// means the writer is idle when it is handed over. It is also what paces
+// the sender to the link: a delivery takes what it takes to transmit and
+// confirm, and the next one follows; a vessel with a good link clears a
+// pass in a second or two, a vessel with a poor one sends what the link
+// carries and nothing more. What it costs is the pipelining: a pass of
+// eleven deliveries is eleven round trips to the broker, where it was one.
 // Past Interval the pass ends and the next finds the client still holding
 // the delivery (sendOnce) and sends nothing until it is confirmed.
-func (s *Sender) awaitConfirmation(fingerprint uint64) {
-	deadline := time.Now().Add(s.config.Interval)
-	for s.mqttClient.Holds(fingerprint) && time.Now().Before(deadline) {
+//
+// The token completes on the confirmation - or when paho re-queues the
+// publish on a new connection, which is not one - so the store has the
+// last word.
+func (s *Sender) awaitConfirmation(token paho.Token, fingerprint uint64) {
+	until := time.Now().Add(s.config.Interval)
+	select {
+	case <-token.Done():
+	case <-time.After(time.Until(until)):
+	}
+	for s.mqttClient.Holds(fingerprint) && time.Now().Before(until) {
 		time.Sleep(confirmationPoll)
 	}
 }
@@ -444,8 +477,9 @@ func (s *Sender) ackReceived(c paho.Client, m paho.Message) {
 // only its silence for that long says the delivery or its acknowledgement
 // was lost between broker and far end, or the far end could not store it.
 //
-// A delivery the client rejected on the spot is never in flight: send
-// sees that it is not held and forgets it at once.
+// A delivery the client will not send on this connection is never in
+// flight: send sees it on the publish token and forgets it at once
+// (notSent).
 func (s *Sender) isInFlight(entry database.OutboxEntry) bool {
 	s.inFlightMutex.Lock()
 	defer s.inFlightMutex.Unlock()

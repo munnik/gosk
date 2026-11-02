@@ -178,10 +178,10 @@ time, waits for the broker's confirmation before the next, and does not send
 a bucket again while the client still holds its last delivery
 (`gosk_outbox_unconfirmed` counts what the client holds, sampled once per
 pass; normally 0 or 1); `retry_after` runs from the broker's confirmation.
-That paces the sender to the link. A delivery the client has held unconfirmed
-for twice `retry_after` has the connection remade, since the client re-sends
-what it holds on a new connection only and its own keepalive cannot be relied
-on to bring one about. On a link that drops every few minutes a sender that
+That paces the sender to the link. A delivery the client has held unconfirmed for twice `retry_after`
+on one connection has the sender drop that connection, since the client
+re-sends what it holds on a new connection only and its own keepalive cannot
+be relied on to bring one about. On a link that drops every few minutes a sender that
 retried on the timer alone piled a copy of every unacknowledged bucket per
 `retry_after` onto the copies the client already held, and each reconnect
 spent itself re-sending copies of buckets the server had long acknowledged,

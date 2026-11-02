@@ -25,6 +25,12 @@ type fakeBroker struct {
 	// broker close the connection instead of answering.
 	drop    string
 	dropped bool
+	// published counts the publishes received per topic. While
+	// withholdConfirmations is set a publish is read and counted but not
+	// confirmed. conn is the connection being served, for dropConnection.
+	published             map[string]int
+	withholdConfirmations bool
+	conn                  net.Conn
 }
 
 func (b *fakeBroker) open(*url.URL, paho.ClientOptions) (net.Conn, error) {
@@ -35,6 +41,9 @@ func (b *fakeBroker) open(*url.URL, paho.ClientOptions) (net.Conn, error) {
 
 func (b *fakeBroker) serve(conn net.Conn) {
 	defer conn.Close()
+	b.mu.Lock()
+	b.conn = conn
+	b.mu.Unlock()
 	for {
 		packet, err := packets.ReadPacket(conn)
 		if err != nil {
@@ -70,6 +79,21 @@ func (b *fakeBroker) serve(conn net.Conn) {
 			if ack.Write(conn) != nil {
 				return
 			}
+		case *packets.PublishPacket:
+			b.mu.Lock()
+			if b.published == nil {
+				b.published = map[string]int{}
+			}
+			b.published[p.TopicName]++
+			withhold := b.withholdConfirmations
+			b.mu.Unlock()
+			if p.Qos == 1 && !withhold {
+				ack := packets.NewControlPacket(packets.Puback).(*packets.PubackPacket)
+				ack.MessageID = p.MessageID
+				if ack.Write(conn) != nil {
+					return
+				}
+			}
 		case *packets.PingreqPacket:
 			if packets.NewControlPacket(packets.Pingresp).Write(conn) != nil {
 				return
@@ -96,9 +120,41 @@ func (b *fakeBroker) timesAsked(topic string) int {
 	return b.asked[topic]
 }
 
+func (b *fakeBroker) timesPublished(topic string) int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.published[topic]
+}
+
+// confirmPublishes starts, or stops, confirming the publishes received
+// from now on.
+func (b *fakeBroker) confirmPublishes(confirm bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.withholdConfirmations = !confirm
+}
+
+// dropConnection closes the connection being served, as a link going down
+// would.
+func (b *fakeBroker) dropConnection() {
+	b.mu.Lock()
+	conn := b.conn
+	b.mu.Unlock()
+	if conn != nil {
+		conn.Close()
+	}
+}
+
 func clientOn(t *testing.T, broker *fakeBroker, topics ...string) *Client {
 	t.Helper()
-	c := New(&config.MQTTConfig{URLString: "tcp://fake.invalid:1883", Username: "test", Password: "test"}, "test", nil, topics[0], topics[1:]...)
+	return clientOnAs(t, broker, "test", topics...)
+}
+
+// clientOnAs is clientOn for a client of the given role, see sessionRoles
+// and trackedRoles.
+func clientOnAs(t *testing.T, broker *fakeBroker, role string, topics ...string) *Client {
+	t.Helper()
+	c := New(&config.MQTTConfig{URLString: "tcp://fake.invalid:1883", Username: "test", Password: "test"}, role, nil, topics[0], topics[1:]...)
 	options := c.createClientOptions()
 	options.SetCustomOpenConnectionFn(broker.open)
 	pahoClient := paho.NewClient(options)

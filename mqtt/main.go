@@ -278,6 +278,33 @@ func (c *Client) Disconnect() {
 	(*c.pahoClient).Disconnect(uint(disconnectWait.Milliseconds()))
 }
 
+// Reconnect closes the connection and opens a new one, for a caller that
+// sees paho hold a publish unconfirmed for too long (trackedRoles). paho
+// sends what it holds on a new connection, and on a new connection only: a
+// publish whose write makes no progress, one it stored because its writer
+// did not take it in time, one it stored while the link was already going
+// - all of them wait for one, and paho's own keepalive is not sure to
+// bring it about, since its ping goes out through the same stalled socket.
+// Disconnecting fails every open token and frees every message id; the
+// new connection claims the ids of the stored publishes again and re-sends
+// them (paho's resume). The session is persistent, so the broker keeps
+// what it queued for this client meanwhile, and the subscriptions are made
+// again on connecting as always (onConnectHandler).
+func (c *Client) Reconnect() {
+	logger.GetLogger().Warn(
+		"Remaking the MQTT connection",
+		zap.String("ClientID", c.clientID),
+		zap.Int("Unconfirmed", c.Unconfirmed()),
+	)
+	(*c.pahoClient).Disconnect(uint(disconnectWait.Milliseconds()))
+	token := (*c.pahoClient).Connect()
+	if !token.WaitTimeout(initialConnectWait) {
+		logger.GetLogger().Warn("Not reconnected to the MQTT broker yet, continuing while it is retried in the background", zap.String("ClientID", c.clientID))
+	} else if err := token.Error(); err != nil {
+		logger.GetLogger().Warn("Could not reconnect to the MQTT broker, it will be retried in the background", zap.String("Error", err.Error()), zap.String("ClientID", c.clientID))
+	}
+}
+
 // clientID returns, for a role in sessionRoles, the configured client id or
 // one derived from the role, the hostname and the username; for any other
 // role it is empty and the broker assigns one. All three matter: the

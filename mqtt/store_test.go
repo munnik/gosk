@@ -62,6 +62,12 @@ func TestTrackedStoreResetForgetsEverything(t *testing.T) {
 	}
 }
 
+// The tests below have paho re-send a stored publish on a new connection.
+// Under the race detector that trips a race inside paho v1.5.1 itself, not
+// in gosk: resume() starts a goroutine that selects on c.stop
+// (client.go:1040) while the next connection's startCommsWorkers replaces
+// c.stop (client.go:610). nix flake check runs the tests without -race.
+
 // publishedTimes waits until the broker has seen topic published n times,
 // or gives up after timeout, and reports the count it saw last.
 func publishedTimes(broker *fakeBroker, topic string, n int, timeout time.Duration) int {
@@ -110,6 +116,49 @@ func TestASenderClientHoldsAPublishUntilTheBrokerConfirmsIt(t *testing.T) {
 	for c.Holds(Fingerprint(payload)) {
 		if time.Now().After(deadline) {
 			t.Fatal("still held after the broker confirmed the re-sent publish")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// TestReconnectHasPahoResendWhatItHolds: the sender remakes the
+// connection when paho has held a delivery unconfirmed for too long, and
+// what it relies on is that paho re-sends on the new connection what it
+// holds, and that the broker's confirmation there releases it.
+func TestReconnectHasPahoResendWhatItHolds(t *testing.T) {
+	broker := &fakeBroker{asked: map[string]int{}, granted: map[string]int{}, withholdConfirmations: true}
+	c := clientOnAs(t, broker, "transferSend", "ack/topic")
+	if !c.WaitSubscribed(5 * time.Second) {
+		t.Fatal("never subscribed")
+	}
+
+	payload := []byte("a delivery")
+	c.Publish("data/topic", 1, false, payload)
+	if n := publishedTimes(broker, "data/topic", 1, 5*time.Second); n != 1 {
+		t.Fatalf("the broker saw the publish %d times, want 1", n)
+	}
+	if !c.Holds(Fingerprint(payload)) || c.Unconfirmed() != 1 {
+		t.Fatal("not held while the broker withholds its confirmation")
+	}
+
+	broker.confirmPublishes(true)
+	c.Reconnect()
+	if n := publishedTimes(broker, "data/topic", 2, 10*time.Second); n != 2 {
+		t.Fatalf("the broker saw the publish %d times after the connection was remade, want 2", n)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for c.Holds(Fingerprint(payload)) {
+		if time.Now().After(deadline) {
+			t.Fatal("still held after the broker confirmed the re-sent publish")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	// The subscription is made again on the remade connection, by the
+	// connect handler, on its own time.
+	deadline = time.Now().Add(5 * time.Second)
+	for broker.timesGranted("ack/topic") < 2 {
+		if time.Now().After(deadline) {
+			t.Fatal("the subscription was not made again on the remade connection")
 		}
 		time.Sleep(20 * time.Millisecond)
 	}

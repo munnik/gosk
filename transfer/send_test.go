@@ -46,13 +46,15 @@ func (f *fakeToken) Error() error          { return f.err }
 // fingerprints the test says it does, and hands out the token the test
 // gave it.
 type fakeSenderClient struct {
-	mu      sync.Mutex
-	holding map[uint64]bool
-	token   paho.Token
+	mu         sync.Mutex
+	holding    map[uint64]bool
+	token      paho.Token
+	reconnects int
 }
 
 func (f *fakeSenderClient) Connect()                          {}
 func (f *fakeSenderClient) Disconnect()                       {}
+func (f *fakeSenderClient) Reconnect()                        { f.reconnects++ }
 func (f *fakeSenderClient) Connected() bool                   { return true }
 func (f *fakeSenderClient) WaitSubscribed(time.Duration) bool { return true }
 
@@ -286,6 +288,45 @@ func TestAwaitConfirmationOutlastsATokenPahoCompletedOnAReconnect(t *testing.T) 
 	}
 	if !client.Holds(fingerprint) {
 		t.Fatal("the fake confirmed by itself")
+	}
+}
+
+func TestADeliveryHeldTooLongIsFoundOnceUntilItsClockRunsOutAgain(t *testing.T) {
+	held, fresh := []byte("held for long"), []byte("held for a moment")
+	client := &fakeSenderClient{holding: map[uint64]bool{mqtt.Fingerprint(held): true, mqtt.Fingerprint(fresh): true}}
+	s := inFlightSender(5*time.Minute, client)
+
+	s.markPublished(testEntry, held, testThrough)
+	flight := s.inFlight[testKey]
+	flight.sent = time.Now().Add(-11 * time.Minute)
+	s.inFlight[testKey] = flight
+	other := testEntry
+	other.Bucket = testBucket.Add(time.Minute)
+	s.markPublished(other, fresh, testThrough.Add(time.Minute))
+	// Held back without a delivery, however long ago: nothing of it is
+	// in the client's hands.
+	s.markInFlight(database.OutboxEntry{Origin: "vessels.1", Bucket: testBucket.Add(2 * time.Minute), Generation: 9})
+	oversized := s.inFlight[inFlightKey{origin: "vessels.1", bucket: testBucket.Add(2 * time.Minute).UnixNano()}]
+	oversized.sent = time.Now().Add(-time.Hour)
+	s.inFlight[inFlightKey{origin: "vessels.1", bucket: testBucket.Add(2 * time.Minute).UnixNano()}] = oversized
+
+	if !s.heldTooLong() {
+		t.Fatal("a delivery held unconfirmed for eleven minutes against a retry_after of five was not found")
+	}
+	if time.Since(s.inFlight[testKey].sent) > time.Minute {
+		t.Fatal("the clock of the delivery found was not started over")
+	}
+	if s.heldTooLong() {
+		t.Fatal("found again at once; the remade connection must get its time")
+	}
+
+	// A delivery the broker has confirmed is not held, however old.
+	client.confirm(mqtt.Fingerprint(held))
+	flight = s.inFlight[testKey]
+	flight.sent = time.Now().Add(-time.Hour)
+	s.inFlight[testKey] = flight
+	if s.heldTooLong() {
+		t.Fatal("a confirmed delivery was taken for one held too long")
 	}
 }
 

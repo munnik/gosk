@@ -53,6 +53,8 @@ type fakeSenderClient struct {
 
 func (f *fakeSenderClient) Connect()                          {}
 func (f *fakeSenderClient) Disconnect()                       {}
+func (f *fakeSenderClient) DropConnection()                   {}
+func (f *fakeSenderClient) Stalled(time.Duration) bool        { return false }
 func (f *fakeSenderClient) Connected() bool                   { return true }
 func (f *fakeSenderClient) WaitSubscribed(time.Duration) bool { return true }
 
@@ -79,14 +81,6 @@ func (f *fakeSenderClient) Unconfirmed() int {
 		}
 	}
 	return n
-}
-
-func (f *fakeSenderClient) Withdraw(fingerprint uint64) bool {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	held := f.holding[fingerprint]
-	delete(f.holding, fingerprint)
-	return held
 }
 
 // confirm is the broker's confirmation of a publish.
@@ -231,30 +225,30 @@ func TestPublishErrorReadsOnlyACompleteToken(t *testing.T) {
 	}
 }
 
-func TestADeliveryTheClientWillNotSendIsWithdrawnAndForgotten(t *testing.T) {
+func TestADeliveryTheClientWillNotSendOnThisConnection(t *testing.T) {
 	payload := []byte("a delivery")
 	fingerprint := mqtt.Fingerprint(payload)
 
 	// paho's writer did not take it: stored, to be sent on the next
-	// connection, which is not what the sender wants.
+	// connection. The bucket waits for that, in flight behind it.
 	client := &fakeSenderClient{holding: map[uint64]bool{fingerprint: true}}
 	s := inFlightSender(time.Hour, client)
 	s.markPublished(testEntry, payload, testThrough)
 	s.notSent(testEntry, fingerprint, errors.New("publish was broken by timeout"))
-	if client.Holds(fingerprint) {
-		t.Fatal("a delivery paho stored without sending was left in its hands")
+	if !client.Holds(fingerprint) {
+		t.Fatal("a delivery paho stored for its next connection was taken out of its hands")
 	}
-	if len(s.inFlight) != 0 {
-		t.Fatal("the bucket stayed in flight")
+	if !s.isInFlight(testEntry) {
+		t.Fatal("the bucket behind a delivery paho holds was not in flight")
 	}
 
-	// paho was not connected: nothing stored, nothing to withdraw.
+	// paho was not connected: nothing stored, so nothing on its way.
 	client = &fakeSenderClient{holding: map[uint64]bool{}}
 	s = inFlightSender(time.Hour, client)
 	s.markPublished(testEntry, payload, testThrough)
 	s.notSent(testEntry, fingerprint, paho.ErrNotConnected)
 	if len(s.inFlight) != 0 {
-		t.Fatal("the bucket stayed in flight")
+		t.Fatal("the bucket of a delivery paho took nothing of stayed in flight")
 	}
 }
 

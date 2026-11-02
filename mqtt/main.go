@@ -1,8 +1,11 @@
 package mqtt
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -96,6 +99,15 @@ type Client struct {
 	// store is paho's message store when the owner asks what the broker
 	// has not confirmed (Holds), nil otherwise; see trackedRoles.
 	store *trackedStore
+
+	// dial opens the connection to the broker, see openConnection; a test
+	// puts its own broker here.
+	dial func(uri *url.URL, options paho.ClientOptions) (net.Conn, error)
+	// conn is the connection paho is on and connectedAt when it was
+	// opened, for DropConnection and Stalled.
+	connMutex   sync.Mutex
+	conn        net.Conn
+	connectedAt time.Time
 }
 
 // New builds a client for the broker without connecting it; call Connect
@@ -130,6 +142,7 @@ func New(config *config.MQTTConfig, role string, publishHandler paho.MessageHand
 	if trackedRoles[role] {
 		result.store = newTrackedStore()
 	}
+	result.dial = dialBroker
 	pahoClient := paho.NewClient(result.createClientOptions())
 	result.pahoClient = &pahoClient
 	return result
@@ -186,11 +199,11 @@ func (c *Client) Connect() {
 // publish on a new connection, so a caller that needs the confirmation
 // asks Holds as well. It is complete with an error before Publish returns
 // when paho will not send the message on this connection: it was not
-// connected (nothing stored), or its writer did not take the message
-// within thirty seconds ("publish was broken by timeout"), in which case
-// the message is in paho's store, held, and would be sent only on the
-// next connection; Withdraw takes it out. Every caller but the outbox
-// sender (trackedRoles) ignores the token.
+// connected, and stored nothing (Holds is false), or its writer did not
+// take the message within thirty seconds ("publish was broken by
+// timeout"), and it stored the message to send on its next connection
+// (Holds is true until the broker confirms it there). Every caller but
+// the outbox sender (trackedRoles) ignores the token.
 //
 // Waiting was viable when everything published at QoS 0, where the token
 // completes as soon as the packet reaches the network. At QoS 1 the token
@@ -252,15 +265,6 @@ func (c *Client) Unconfirmed() int {
 	return c.store.unconfirmed()
 }
 
-// Withdraw takes a publish paho holds but will not send on this connection
-// (see Publish) out of paho's hands, so that it is neither held nor sent on
-// the next connection, and reports whether there was one. Its message id
-// stays claimed in paho until the next connection; paho has 65535, and
-// this is rare. False for a role not in trackedRoles.
-func (c *Client) Withdraw(fingerprint uint64) bool {
-	return c.store != nil && c.store.withdraw(fingerprint)
-}
-
 // Connected reports whether the connection to the broker is up right
 // now - not whether paho is trying, which is what its IsConnected answers
 // while it reconnects. A publisher with a backlog of its own (the outbox
@@ -285,6 +289,110 @@ func (c *Client) Connected() bool {
 
 func (c *Client) Disconnect() {
 	(*c.pahoClient).Disconnect(uint(disconnectWait.Milliseconds()))
+}
+
+// openConnection opens the connection to the broker for paho and remembers
+// it, see DropConnection.
+func (c *Client) openConnection(uri *url.URL, options paho.ClientOptions) (net.Conn, error) {
+	conn, err := c.dial(uri, options)
+	if err != nil {
+		return nil, err
+	}
+	c.connMutex.Lock()
+	c.conn = conn
+	c.connectedAt = time.Now()
+	c.connMutex.Unlock()
+	return conn, nil
+}
+
+// dialBroker opens the connection to the broker the way paho itself does
+// (its openConnection), for the schemes it knows, minus one thing: paho
+// would route a tcp or tls connection through a proxy named by the
+// environment (all_proxy and friends), and this does not - the fleet's
+// brokers are reached over the VPN, and nothing sets those.
+func dialBroker(uri *url.URL, options paho.ClientOptions) (net.Conn, error) {
+	dialer := options.Dialer
+	if dialer == nil {
+		dialer = &net.Dialer{Timeout: options.ConnectTimeout}
+	}
+	switch uri.Scheme {
+	case "mqtt", "tcp":
+		return dialer.Dial("tcp", uri.Host)
+	case "ssl", "tls", "mqtts", "mqtt+ssl", "tcps":
+		return tls.DialWithDialer(dialer, "tcp", uri.Host, options.TLSConfig)
+	case "unix":
+		if uri.Host != "" {
+			return dialer.Dial("unix", uri.Host)
+		}
+		return dialer.Dial("unix", uri.Path)
+	case "ws", "wss":
+		// Gorilla's websocket does not take a url with a user in it.
+		dialURI := *uri
+		dialURI.User = nil
+		var tlsConfig *tls.Config
+		if uri.Scheme == "wss" {
+			tlsConfig = options.TLSConfig
+		}
+		return paho.NewWebsocket(dialURI.String(), tlsConfig, options.ConnectTimeout, options.HTTPHeaders, options.WebsocketOptions)
+	}
+	return nil, fmt.Errorf("unknown protocol %q", uri.Scheme)
+}
+
+// DropConnection closes the socket paho is on, so that paho sees the
+// connection lost and reconnects on its own, as it does when the link
+// drops - re-sending on the new connection everything it holds, and
+// subscribing again (onConnectHandler). For a caller that sees paho hold a
+// publish unconfirmed for too long (Stalled). paho sends what it holds on
+// a new connection, and on a new connection only: a publish whose write
+// makes no progress, one it stored because its writer did not take it in
+// time, one it stored while the link was already going - all wait for one,
+// and paho's own keepalive is not sure to bring it about, since its ping
+// goes out through the same stalled socket. Closing the socket is the one
+// thing that works from outside: paho's Disconnect returns before its
+// teardown is done and refuses a Connect meanwhile, with no retry.
+//
+// paho notices in its own time. Its reader and writer pass over the error
+// a closed socket gives them, so what reports the loss is the keepalive:
+// the next ping gets no answer, and paho declares the connection lost a
+// ping timeout later - keepAlive plus ten seconds at most.
+func (c *Client) DropConnection() {
+	c.connMutex.Lock()
+	conn := c.conn
+	c.connMutex.Unlock()
+	if conn == nil {
+		return
+	}
+	logger.GetLogger().Warn(
+		"Dropping the MQTT connection so that it is remade",
+		zap.String("ClientID", c.clientID),
+		zap.Int("Unconfirmed", c.Unconfirmed()),
+	)
+	conn.Close()
+}
+
+// Stalled reports whether paho has held a publish unconfirmed, on a
+// connection that has been up, for longer than d - the caller's threshold
+// for giving up on the connection (DropConnection). It measures time
+// without a confirmation, not the absence of progress: a large publish
+// still making its way over a very slow link counts the same, and is
+// interrupted. Measured against the connection rather than the publish
+// alone, so that a publish paho held through an outage is given d on the
+// connection that follows it. Always false for a role not in trackedRoles.
+func (c *Client) Stalled(d time.Duration) bool {
+	if c.store == nil || !c.Connected() {
+		return false
+	}
+	since, held := c.store.heldSince()
+	if !held {
+		return false
+	}
+	c.connMutex.Lock()
+	connectedAt := c.connectedAt
+	c.connMutex.Unlock()
+	if connectedAt.After(since) {
+		since = connectedAt
+	}
+	return time.Since(since) > d
 }
 
 // clientID returns, for a role in sessionRoles, the configured client id or
@@ -382,6 +490,9 @@ func (c *Client) createClientOptions() *paho.ClientOptions {
 	if c.store != nil {
 		result.SetStore(c.store)
 	}
+	// The connection is opened here rather than by paho so that this
+	// client knows the socket paho is on, see DropConnection.
+	result.SetCustomOpenConnectionFn(c.openConnection)
 
 	result.SetDefaultPublishHandler(c.publishHandler)
 	result.SetOnConnectHandler(c.onConnectHandler)

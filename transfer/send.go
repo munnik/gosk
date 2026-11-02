@@ -51,6 +51,12 @@ type Sender struct {
 	// connected is what sendOnce last saw of the broker link, so that it
 	// logs the transitions and not every cycle of an outage.
 	connected bool
+	// accepted is the fingerprint of the last delivery the MQTT client
+	// took for sending on its connection, and whether there has been one;
+	// while the client still holds it nothing else is handed over, see
+	// awaitConfirmation. Run's goroutine alone touches these.
+	accepted    uint64
+	hasAccepted bool
 
 	// epoch is this run's, reserved from the far end before anything is
 	// sent (reserveEpoch); see 20261020120000_outbox_epochs. Zero until
@@ -90,7 +96,8 @@ type senderClient interface {
 	Publish(topic string, qos byte, retained bool, payload []byte) paho.Token
 	Holds(fingerprint uint64) bool
 	Unconfirmed() int
-	Withdraw(fingerprint uint64) bool
+	Stalled(d time.Duration) bool
+	DropConnection()
 }
 
 type inFlightKey struct {
@@ -198,22 +205,53 @@ func (s *Sender) sendOnce() {
 		s.connected = true
 	}
 
+	if s.mqttClient.Stalled(2 * s.config.RetryAfter) {
+		// The client has held a delivery unconfirmed, on this connection,
+		// for twice RetryAfter. Whatever the reason - a write that makes
+		// no progress, a delivery it stored because its writer did not
+		// take it in time (notSent), one it stored as the link was going
+		// - it sends what it holds on a new connection and on a new
+		// connection only, and its keepalive is not sure to bring one
+		// about: the ping goes out through the same stalled socket. So
+		// the connection is dropped here, and the client re-sends on the
+		// new one everything it holds. Every delivery the client holds
+		// counts, whether or not a bucket still waits on it - a late row
+		// resets a bucket and leaves its old delivery in the client's
+		// hands - so nothing it holds escapes this. The rows are safe in
+		// the outbox either way; this is the threshold past which the
+		// connection is given up on, not a bound on how long a bucket
+		// waits. Twice RetryAfter rather than once: the stall is judged
+		// by time without a confirmation, not by the absence of
+		// progress, and a delivery can take minutes to transmit on a
+		// poor link - dropping the connection under it throws away what
+		// it had transmitted, so this errs towards waiting.
+		s.mqttClient.DropConnection()
+		return
+	}
+
 	for _, entry := range entries {
 		if s.isInFlight(entry) {
 			continue
 		}
-		if s.mqttClient.Unconfirmed() > 0 {
-			// One delivery in the client's hands at a time (see send),
-			// and the last one is still there: the broker did not confirm
-			// it within its wait. Nothing more this pass; the next one
-			// looks again.
+		if s.hasAccepted && s.mqttClient.Holds(s.accepted) {
+			// One delivery in the client's hands at a time (see
+			// awaitConfirmation), and the last one it took is still
+			// there: the broker did not confirm it within its wait.
+			// Nothing more this pass; the next one looks again.
 			return
 		}
-		s.send(entry)
+		if !s.send(entry) {
+			// The client will not send on this connection (notSent);
+			// nothing more this pass.
+			return
+		}
 	}
 }
 
-func (s *Sender) send(entry database.OutboxEntry) {
+// send sends one delivery for a pending bucket, and reports whether the
+// pass may go on to the next: false once the MQTT client will not send on
+// this connection.
+func (s *Sender) send(entry database.OutboxEntry) bool {
 	// Read, and encode, at most MaxRowsPerDelivery rows; if that does not
 	// fit what the far end will decode (maxDecodedPayload), read again with
 	// half as many. Each read records how far it reached as sent_through,
@@ -234,7 +272,7 @@ func (s *Sender) send(entry database.OutboxEntry) {
 		if errors.Is(err, database.ErrOutboxEntryGone) {
 			// Reset by a late row or acknowledged meanwhile; the next pass
 			// sees whatever it has become.
-			return
+			return true
 		}
 		if err != nil {
 			logger.GetLogger().Warn(
@@ -243,7 +281,7 @@ func (s *Sender) send(entry database.OutboxEntry) {
 				zap.String("Origin", entry.Origin),
 				zap.Time("Bucket", entry.Bucket),
 			)
-			return
+			return true
 		}
 		delivery.Delivery = uuid.New()
 		delivery.Through = through
@@ -251,7 +289,7 @@ func (s *Sender) send(entry database.OutboxEntry) {
 		payload, plain, err = s.codec.encodeSized(delivery)
 		if err != nil {
 			logger.GetLogger().Warn("Could not encode an outbox delivery", zap.Error(err))
-			return
+			return true
 		}
 		if plain <= maxDecodedPayload {
 			break
@@ -273,7 +311,7 @@ func (s *Sender) send(entry database.OutboxEntry) {
 			// microsecond from one origin, which nothing on this fleet
 			// produces.
 			s.markInFlight(entry)
-			return
+			return true
 		}
 	}
 
@@ -306,8 +344,9 @@ func (s *Sender) send(entry database.OutboxEntry) {
 	fingerprint := mqtt.Fingerprint(payload)
 	if err := publishError(token); err != nil {
 		s.notSent(entry, fingerprint, err)
-		return
+		return false
 	}
+	s.accepted, s.hasAccepted = fingerprint, true
 
 	s.sent.Inc()
 	s.rowsSent.Add(float64(len(rows)))
@@ -322,6 +361,7 @@ func (s *Sender) send(entry database.OutboxEntry) {
 		zap.Int("Bytes", len(payload)),
 	)
 	s.awaitConfirmation(token, fingerprint)
+	return true
 }
 
 // publishError is the error a publish token already carries when paho
@@ -336,21 +376,33 @@ func publishError(token paho.Token) error {
 	}
 }
 
-// notSent handles a delivery paho will not send on this connection: it was
-// not connected, in which case nothing was stored, or its writer did not
-// take the delivery within thirty seconds, in which case paho stored it to
-// send on the next connection - held, with this sender waiting on it, and
-// on a link that stays up, waiting for good. The delivery is withdrawn
-// from the client in that case, so that it is neither held nor sent twice,
-// and the bucket is forgotten either way: not sent, so not in flight, and
-// the next pass that finds the link up sends it.
+// notSent handles a delivery paho will not send on this connection, which
+// is one of two things. Not connected - the connection went between
+// sendOnce's check and the publish - and paho stored nothing: the bucket is
+// forgotten, not sent so not in flight, and the next pass that finds the
+// link up sends it. Or paho's writer did not take the delivery within
+// thirty seconds and paho stored it to send on its next connection: the
+// bucket stays in flight behind it, held (isInFlight), and waits for that
+// connection, while the pass ends (sendOnce) rather than hand a stalled
+// writer more. That is paho's own path for it - resumed, confirmed, its
+// message id freed - and taking the delivery out of paho's store instead
+// would leave its id claimed for the life of the process. The wait is
+// bounded: the link dropping brings the new connection, and if it does not
+// drop, sendOnce drops it after twice RetryAfter (mqtt.Client.Stalled).
 func (s *Sender) notSent(entry database.OutboxEntry, fingerprint uint64, err error) {
-	withdrawn := s.mqttClient.Withdraw(fingerprint)
+	if s.mqttClient.Holds(fingerprint) {
+		logger.GetLogger().Warn(
+			"The MQTT client stored an outbox delivery to send on its next connection; the bucket waits for that",
+			zap.Error(err),
+			zap.String("Origin", entry.Origin),
+			zap.Time("Bucket", entry.Bucket),
+		)
+		return
+	}
 	s.forgetInFlight(entry)
 	logger.GetLogger().Warn(
-		"The MQTT client will not send an outbox delivery; the bucket will be sent again",
+		"The MQTT client took no outbox delivery; the bucket will be sent again",
 		zap.Error(err),
-		zap.Bool("Withdrawn", withdrawn),
 		zap.String("Origin", entry.Origin),
 		zap.Time("Bucket", entry.Bucket),
 	)
@@ -366,7 +418,8 @@ func (s *Sender) notSent(entry database.OutboxEntry, fingerprint uint64, err err
 // paho reports "publish was broken by timeout" and leaves the packet in its
 // store - unsent, and sent only on the next connection (notSent has the
 // rest). Handing paho the next delivery only once the last is confirmed
-// means the writer is idle when it is handed over. It is also what paces
+// means the writer has nothing but paho's own control packets in hand when
+// it is handed over. It is also what paces
 // the sender to the link: a delivery takes what it takes to transmit and
 // confirm, and the next one follows; a vessel with a good link clears a
 // pass in a second or two, a vessel with a poor one sends what the link
@@ -477,9 +530,11 @@ func (s *Sender) ackReceived(c paho.Client, m paho.Message) {
 // only its silence for that long says the delivery or its acknowledgement
 // was lost between broker and far end, or the far end could not store it.
 //
-// A delivery the client will not send on this connection is never in
-// flight: send sees it on the publish token and forgets it at once
-// (notSent).
+// A delivery the client took nothing of is never in flight: send sees it
+// on the publish token and forgets it at once. One the client stored to
+// send on its next connection is in flight, held, until the broker
+// confirms it there (notSent); sendOnce bounds how long that takes
+// (mqtt.Client.Stalled).
 func (s *Sender) isInFlight(entry database.OutboxEntry) bool {
 	s.inFlightMutex.Lock()
 	defer s.inFlightMutex.Unlock()

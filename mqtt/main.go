@@ -233,6 +233,15 @@ func (c *Client) Holds(fingerprint uint64) bool {
 	return c.store != nil && c.store.holds(fingerprint)
 }
 
+// Unconfirmed is how many publishes are in paho's hands, handed over and
+// not yet confirmed by the broker; zero for a role not in trackedRoles.
+func (c *Client) Unconfirmed() int {
+	if c.store == nil {
+		return 0
+	}
+	return c.store.unconfirmed()
+}
+
 // Connected reports whether the connection to the broker is up right
 // now - not whether paho is trying, which is what its IsConnected answers
 // while it reconnects. A publisher with a backlog of its own (the outbox

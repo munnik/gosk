@@ -34,10 +34,12 @@ var trackedRoles = map[string]bool{
 // trackedStore is paho's message store - what it keeps between a publish
 // and the broker's confirmation of it, and re-sends from on a reconnect -
 // with one addition: it can say whether it holds an outbound publish with
-// a given payload (Holds). It keeps exactly what paho's MemoryStore keeps;
-// paho's own redelivery is untouched, since the alternative - a store that
-// kept no publishes - leaks a message id for every publish paho never gets
-// to confirm, and paho has 65535 of them.
+// a given payload (Holds), and how many it holds (Unconfirmed). It keeps
+// what paho's MemoryStore keeps, and differs from it only in not refusing
+// to work while closed, which nothing here relies on. paho's own
+// redelivery is untouched, since the alternative - a store that kept no
+// publishes - leaks a message id for every publish paho never gets to
+// confirm, and paho has 65535 of them.
 //
 // Publishes are told apart by a fingerprint of their payload rather than
 // by paho's message id, which paho reuses as soon as a publish is
@@ -132,6 +134,13 @@ func (s *trackedStore) holds(fingerprint uint64) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.held[fingerprint] > 0
+}
+
+// unconfirmed is how many outbound publishes the store holds.
+func (s *trackedStore) unconfirmed() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.fingerprints)
 }
 
 var _ paho.Store = (*trackedStore)(nil)

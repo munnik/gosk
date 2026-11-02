@@ -26,6 +26,9 @@ import (
 const (
 	pruneEvery     = time.Minute
 	pruneOlderThan = 2 * time.Hour
+	// confirmationPoll is how often awaitConfirmation looks whether the
+	// broker has confirmed the delivery.
+	confirmationPoll = 50 * time.Millisecond
 )
 
 // Sender is the vessel half of the outbox: it sends the rows of pending
@@ -86,6 +89,7 @@ type senderClient interface {
 	WaitSubscribed(timeout time.Duration) bool
 	Publish(topic string, qos byte, retained bool, payload []byte)
 	Holds(fingerprint uint64) bool
+	Unconfirmed() int
 }
 
 type inFlightKey struct {
@@ -96,11 +100,14 @@ type inFlightKey struct {
 type inFlightEntry struct {
 	generation int64
 	sent       time.Time
-	// published is whether a delivery was handed to the MQTT client, and
-	// fingerprint identifies it to the client (mqtt.Fingerprint). A bucket
-	// held back without one (oversized, see send) has neither.
+	// published is whether a delivery was handed to the MQTT client,
+	// fingerprint identifies it to the client (mqtt.Fingerprint) and
+	// through is the newest row time it carries, which an acknowledgement
+	// has to reach to be its (clearInFlight). A bucket held back without
+	// a delivery (oversized, see send) has none of these.
 	published   bool
 	fingerprint uint64
+	through     time.Time
 	// confirmed is when the broker was first seen to have confirmed the
 	// delivery - the first pass that found the client no longer holding
 	// it - and from when RetryAfter counts; zero until then.
@@ -168,6 +175,7 @@ func (s *Sender) sendOnce() {
 			s.depth.With(prometheus.Labels{"origin": origin}).Set(float64(n))
 		}
 	}
+	s.unconfirmed.Set(float64(s.mqttClient.Unconfirmed()))
 
 	if !s.mqttClient.Connected() {
 		// Nothing is handed to paho while the link is down. It would
@@ -193,9 +201,15 @@ func (s *Sender) sendOnce() {
 		if s.isInFlight(entry) {
 			continue
 		}
+		if s.mqttClient.Unconfirmed() > 0 {
+			// One delivery in the client's hands at a time (see send),
+			// and the last one is still there: the broker did not confirm
+			// it within its wait. Nothing more this pass; the next one
+			// looks again.
+			return
+		}
 		s.send(entry)
 	}
-	s.unconfirmed.Set(float64(s.countUnconfirmed()))
 }
 
 func (s *Sender) send(entry database.OutboxEntry) {
@@ -286,8 +300,21 @@ func (s *Sender) send(entry database.OutboxEntry) {
 
 	// Marked before the publish, so that an acknowledgement arriving
 	// faster than this goroutine resumes still finds the entry.
-	s.markPublished(entry, payload)
+	s.markPublished(entry, payload, through)
 	s.mqttClient.Publish(fmt.Sprintf(dataTopic, entry.Origin), outboxQoS, outboxRetained, payload)
+	fingerprint := mqtt.Fingerprint(payload)
+	if !s.mqttClient.Holds(fingerprint) {
+		// paho took nothing: the connection went down between
+		// sendOnce's check and the publish. Not sent, so not in flight;
+		// the next pass that finds the link up sends it.
+		s.forgetInFlight(entry)
+		logger.GetLogger().Warn(
+			"The MQTT client did not take an outbox delivery; the bucket will be sent again",
+			zap.String("Origin", entry.Origin),
+			zap.Time("Bucket", entry.Bucket),
+		)
+		return
+	}
 
 	s.sent.Inc()
 	s.rowsSent.Add(float64(len(rows)))
@@ -301,6 +328,32 @@ func (s *Sender) send(entry database.OutboxEntry) {
 		zap.Int("Rows", len(rows)),
 		zap.Int("Bytes", len(payload)),
 	)
+	s.awaitConfirmation(fingerprint)
+}
+
+// awaitConfirmation waits, up to Interval, for the broker to confirm the
+// delivery just handed to the MQTT client, so that the next delivery is
+// handed to a client with nothing in its hands.
+//
+// One delivery at a time, because of how paho takes them: its writer
+// sends one packet at a time, and a Publish behind a packet that is still
+// being written waits for the writer, thirty seconds at most, after which
+// paho reports "publish was broken by timeout" and leaves the packet in its
+// store - unsent, and sent only on the next connection. A delivery that
+// met that would be held (mqtt.Client.Holds), and its bucket in flight,
+// until the link happened to drop. Handing paho the next delivery only
+// once the last is confirmed means the writer is idle when it is handed
+// over, and the wait is nil. It is also what paces the sender to the link:
+// a delivery takes what it takes to transmit and confirm, and the next one
+// follows; a vessel with a good link clears a pass in a second or two, a
+// vessel with a poor one sends what the link carries and nothing more.
+// Past Interval the pass ends and the next finds the client still holding
+// the delivery (sendOnce) and sends nothing until it is confirmed.
+func (s *Sender) awaitConfirmation(fingerprint uint64) {
+	deadline := time.Now().Add(s.config.Interval)
+	for s.mqttClient.Holds(fingerprint) && time.Now().Before(deadline) {
+		time.Sleep(confirmationPoll)
+	}
 }
 
 func (s *Sender) ackReceived(c paho.Client, m paho.Message) {
@@ -390,6 +443,9 @@ func (s *Sender) ackReceived(c paho.Client, m paho.Message) {
 // RetryAfter: the far end receives it, stores it and acknowledges, and
 // only its silence for that long says the delivery or its acknowledgement
 // was lost between broker and far end, or the far end could not store it.
+//
+// A delivery the client rejected on the spot is never in flight: send
+// sees that it is not held and forgets it at once.
 func (s *Sender) isInFlight(entry database.OutboxEntry) bool {
 	s.inFlightMutex.Lock()
 	defer s.inFlightMutex.Unlock()
@@ -435,8 +491,9 @@ func (s *Sender) markInFlight(entry database.OutboxEntry) {
 }
 
 // markPublished holds a bucket back behind the delivery about to be handed
-// to the MQTT client with this payload; see isInFlight.
-func (s *Sender) markPublished(entry database.OutboxEntry, payload []byte) {
+// to the MQTT client, with this payload and reaching through; see
+// isInFlight.
+func (s *Sender) markPublished(entry database.OutboxEntry, payload []byte, through time.Time) {
 	s.inFlightMutex.Lock()
 	defer s.inFlightMutex.Unlock()
 	s.inFlight[inFlightKey{origin: entry.Origin, bucket: entry.Bucket.UnixNano()}] = inFlightEntry{
@@ -444,28 +501,32 @@ func (s *Sender) markPublished(entry database.OutboxEntry, payload []byte) {
 		sent:        time.Now(),
 		published:   true,
 		fingerprint: mqtt.Fingerprint(payload),
+		through:     through,
 	}
 }
 
-// countUnconfirmed is how many buckets' last delivery the MQTT client still
-// holds, for the gauge.
-func (s *Sender) countUnconfirmed() int {
+// forgetInFlight drops a bucket's entry, if it is still the one made for
+// this generation.
+func (s *Sender) forgetInFlight(entry database.OutboxEntry) {
 	s.inFlightMutex.Lock()
 	defer s.inFlightMutex.Unlock()
-	n := 0
-	for _, flight := range s.inFlight {
-		if flight.published && s.mqttClient.Holds(flight.fingerprint) {
-			n++
-		}
+	key := inFlightKey{origin: entry.Origin, bucket: entry.Bucket.UnixNano()}
+	if flight, ok := s.inFlight[key]; ok && flight.generation == entry.Generation {
+		delete(s.inFlight, key)
 	}
-	return n
 }
 
+// clearInFlight settles a bucket's entry on an acknowledgement that
+// applied, if the acknowledgement is of the delivery the entry is for or
+// of a later one: it has to reach the entry's through. An earlier
+// delivery's acknowledgement, arriving late behind the delivery that
+// replaced it, says nothing about that one, which the client may well
+// still hold.
 func (s *Sender) clearInFlight(ack Ack) {
 	s.inFlightMutex.Lock()
 	defer s.inFlightMutex.Unlock()
 	key := inFlightKey{origin: ack.Origin, bucket: ack.Bucket.UnixNano()}
-	if flight, ok := s.inFlight[key]; ok && flight.generation == ack.Generation {
+	if flight, ok := s.inFlight[key]; ok && flight.generation == ack.Generation && !ack.Through.Before(flight.through) {
 		delete(s.inFlight, key)
 	}
 }

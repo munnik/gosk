@@ -1,6 +1,7 @@
 package transfer
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 // fakeSenderClient stands in for the MQTT client: it holds whatever
 // fingerprints the test says it does.
 type fakeSenderClient struct {
+	mu      sync.Mutex
 	holding map[uint64]bool
 }
 
@@ -22,14 +24,38 @@ func (f *fakeSenderClient) Disconnect()                        {}
 func (f *fakeSenderClient) Connected() bool                    { return true }
 func (f *fakeSenderClient) WaitSubscribed(time.Duration) bool  { return true }
 func (f *fakeSenderClient) Publish(string, byte, bool, []byte) {}
-func (f *fakeSenderClient) Holds(fingerprint uint64) bool      { return f.holding[fingerprint] }
+
+func (f *fakeSenderClient) Holds(fingerprint uint64) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.holding[fingerprint]
+}
+
+func (f *fakeSenderClient) Unconfirmed() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := 0
+	for _, held := range f.holding {
+		if held {
+			n++
+		}
+	}
+	return n
+}
+
+// confirm is the broker's confirmation of a publish.
+func (f *fakeSenderClient) confirm(fingerprint uint64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.holding, fingerprint)
+}
 
 // inFlightSender is a Sender with just what isInFlight and its neighbours
 // touch; NewSender would register its counters globally and reach for a
 // database.
 func inFlightSender(retryAfter time.Duration, client *fakeSenderClient) *Sender {
 	return &Sender{
-		config:     &config.TransferConfig{RetryAfter: retryAfter},
+		config:     &config.TransferConfig{RetryAfter: retryAfter, Interval: 5 * time.Second},
 		mqttClient: client,
 		inFlight:   make(map[inFlightKey]inFlightEntry),
 		retried:    prometheus.NewCounter(prometheus.CounterOpts{Name: "retried"}),
@@ -37,16 +63,17 @@ func inFlightSender(retryAfter time.Duration, client *fakeSenderClient) *Sender 
 }
 
 var (
-	testBucket = time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
-	testEntry  = database.OutboxEntry{Origin: "vessels.1", Bucket: testBucket, Generation: 3}
-	testKey    = inFlightKey{origin: testEntry.Origin, bucket: testBucket.UnixNano()}
+	testBucket  = time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+	testThrough = testBucket.Add(30 * time.Second)
+	testEntry   = database.OutboxEntry{Origin: "vessels.1", Bucket: testBucket, Generation: 3}
+	testKey     = inFlightKey{origin: testEntry.Origin, bucket: testBucket.UnixNano()}
 )
 
 func TestADeliveryTheClientStillHoldsIsInFlightHoweverOldItIs(t *testing.T) {
 	payload := []byte("a delivery")
 	client := &fakeSenderClient{holding: map[uint64]bool{mqtt.Fingerprint(payload): true}}
 	s := inFlightSender(5*time.Minute, client)
-	s.markPublished(testEntry, payload)
+	s.markPublished(testEntry, payload, testThrough)
 	flight := s.inFlight[testKey]
 	flight.sent = time.Now().Add(-24 * time.Hour)
 	s.inFlight[testKey] = flight
@@ -63,14 +90,14 @@ func TestRetryAfterCountsFromTheBrokersConfirmation(t *testing.T) {
 	payload := []byte("a delivery")
 	client := &fakeSenderClient{holding: map[uint64]bool{mqtt.Fingerprint(payload): true}}
 	s := inFlightSender(5*time.Minute, client)
-	s.markPublished(testEntry, payload)
+	s.markPublished(testEntry, payload, testThrough)
 	flight := s.inFlight[testKey]
 	flight.sent = time.Now().Add(-time.Hour)
 	s.inFlight[testKey] = flight
 
 	// Confirmed just now, an hour after it was handed over: the far end
 	// has had no time to answer yet.
-	client.holding = map[uint64]bool{}
+	client.confirm(mqtt.Fingerprint(payload))
 	if !s.isInFlight(testEntry) {
 		t.Fatal("sent again the moment the broker confirmed it, before the far end could answer")
 	}
@@ -120,32 +147,78 @@ func TestInFlightForgetsAResetGeneration(t *testing.T) {
 	}
 }
 
-func TestAnAcknowledgementClearsTheEntry(t *testing.T) {
+func TestAnAcknowledgementClearsTheDeliveryItReaches(t *testing.T) {
 	payload := []byte("a delivery")
 	client := &fakeSenderClient{holding: map[uint64]bool{mqtt.Fingerprint(payload): true}}
 	s := inFlightSender(time.Hour, client)
-	s.markPublished(testEntry, payload)
-	// The broker's confirmation reached the far end before this sender
-	// saw it; the acknowledgement settles the bucket all the same.
-	s.clearInFlight(Ack{Origin: testEntry.Origin, Bucket: testBucket, Generation: testEntry.Generation})
+	s.markPublished(testEntry, payload, testThrough)
+	ack := Ack{Origin: testEntry.Origin, Bucket: testBucket, Generation: testEntry.Generation}
+
+	// An earlier delivery's acknowledgement, arriving late: it reaches
+	// less than this delivery does, and the client may still hold this
+	// one.
+	ack.Through = testThrough.Add(-time.Second)
+	s.clearInFlight(ack)
+	if _, kept := s.inFlight[testKey]; !kept {
+		t.Fatal("a late acknowledgement of an earlier delivery cleared the entry of a later one")
+	}
+
+	// The acknowledgement of this delivery, or of a later one. That the
+	// broker's confirmation reached the far end before this sender saw it
+	// changes nothing.
+	ack.Through = testThrough
+	s.clearInFlight(ack)
 	if len(s.inFlight) != 0 {
 		t.Fatal("an acknowledged bucket stayed in flight")
 	}
-	if s.countUnconfirmed() != 0 {
-		t.Fatal("an acknowledged bucket was counted as unconfirmed")
+}
+
+func TestAwaitConfirmationReturnsOnTheBrokersConfirmation(t *testing.T) {
+	payload := []byte("a delivery")
+	fingerprint := mqtt.Fingerprint(payload)
+	client := &fakeSenderClient{holding: map[uint64]bool{fingerprint: true}}
+	s := inFlightSender(time.Hour, client)
+	s.config.Interval = 10 * time.Second
+
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		client.confirm(fingerprint)
+	}()
+	started := time.Now()
+	s.awaitConfirmation(fingerprint)
+	if waited := time.Since(started); waited < 100*time.Millisecond || waited > 5*time.Second {
+		t.Fatalf("waited %v; want until the confirmation, not until Interval", waited)
 	}
 }
 
-func TestCountUnconfirmedCountsWhatTheClientHolds(t *testing.T) {
-	held, confirmed := []byte("held"), []byte("confirmed")
-	client := &fakeSenderClient{holding: map[uint64]bool{mqtt.Fingerprint(held): true}}
+func TestAwaitConfirmationGivesUpAfterInterval(t *testing.T) {
+	payload := []byte("a delivery")
+	fingerprint := mqtt.Fingerprint(payload)
+	client := &fakeSenderClient{holding: map[uint64]bool{fingerprint: true}}
 	s := inFlightSender(time.Hour, client)
-	s.markPublished(testEntry, held)
-	other := testEntry
-	other.Bucket = testBucket.Add(time.Minute)
-	s.markPublished(other, confirmed)
-	s.markInFlight(database.OutboxEntry{Origin: "vessels.1", Bucket: testBucket.Add(2 * time.Minute), Generation: 9})
-	if n := s.countUnconfirmed(); n != 1 {
-		t.Fatalf("unconfirmed = %d, want 1", n)
+	s.config.Interval = 200 * time.Millisecond
+
+	started := time.Now()
+	s.awaitConfirmation(fingerprint)
+	if waited := time.Since(started); waited < 200*time.Millisecond || waited > 2*time.Second {
+		t.Fatalf("waited %v; want about Interval", waited)
+	}
+	if !client.Holds(fingerprint) {
+		t.Fatal("the fake confirmed by itself")
+	}
+}
+
+func TestForgetInFlightDropsOnlyItsOwnGeneration(t *testing.T) {
+	s := inFlightSender(time.Hour, &fakeSenderClient{})
+	s.markPublished(testEntry, []byte("a delivery"), testThrough)
+	reset := testEntry
+	reset.Generation = 4
+	s.forgetInFlight(reset)
+	if _, kept := s.inFlight[testKey]; !kept {
+		t.Fatal("forgetting a reset generation dropped the current one")
+	}
+	s.forgetInFlight(testEntry)
+	if len(s.inFlight) != 0 {
+		t.Fatal("the entry was not forgotten")
 	}
 }

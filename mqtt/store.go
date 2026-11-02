@@ -143,21 +143,4 @@ func (s *trackedStore) unconfirmed() int {
 	return len(s.fingerprints)
 }
 
-// withdraw drops every outbound publish with this fingerprint from the
-// store, so that paho neither holds nor re-sends it, and reports whether
-// there was one. For a publish paho stored but will not send on this
-// connection (Client.Publish); the caller sends it again itself.
-func (s *trackedStore) withdraw(fingerprint uint64) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	found := false
-	for key, held := range s.fingerprints {
-		if held == fingerprint {
-			s.forget(key)
-			found = true
-		}
-	}
-	return found
-}
-
 var _ paho.Store = (*trackedStore)(nil)

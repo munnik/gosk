@@ -21,7 +21,7 @@ func TestTrackedStoreHoldsAnOutboundPublishUntilItIsDeleted(t *testing.T) {
 	}
 
 	store.Put("o.7", publish)
-	if !store.holds(Fingerprint(payload)) {
+	if !store.holds(Fingerprint(payload)) || store.unconfirmed() != 1 {
 		t.Fatal("not held after the publish was put")
 	}
 	if store.Get("o.7") != publish || len(store.All()) != 1 {
@@ -41,7 +41,7 @@ func TestTrackedStoreHoldsAnOutboundPublishUntilItIsDeleted(t *testing.T) {
 
 	// The broker's PUBACK.
 	store.Del("o.7")
-	if store.holds(Fingerprint(payload)) || len(store.All()) != 0 {
+	if store.holds(Fingerprint(payload)) || store.unconfirmed() != 0 || len(store.All()) != 0 {
 		t.Fatal("still held after the publish was deleted")
 	}
 	// Deleting it again, or something never put, is nothing.

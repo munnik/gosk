@@ -127,6 +127,21 @@ var _ = Describe("Test database", Ordered, func() {
 			return count, err
 		}
 
+		It("stores an empty value as an empty bytea, not as NULL", func() {
+			// What a Sygo's empty line looks like once it has been through
+			// msgp: a nil slice. It used to be sent as NULL, refused by
+			// raw_data.value's NOT NULL, and the whole batch with it -
+			// forever, since the batch was requeued as it was.
+			db.WriteRaw(message.NewRaw().WithConnector("testConnector").WithType("testType").WithValue(nil))
+			db.Flush()
+
+			Expect(countRaw()).To(Equal(1))
+			var value []byte
+			err := db.GetConnection().QueryRow(context.Background(), `SELECT "value" FROM "raw_data"`).Scan(&value)
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(value).To(Equal([]byte{}))
+		})
+
 		It("requeues a COPY that times out", func() {
 			// Lock the table so the COPY waits; the suite's batch length
 			// of 0 runs that flush inside WriteRaw, so the call returns

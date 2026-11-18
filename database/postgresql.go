@@ -191,11 +191,24 @@ func (db *PostgresqlDatabase) GetConnection() *pgxpool.Pool {
 // for the whole batch instead of one per row, pipelined or not.
 func (db *PostgresqlDatabase) WriteRaw(raw *message.Raw) {
 	db.writesCounter.Inc()
+	// An empty value arrives here as nil: Raw.MarshalMsg sends an empty bin
+	// for it and msgp decodes an empty bin into a nil slice. pgx encodes a
+	// nil []byte as NULL, and raw_data.value is NOT NULL - so every batch
+	// that carried one was refused as a whole, requeued, refused again at
+	// the next flush, and every newer row was dropped as "Buffer is full"
+	// (node-rct-rozengracht's Sygo sends one empty line per cycle; found on
+	// her first NixOS boot, 2026-11-18). An empty value is a valid, empty
+	// bytea. retryRawIndividually is the net under anything else of the
+	// kind.
+	value := raw.Value
+	if value == nil {
+		value = []byte{}
+	}
 	db.rawBatchMutex.Lock()
 	db.rawBatch = append(db.rawBatch, rawRow{
 		timestamp: raw.Timestamp,
 		connector: raw.Connector,
-		value:     raw.Value,
+		value:     value,
 		uuid:      raw.Uuid,
 		type_:     raw.Type,
 	})
@@ -1011,13 +1024,14 @@ func (db *PostgresqlDatabase) flushBatch() {
 // flushRawBatch COPYs the queued raw_data rows in one execution, rather
 // than the one-query-per-row approach flushBatch takes for mapped_data/
 // static_data's upserts (see WriteRaw's doc comment for why COPY doesn't
-// fit those). Unlike retryIndividually, a failed COPY has no per-row
-// retry: it's an all-or-nothing statement, and raw_data has no constraint
-// a row could permanently violate the way an upsert or a NOT NULL column
-// elsewhere might, so requeuing the whole batch on failure (the same
-// connection-invalidate-and-retry reasoning as flushBatch's) is enough.
-// That goes for a timeout as much as for any other failure: nothing of a
-// COPY that was cut short committed. (raw_data has no key, so a COPY that
+// fit those). A COPY is all-or-nothing: a failure over connectivity or a
+// timeout requeues the whole batch (the same connection-invalidate-and-
+// retry reasoning as flushBatch's), since nothing of a COPY that was cut
+// short committed. A failure over a row Postgres will never take - a data
+// or integrity error, SQLSTATE class 22 or 23, such as the NULL value
+// WriteRaw's doc comment describes - would come back identically at every
+// flush, so that batch goes to retryRawIndividually instead, which sorts
+// the one bad row from the rest the way retryIndividually does. (raw_data has no key, so a COPY that
 // did commit just as it was given up on is stored twice. Rare, and raw
 // data is kept for looking into, not for counting.)
 func (db *PostgresqlDatabase) flushRawBatch() {
@@ -1058,6 +1072,14 @@ func (db *PostgresqlDatabase) flushRawBatch() {
 				zap.Error(ctx.Err()),
 				zap.Error(err),
 			)
+		} else if unwritable(err) {
+			logger.GetLogger().Error(
+				"The raw_data COPY was refused over a row that can never be written, retrying the batch row by row",
+				zap.Int("Rows", len(rows)),
+				zap.String("Error", err.Error()),
+			)
+			db.retryRawIndividually(rows)
+			return
 		} else {
 			logger.GetLogger().Error(
 				"Unable to COPY the raw_data batch, requeuing it",
@@ -1080,6 +1102,67 @@ func (db *PostgresqlDatabase) flushRawBatch() {
 	)
 	db.lastFlush = time.Now()
 	db.lastFlushGauge.SetToCurrentTime()
+}
+
+// retryRawIndividually is retryIndividually for a raw_data COPY that was
+// refused as a whole over a data or integrity error: it COPYs the rows one
+// at a time, drops the ones Postgres refuses for that reason (they would
+// otherwise come back with every flush and take every newer row down with
+// them - see WriteRaw), and on any other failure puts that row and the
+// untried rest back in the queue, in their order, for the next flush.
+func (db *PostgresqlDatabase) retryRawIndividually(rows []rawRow) {
+	for i, r := range rows {
+		ctx, cancel := context.WithTimeout(context.Background(), db.databaseTimeout)
+		_, err := db.GetConnection().CopyFrom(
+			ctx,
+			pgx.Identifier{"raw_data"},
+			rawDataColumns,
+			pgx.CopyFromSlice(1, func(int) ([]any, error) {
+				return []any{r.timestamp, r.connector, r.value, r.uuid, r.type_}, nil
+			}),
+		)
+		timedOut := ctx.Err() != nil
+		cancel()
+		if err == nil {
+			continue
+		}
+		if !timedOut && unwritable(err) {
+			db.dropsCounter.Inc()
+			logger.GetLogger().Error(
+				"Dropping a raw_data row that permanently fails with a data/integrity error, it would otherwise block every other raw row forever",
+				zap.String("connector", r.connector),
+				zap.String("type", r.type_),
+				zap.Int("valueLength", len(r.value)),
+				zap.Error(err),
+			)
+			continue
+		}
+		db.invalidateConnection()
+		if timedOut {
+			db.timeoutsCounter.Inc()
+		}
+		logger.GetLogger().Error(
+			"A raw_data row failed even individually, reinserting it and the rest of the batch into the queue",
+			zap.Int("Untried", len(rows)-i-1),
+			zap.Duration("RetryAfter", db.backoff.extend()),
+			zap.Error(err),
+		)
+		db.rawBatchMutex.Lock()
+		db.rawBatch = append(rows[i:], db.rawBatch...)
+		db.rawBatchMutex.Unlock()
+		db.batchSizeGauge.Add(float64(len(rows) - i))
+		return
+	}
+	db.backoff.reset()
+	db.lastFlush = time.Now()
+	db.lastFlushGauge.SetToCurrentTime()
+}
+
+// unwritable reports whether err is a Postgres data or integrity error
+// (SQLSTATE class 22 or 23): the kind no retry will ever get past.
+func unwritable(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && (strings.HasPrefix(pgErr.Code, "22") || strings.HasPrefix(pgErr.Code, "23"))
 }
 
 // invalidateConnection closes and discards the current connection pool, so
@@ -1161,7 +1244,7 @@ func (db *PostgresqlDatabase) retryIndividually(queries []queuedQuery) {
 // and logs and counts the drop when so.
 func (db *PostgresqlDatabase) dropIfUnwritable(query queuedQuery, err error) bool {
 	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && (strings.HasPrefix(pgErr.Code, "22") || strings.HasPrefix(pgErr.Code, "23")) {
+	if unwritable(err) && errors.As(err, &pgErr) {
 		db.dropsCounter.Inc()
 		logger.GetLogger().Error(
 			"Dropping a query that permanently fails with a data/integrity error, it would otherwise block every other queued query forever",

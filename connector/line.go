@@ -254,6 +254,14 @@ func (l *LineConnector) scan(reader io.Reader, stream chan<- []byte) error {
 		// whatever line happened to be scanned by the time the marshaller
 		// got to it - in a reproduction of this pipeline, over half the
 		// lines came out as the content of a later one. Copy per line.
+		// An empty line carries nothing a mapper could use, and costs a
+		// message, a "could not map" warning per mapper and a raw_data row
+		// each - one per cycle on a Sygo loading computer, which ends every
+		// cycle with one. The row was worse than useless until WriteRaw
+		// learned to store it: see there.
+		if len(scanner.Bytes()) == 0 {
+			continue
+		}
 		line := make([]byte, len(scanner.Bytes()))
 		copy(line, scanner.Bytes())
 		stream <- line
